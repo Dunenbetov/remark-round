@@ -1,0 +1,17 @@
+node_modules
+dist
+.angular
+.git
+.env
+.env.*
+!.env.example
+coverage
+.langfuse
+postgres-data
+langfuse-data
+*.log
+.DS_Store
+.idea
+.vscode
+uploads
+.cursor

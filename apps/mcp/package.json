@@ -1,0 +1,15 @@
+{
+  "name": "@remarkround/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.2",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2"
+  }
+}

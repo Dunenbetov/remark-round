@@ -1,0 +1,16 @@
+{
+  "name": "remarkround",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22.22.3"
+  },
+  "scripts": {
+    "db:generate": "pnpm --filter @remarkround/db generate",
+    "db:migrate": "pnpm --filter @remarkround/db migrate",
+    "db:migrate:deploy": "pnpm --filter @remarkround/db migrate:deploy",
+    "api:dev": "pnpm --filter @remarkround/api dev",
+    "web:dev": "pnpm --filter @remarkround/web dev",
+    "build": "pnpm -r build"
+  }
+}

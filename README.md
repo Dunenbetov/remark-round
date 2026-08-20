@@ -1,19 +1,60 @@
-# RemarkRound — рабочая папка проекта
+# RemarkRound
 
 Слой приёмки веб-проекта: журнал замечаний как **дело из улик**, не как Excel на почте и не как Jira.
 
 > Jira stores work. We decide whether it is work. The spec is evidence, not a verdict.
 
-**Код приложения здесь ещё не пишется.** Здесь эталон, контракты и фикстуры. Агент, который пишет код, сначала читает это.
+Канон продукта: [`REMARKROUND.md`](REMARKROUND.md). Агентам — [`AGENTS.md`](AGENTS.md), фазы — [`docs/PHASES.md`](docs/PHASES.md).
 
-## С чего начать (человек или агент)
+## Быстрый старт (фаза 0)
 
-1. [`AGENTS.md`](AGENTS.md) — 30 секунд правил.
-2. [`REMARKROUND.md`](REMARKROUND.md) — доктрина. §2 важнее UI.
-3. Фаза из [`docs/PHASES.md`](docs/PHASES.md) — не прыгать через порядок.
-4. Контракт, который трогаешь: схема / API / WS / граф / экран.
+```bash
+cp .env.example .env
+docker compose up
+```
 
-## Карта
+| Сервис | URL |
+|---|---|
+| Web (Angular) | http://localhost:4200 |
+| API health | http://localhost:3001/api/v1/health → `{ "ok": true }` |
+| Langfuse UI | http://localhost:3000 |
+| Postgres (app) | `localhost:5432`, БД `remarkround` |
+
+### Prisma (опционально, с хоста)
+
+Когда Postgres уже поднят:
+
+```bash
+pnpm install
+pnpm db:generate
+pnpm db:migrate:deploy
+```
+
+Для разработки с новой миграцией: `pnpm db:migrate`.
+
+Индекс pgvector по embedding — после migrate, см. [`packages/db/README.md`](packages/db/README.md).
+
+### Локальная разработка без Docker
+
+```bash
+pnpm install
+pnpm db:generate
+# postgres на localhost:5432
+pnpm api:dev    # :3001 если PORT=3001 в .env
+pnpm web:dev    # :4200
+```
+
+## Структура
+
+```
+apps/web          Angular
+apps/api          NestJS
+apps/mcp          MCP stub (фаза 7, не в compose)
+packages/db       Prisma schema + клиент
+docker-compose.yml
+```
+
+## Карта документации
 
 | Путь | Зачем |
 |---|---|

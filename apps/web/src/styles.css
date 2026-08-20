@@ -1,0 +1,42 @@
+@import '../../../docs/ui/tokens.css';
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell__header {
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--rr-line);
+  background: var(--rr-surface);
+  box-shadow: var(--rr-shadow);
+}
+
+.shell__logo {
+  margin: 0;
+  font-family: var(--rr-serif);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--rr-ink);
+}
+
+.shell__main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.shell__status {
+  margin: 0;
+  padding: 1.25rem 2rem;
+  background: var(--rr-surface);
+  border: 1px solid var(--rr-line);
+  border-radius: var(--rr-radius);
+  box-shadow: var(--rr-shadow);
+  font-size: 1.125rem;
+  color: var(--rr-ink-soft);
+}
