@@ -1,0 +1,32 @@
+---
+description: RemarkRound UI — paper desk, not Jira, not ChatGPT. Copy from COPY.md only.
+alwaysApply: true
+globs: apps/web/**/*.{ts,html,scss,css}
+---
+
+# UI RemarkRound
+
+Перед любой вёрсткой прочитай:
+
+1. `docs/ui/COPY.md` — подписи **дословно**, не синонимы
+2. `docs/ui/VISUAL.md` — токены, иерархия карточки
+3. `docs/ui/ANTI.md` — если сделал пункт оттуда, удали
+4. `docs/ui/reference.html` — эталон в браузере
+
+## Вектор
+
+Стол с бумагами и скрином. Светлый тёплый фон. Бизнес и PM, не ML-инженер.
+
+ИИ не герой: блок называется «Черновик разбора». Скрин **крупнее** текста модели. Справа — кнопки человека.
+
+Три колонки карточки: улики | черновик | решение. Не один столбец чата. Не канбан.
+
+## Запрещено в UI
+
+Approve / Reject / Copilot / RAG / sprint / backlog / story points / confidence % / фиолетовый Material / тёмная тема MVP / плавающий чат / колонки To Do–Done / бейдж модели.
+
+Код статусов (`awaiting_pm`) можно в `data-*` и DevTools, на экране — человеческие строки из COPY.md.
+
+## Задача агенту
+
+Один экран за раз. «Повтори reference.html, копируй COPY.md». Не «сделай красиво / как Linear».

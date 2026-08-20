@@ -1,0 +1,253 @@
+// RemarkRound — канон имён. Смысл статусов: docs/STATUS.md
+// pgvector: после migrate выполнить индекс из packages/db/README.md
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+enum Role {
+  business
+  pm
+  developer
+  admin
+}
+
+enum DocumentKind {
+  spec
+  protocol
+  addendum
+  journal_source
+}
+
+enum DocumentStatus {
+  uploaded
+  parsed
+  indexed
+  failed
+}
+
+enum RoundStatus {
+  open
+  closed
+}
+
+enum RemarkStatus {
+  imported
+  needs_human_parse
+  triaging
+  awaiting_pm
+  defect
+  change_request
+  unspecified
+  duplicate
+  cannot_tell
+  ready_for_retest
+  awaiting_business_close
+  closed
+  reopened
+}
+
+enum ScreenshotKind {
+  original
+  retest
+  diff
+}
+
+enum AgentRunStatus {
+  running
+  awaiting_human
+  persisted
+  cancelled
+  failed
+}
+
+enum ImportRowStatus {
+  parsed
+  needs_human_parse
+  failed
+}
+
+enum VerdictCode {
+  defect
+  change_request
+  unspecified
+  duplicate
+  cannot_tell
+  rejected_binding
+}
+
+model User {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  passwordHash String
+  name         String
+  memberships  Membership[]
+  verdicts     HumanVerdict[]
+  createdAt    DateTime     @default(now())
+}
+
+model Project {
+  id          String         @id @default(uuid())
+  name        String
+  memberships Membership[]
+  documents   Document[]
+  rounds      Round[]
+  createdAt   DateTime       @default(now())
+}
+
+model Membership {
+  id        String   @id @default(uuid())
+  userId    String
+  projectId String
+  role      Role
+  user      User     @relation(fields: [userId], references: [id])
+  project   Project  @relation(fields: [projectId], references: [id])
+
+  @@unique([userId, projectId])
+  @@index([projectId])
+}
+
+model Document {
+  id        String           @id @default(uuid())
+  projectId String
+  kind      DocumentKind
+  title     String
+  mime      String
+  storageKey String
+  status    DocumentStatus   @default(uploaded)
+  effectiveAt DateTime?
+  project   Project          @relation(fields: [projectId], references: [id])
+  chunks    DocumentChunk[]
+  createdAt DateTime         @default(now())
+
+  @@index([projectId])
+}
+
+model DocumentChunk {
+  id         String   @id @default(uuid())
+  projectId  String
+  documentId String
+  section    String?
+  page       Int?
+  content    String
+  /// vector(N) — N = размерность выбранной embedding-модели, одна на индекс
+  embedding  Unsupported("vector")?
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Round {
+  id        String      @id @default(uuid())
+  projectId String
+  number    Int
+  status    RoundStatus @default(open)
+  project   Project     @relation(fields: [projectId], references: [id])
+  remarks   Remark[]
+  imports   ImportJob[]
+
+  @@unique([projectId, number])
+}
+
+model Remark {
+  id             String        @id @default(uuid())
+  projectId      String
+  roundId        String
+  externalId     String?
+  pageOrScreen   String?
+  description    String        @default("")
+  expected       String?
+  severity       String?
+  status         RemarkStatus  @default(imported)
+  duplicateOfId  String?
+  round          Round         @relation(fields: [roundId], references: [id])
+  screenshots    RemarkScreenshot[]
+  citations      EvidenceCitation[]
+  runs           AgentRun[]
+  verdicts       HumanVerdict[]
+  createdAt      DateTime      @default(now())
+
+  @@index([projectId, status])
+  @@index([roundId])
+}
+
+model RemarkScreenshot {
+  id        String         @id @default(uuid())
+  remarkId  String
+  kind      ScreenshotKind
+  storageKey String
+  width     Int?
+  height    Int?
+  remark    Remark         @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+}
+
+model EvidenceCitation {
+  id        String @id @default(uuid())
+  remarkId  String
+  chunkId   String
+  remark    Remark @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+}
+
+model AgentRun {
+  id        String         @id @default(uuid())
+  remarkId  String
+  projectId String
+  mode      String         @default("triage")
+  status    AgentRunStatus @default(running)
+  model     String?
+  inputTokens  Int?
+  outputTokens Int?
+  costUsd   Decimal?       @db.Decimal(10, 6)
+  remark    Remark         @relation(fields: [remarkId], references: [id])
+  checkpoints GraphCheckpoint[]
+  createdAt DateTime       @default(now())
+}
+
+model GraphCheckpoint {
+  id     String   @id @default(uuid())
+  runId  String
+  blob   Json
+  run    AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model HumanVerdict {
+  id        String      @id @default(uuid())
+  remarkId  String
+  runId     String?
+  userId    String
+  code      VerdictCode
+  comment   String?
+  idempotencyKey String
+  remark    Remark      @relation(fields: [remarkId], references: [id])
+  user      User        @relation(fields: [userId], references: [id])
+  createdAt DateTime    @default(now())
+
+  @@unique([runId, idempotencyKey])
+}
+
+model ImportJob {
+  id        String      @id @default(uuid())
+  roundId   String
+  storageKey String
+  round     Round       @relation(fields: [roundId], references: [id])
+  rows      ImportRow[]
+  createdAt DateTime    @default(now())
+}
+
+model ImportRow {
+  id         String          @id @default(uuid())
+  jobId      String
+  rowNumber  Int
+  status     ImportRowStatus
+  rawJson    Json
+  remarkId   String?
+  job        ImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
