@@ -13,3 +13,6 @@ postgres-data/
 .vscode/
 uploads/
 langfuse-data/
+
+# файлы пакета документов и скринов (локальное хранилище API)
+apps/api/storage/

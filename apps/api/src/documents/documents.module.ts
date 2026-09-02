@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
+import { RagModule } from '../rag/rag.module';
+import { StorageModule } from '../storage/storage.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { DocumentsController } from './documents.controller';
 import { DocumentsService } from './documents.service';
 
 @Module({
-  imports: [TenancyModule],
+  imports: [TenancyModule, StorageModule, RagModule],
   controllers: [DocumentsController],
   providers: [DocumentsService],
   exports: [DocumentsService],

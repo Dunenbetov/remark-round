@@ -22,12 +22,14 @@
 
 ## Фаза 2 — RAG без агента
 
-- [ ] Upload PDF/DOCX в пакет
-- [ ] Chunk по заголовкам, embed, pgvector
-- [ ] Search с цитатой, SQL-фильтр
-- [ ] Кусок обоснования чанкинга в ARCHITECTURE (что пробовали)
+- [x] Upload PDF/DOCX в пакет
+- [x] Chunk по заголовкам, embed, pgvector
+- [x] Search с цитатой, SQL-фильтр
+- [x] Кусок обоснования чанкинга в ARCHITECTURE (что пробовали)
 
 **DoD:** вопрос «какого цвета primary-кнопка?» возвращает § из `fixtures/spec`.
+
+Сделано 3 сентября 2026: `apps/api/src/{llm,storage,rag,documents}`, миграция `vector(1536)` + HNSW, тесты `chunker.spec.ts` и `rag.search.spec.ts` (без сети, фейковые эмбеддинги), `GET /projects/:id/search`.
 
 ## Фаза 3 — замечание и карточка
 

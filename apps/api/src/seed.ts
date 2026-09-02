@@ -1,10 +1,19 @@
 /**
- * Демо-данные для фазы 1: три роли в проекте «Клиентский кабинет» и чужой проект
- * для проверки утечки. Пароль у всех — `remarkround` (только локально).
+ * Демо-данные: три роли в проекте «Клиентский кабинет», чужой проект для проверки утечки,
+ * пакет документов из fixtures/spec и fixtures/protocol. Пароль у всех — `remarkround` (только локально).
+ * Если задан OPENAI_API_KEY, документы сразу индексируются (chunk → embed → pgvector).
  * Запуск: DATABASE_URL=... pnpm --filter @remarkround/api seed
  */
-import { PrismaClient, type Role } from '@remarkround/db';
+import { PrismaClient, type DocumentKind, type Role } from '@remarkround/db';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { hashPassword } from './auth/password';
+import { EmbeddingsService } from './llm/embeddings.service';
+import { PrismaService } from './prisma/prisma.service';
+import { RagService } from './rag/rag.service';
+import { StorageService } from './storage/storage.service';
+
+const ROOT = resolve(__dirname, '../../..');
 
 export const SEED = {
   projectId: '11111111-1111-4111-8111-111111111111',
@@ -16,10 +25,16 @@ export const SEED = {
     { id: 'a3333333-3333-4333-8333-333333333333', email: 'timur@remarkround.dev', name: 'Тимур', role: 'developer' as Role },
   ],
   otherUser: { id: 'b1111111-1111-4111-8111-111111111111', email: 'other@other-tenant.dev', name: 'Чужой', role: 'admin' as Role },
+  documents: [
+    { id: 'd1111111-1111-4111-8111-111111111111', projectId: '11111111-1111-4111-8111-111111111111', kind: 'spec' as DocumentKind, title: 'ТЗ_Клиентский_кабинет_v1.4.md', fixture: 'fixtures/spec/TZ.md', effectiveAt: '2026-01-14' },
+    { id: 'd1111111-1111-4111-8111-222222222222', projectId: '11111111-1111-4111-8111-111111111111', kind: 'protocol' as DocumentKind, title: 'Протокол_12.03.md', fixture: 'fixtures/protocol/PROTOCOL.md', effectiveAt: '2026-03-12' },
+    { id: 'd2222222-2222-4222-8222-111111111111', projectId: '22222222-2222-4222-8222-222222222222', kind: 'spec' as DocumentKind, title: 'ТЗ_чужого_проекта.md', fixture: 'fixtures/spec/TZ.md', effectiveAt: '2026-01-14' },
+  ],
 };
 
-export async function seed(prisma: PrismaClient): Promise<void> {
+export async function seed(prisma: PrismaClient, options: { index?: boolean } = {}): Promise<void> {
   const passwordHash = hashPassword(SEED.password);
+  const storage = new StorageService();
 
   await prisma.project.upsert({
     where: { id: SEED.projectId },
@@ -44,7 +59,7 @@ export async function seed(prisma: PrismaClient): Promise<void> {
       update: { role: u.role },
     });
   }
-  // Дана — ещё и admin проекта, чтобы управлять участниками.
+  // Дана — ещё и admin проекта, чтобы управлять участниками и документами.
   await prisma.membership.update({
     where: { userId_projectId: { userId: SEED.users[0]!.id, projectId: SEED.projectId } },
     data: { role: 'admin' },
@@ -62,22 +77,31 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     update: {},
   });
 
-  const docs = [
-    { id: 'd1111111-1111-4111-8111-111111111111', projectId: SEED.projectId, kind: 'spec' as const, title: 'ТЗ_Клиентский_кабинет.pdf', mime: 'application/pdf' },
-    { id: 'd1111111-1111-4111-8111-222222222222', projectId: SEED.projectId, kind: 'protocol' as const, title: 'Протокол_12.03.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
-    { id: 'd2222222-2222-4222-8222-111111111111', projectId: SEED.otherProjectId, kind: 'spec' as const, title: 'ТЗ_чужого_проекта.pdf', mime: 'application/pdf' },
-  ];
-  for (const d of docs) {
+  for (const d of SEED.documents) {
+    const data = await readFile(resolve(ROOT, d.fixture));
+    const storageKey = await storage.save(d.projectId, d.title, data);
     await prisma.document.upsert({
       where: { id: d.id },
-      create: { ...d, storageKey: `seed/${d.id}`, status: 'uploaded' },
-      update: { title: d.title },
+      create: { id: d.id, projectId: d.projectId, kind: d.kind, title: d.title, mime: 'text/markdown', storageKey, status: 'uploaded', effectiveAt: new Date(d.effectiveAt) },
+      update: { title: d.title, mime: 'text/markdown', storageKey, status: 'uploaded', effectiveAt: new Date(d.effectiveAt) },
     });
+  }
+
+  const embeddings = new EmbeddingsService();
+  const shouldIndex = options.index ?? embeddings.available;
+  if (shouldIndex) {
+    const rag = new RagService(prisma as PrismaService, storage, embeddings);
+    for (const d of SEED.documents) {
+      const result = await rag.indexDocument(d.id);
+      console.log(`seed: indexed ${d.title} — ${result.chunks} chunks`);
+    }
+  } else {
+    console.log('seed: OPENAI_API_KEY не задан, документы оставлены в статусе uploaded');
   }
 }
 
 if (require.main === module) {
-  const prisma = new PrismaClient();
+  const prisma = new PrismaService();
   seed(prisma)
     .then(() => console.log('seed: ok'))
     .catch((e: unknown) => {

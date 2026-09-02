@@ -32,6 +32,10 @@ services:
       DATABASE_URL: postgresql://remarkround:remarkround@postgres:5432/remarkround
       WEB_ORIGIN: http://localhost:4200
       JWT_SECRET: ${JWT_SECRET:-change-me}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      STORAGE_DIR: /app/apps/api/storage
+    volumes:
+      - api-storage:/app/apps/api/storage
     ports:
       - '${API_PORT:-3001}:3000'
 
@@ -175,6 +179,7 @@ services:
 
 volumes:
   postgres-data:
+  api-storage:
   langfuse-postgres-data:
   langfuse-clickhouse-data:
   langfuse-clickhouse-logs:

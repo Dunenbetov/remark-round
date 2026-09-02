@@ -31,8 +31,11 @@
 | POST | `/projects/:projectId/remarks/:id/retest` | business | Новый скрин, запуск диффа+explain |
 | POST | `/projects/:projectId/remarks/:id/close` | business | Только после ретест-улик |
 | GET | `/projects/:projectId/dev-queue` | developer | defect + ready_for_retest |
+| GET | `/projects/:projectId/search?q=&k=` | member | Поиск по пакету документов с цитатой (раздел, фрагмент, score). То же, что MCP `search_spec` |
 
 Загрузка файлов: `multipart/form-data`, поле `file`. Скрины — отдельным upload, id кладётся в remark.
+
+Документы: `POST /projects/:projectId/documents` — поля `file` (PDF, DOCX, Markdown, текст, до 20 МБ), `kind` (`spec | protocol | addendum | journal_source`), необязательный `effectiveAt` (ISO-дата). Ответ 201 со статусом `uploaded`; индексация идёт в фоне: `parsed` → `indexed` | `failed`, статус и число чанков видны в `GET .../documents`.
 
 ## Тело вердикта
 
