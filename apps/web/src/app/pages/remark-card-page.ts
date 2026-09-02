@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import type { Remark, Role, ShotVariant, VerdictCode } from '../core/models';
-import { CARD, DECISION, EMPTY, PHASE_EXTRA, PHASE_TEXT, RETEST_EXPLANATION, STATUS_LABEL, VERDICT_LABEL } from '../core/copy';
+import type { Remark, Screenshot, VerdictCode } from '../core/models';
+import { CARD, DECISION, EMPTY, PHASE_EXTRA, PHASE_TEXT, STATUS_LABEL, VERDICT_LABEL } from '../core/copy';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { TriageRun, TriageService } from '../core/triage.service';
@@ -14,6 +14,7 @@ import { ShotViewer, ViewerFrame } from '../ui/shot-viewer';
 import { StatusPill } from '../ui/status-pill';
 
 type Layout = 'running' | 'draft' | 'refuse' | 'retest-wait' | 'retest';
+type FileAction = 'attach' | 'retest';
 
 interface DraftPara {
   head: string;
@@ -22,7 +23,7 @@ interface DraftPara {
 
 /**
  * Карточка замечания — главный экран. Три колонки на бумаге: Улики | Черновик разбора | Ваше решение.
- * Режим выбирается по статусу × роли (артборды 3, 4, 4а, 4б, 4в, 5, 5а, 12).
+ * Режим выбирается по статусу × роли (артборды 3, 4, 4а, 4б, 4в, 5, 5а, 12). Данные и переходы — API.
  */
 @Component({
   selector: 'rr-remark-card-page',
@@ -49,25 +50,25 @@ interface DraftPara {
                 <!-- УЛИКИ -->
                 <section class="col col--evidence">
                   <h2 class="col-title">{{ copy.evidence }}</h2>
-                  @if (layout() === 'retest' && frames().length === 3) {
-                    <div class="frames">
-                      @for (f of frames(); track f.variant) {
-                        <button type="button" class="frame" (click)="openViewer(f.variant)">
-                          <rr-shot [variant]="f.variant" [zoom]="true" />
+                  @if (layout() === 'retest' && frames().length > 1) {
+                    <div class="frames" [class.frames--two]="frames().length === 2">
+                      @for (f of frames(); track f.label; let i = $index) {
+                        <button type="button" class="frame" (click)="openViewer(i)">
+                          <rr-shot [variant]="f.variant" [src]="f.src" [zoom]="true" />
                           <span class="meta">{{ f.label }}</span>
                         </button>
                       }
                     </div>
-                  } @else if (originalShot(); as s) {
-                    <button type="button" class="frame" (click)="openViewer(s)">
-                      <rr-shot [variant]="s" [zoom]="true" />
+                  } @else if (original(); as s) {
+                    <button type="button" class="frame" (click)="openViewer(0)">
+                      <rr-shot [variant]="s.variant ?? 'grey'" [src]="s.url" [zoom]="true" />
                       @if (layout() === 'retest-wait' || layout() === 'retest') {
                         <span class="meta">{{ copy.before }}</span>
                       }
                     </button>
                     @if (layout() === 'retest-wait' && role() === 'business') {
                       <div class="attach">
-                        <button type="button" class="btn btn--secondary" [disabled]="busy()" (click)="attachNewFrame()">{{ decision.attachShot }}</button>
+                        <button type="button" class="btn btn--secondary" [disabled]="busy()" (click)="pickFile('retest')">{{ decision.attachShot }}</button>
                         <span class="meta">{{ decision.attachNewFrame }}</span>
                       </div>
                     }
@@ -128,22 +129,24 @@ interface DraftPara {
                     <h2 class="col-title col-title--decision">{{ decision.title }}</h2>
                     <rr-decision-panel
                       [mode]="mode"
-                      [busy]="busy()"
+                      [busy]="busy() || store.loading()"
                       [record]="record()"
                       [attachHint]="decision.attachFooterHint"
                       (verdict)="onVerdict($event)"
                       (rejectBinding)="onRejectBinding($event)"
-                      (attach)="onAttach()"
+                      (attach)="pickFile('attach')"
                       (close)="onClose()"
                       (notFixed)="onNotFixed()"
-                      (changeDecision)="onChangeDecision()"
                     />
                   } @else if (r.status === 'awaiting_pm' || r.status === 'triaging') {
                     <h2 class="col-title">{{ decision.title }}</h2>
                     <div class="soft">{{ copy.awaitingPmNote }}</div>
                   }
                   @if (role() === 'developer' && r.status === 'defect') {
-                    <button type="button" class="btn btn--primary btn--left dev-ready" (click)="onReady()">{{ decision.readyForRetest }}</button>
+                    <button type="button" class="btn btn--primary btn--left dev-ready" [disabled]="store.loading()" (click)="onReady()">{{ decision.readyForRetest }}</button>
+                  }
+                  @if (store.error(); as err) {
+                    <div class="card__error">{{ err }}</div>
                   }
                 </section>
               </div>
@@ -151,8 +154,9 @@ interface DraftPara {
             <div class="card__spacer"></div>
             <rr-phase-line [text]="phaseText()" [tone]="phaseTone()" [pulse]="phasePulse()" [retryable]="failed()" (retry)="onRetry()" />
           </main>
-          @if (viewer(); as v) {
-            <rr-shot-viewer [title]="'№ ' + r.number + ' · ' + r.title" [frames]="frames()" [initial]="v" (closed)="viewer.set(null)" />
+          <input #file type="file" class="visually-hidden" accept="image/*" (change)="onFile($event)" />
+          @if (viewer() !== null) {
+            <rr-shot-viewer [title]="'№ ' + r.number + ' · ' + r.title" [frames]="frames()" [initial]="viewer()!" (closed)="viewer.set(null)" />
           }
         </div>
       } @else {
@@ -161,7 +165,7 @@ interface DraftPara {
           <main class="page__body denied">{{ empty.noAccess }}</main>
         </div>
       }
-    } @else {
+    } @else if (!store.loading()) {
       <div class="page">
         <rr-glass-header [brandOnly]="true" />
         <main class="page__body denied">{{ empty.noAccess }}</main>
@@ -246,6 +250,9 @@ interface DraftPara {
       grid-template-columns: 1fr 1fr 1fr;
       gap: 16px;
     }
+    .frames--two {
+      grid-template-columns: 1fr 1fr;
+    }
     .attach {
       display: flex;
       flex-direction: column;
@@ -304,6 +311,11 @@ interface DraftPara {
     .dev-ready {
       margin-top: 8px;
     }
+    .card__error {
+      font-size: 13px;
+      line-height: 18px;
+      color: var(--rr-danger);
+    }
     .card__spacer {
       height: 24px;
     }
@@ -321,7 +333,8 @@ interface DraftPara {
       .grid--retest {
         grid-template-columns: 1fr;
       }
-      .frames {
+      .frames,
+      .frames--two {
         grid-template-columns: 1fr;
       }
     }
@@ -351,10 +364,10 @@ export class RemarkCardPage {
   readonly projectId = input.required<string>();
   readonly round = input.required<string>();
   readonly remarkId = input.required<string>();
-  /** ?run=1 — проиграть прогон разбора заново (демо артборда 3). */
+  /** ?run=1 — проиграть показ фаз и печати черновика (демо артборда 3). */
   readonly run = input<string>();
 
-  private readonly store = inject(RemarksStore);
+  protected readonly store = inject(RemarksStore);
   private readonly session = inject(SessionService);
   private readonly triage = inject(TriageService);
 
@@ -362,27 +375,36 @@ export class RemarkCardPage {
   protected readonly decision = DECISION;
   protected readonly empty = EMPTY;
 
-  protected readonly role = this.session.role;
+  protected readonly role = computed(() => this.session.roleIn(this.projectId()));
   protected readonly remark = computed<Remark | undefined>(() => this.store.byId(this.remarkId()));
-  protected readonly viewer = signal<ShotVariant | null>(null);
+  protected readonly viewer = signal<number | null>(null);
 
   private readonly runSig = signal<TriageRun | null>(null);
   private readonly startedFor = new Set<string>();
+  private fileAction: FileAction | null = null;
+  private fileInput: HTMLInputElement | null = null;
 
   constructor() {
     effect(() => {
+      const projectId = this.projectId();
       const id = this.remarkId();
-      const status = this.remark()?.status;
+      untracked(() => {
+        if (!this.store.round()) void this.store.enterRound(projectId, this.round());
+        void this.store.loadRemark(projectId, id);
+      });
+    });
+    effect(() => {
+      const id = this.remarkId();
+      const remark = this.remark();
       const wantRun = this.run() === '1';
       untracked(() => {
-        const remark = this.store.byId(id);
         if (!remark) return;
-        const key = `${id}:${wantRun ? 'q' : status}`;
-        const shouldStart = (status === 'triaging' || wantRun) && !this.startedFor.has(key);
+        const key = `${id}:${wantRun ? 'q' : remark.status}`;
+        const shouldStart = (remark.status === 'triaging' || wantRun) && !this.startedFor.has(key);
         if (shouldStart) {
           this.startedFor.add(key);
           this.runSig.set(this.triage.start(remark));
-        } else {
+        } else if (!this.runSig()) {
           this.runSig.set(this.triage.runFor(id) ?? null);
         }
       });
@@ -395,7 +417,6 @@ export class RemarkCardPage {
     const r = this.remark();
     const role = this.role();
     if (!r || !role) return false;
-    if (r.projectId !== this.projectId()) return false;
     if (role === 'developer') return r.status === 'defect' || r.status === 'ready_for_retest';
     return true;
   });
@@ -420,16 +441,17 @@ export class RemarkCardPage {
     if (this.running()) return role === 'pm' ? 'disabled' : null;
     switch (role) {
       case 'pm':
+      case 'admin':
         if (r.status === 'awaiting_pm') return r.proposedClass === 'unspecified' ? 'pm-two' : 'pm-full';
         if (r.status === 'triaging') return 'disabled';
-        return 'record';
+        return r.verdict || r.status === 'closed' ? 'record' : null;
       case 'business':
         if (r.status === 'unspecified') return 'pm-two';
         if (r.status === 'cannot_tell') return 'attach';
         if (r.status === 'ready_for_retest') return 'retest-wait';
         if (r.status === 'awaiting_business_close') return 'retest';
         if (r.status === 'awaiting_pm' || r.status === 'triaging') return null;
-        return 'record';
+        return r.verdict || r.status === 'closed' ? 'record' : null;
       case 'developer':
         return r.verdict ? 'record' : null;
       default:
@@ -439,15 +461,12 @@ export class RemarkCardPage {
 
   protected readonly record = computed<DecisionRecord | null>(() => {
     const r = this.remark()!;
-    const role = this.role();
     if (r.status === 'closed') {
-      const who = this.name(r.closedByUserId);
-      return { label: DECISION.closedRecord, who, at: r.closedAt ?? '', changeable: false };
+      return { label: DECISION.closedRecord, who: r.closedByName ?? '', at: r.closedAt ?? '', changeable: false };
     }
     if (!r.verdict) return null;
     const label = r.verdict.code === 'rejected_binding' ? STATUS_LABEL[r.status] : VERDICT_LABEL[r.verdict.code];
-    const changeable = role === 'pm' && ['defect', 'change_request', 'unspecified', 'duplicate', 'cannot_tell'].includes(r.status);
-    return { label, who: this.name(r.verdict.userId), at: r.verdict.at, changeable };
+    return { label, who: r.verdict.userName ?? '', at: r.verdict.at, changeable: false };
   });
 
   protected readonly showPill = computed(() => {
@@ -458,33 +477,32 @@ export class RemarkCardPage {
   protected readonly metaLine = computed(() => {
     const r = this.remark()!;
     if (r.status === 'ready_for_retest' || r.status === 'awaiting_business_close' || r.status === 'closed') {
-      return `${CARD.fixedBy(this.name(r.fixedByUserId))} · Раунд ${r.roundNumber}`;
+      return `${CARD.fixedBy(r.fixedByName ?? '')} · Раунд ${r.roundNumber}`;
     }
-    return `${CARD.where} ${r.pageOrScreen} · ${CARD.addedBy(this.name(r.authorId))} · Раунд ${r.roundNumber}`;
+    return `${CARD.where} ${r.pageOrScreen} · ${CARD.addedBy(r.authorName ?? '')} · Раунд ${r.roundNumber}`;
   });
 
   // ---------- улики ----------
 
-  protected readonly originalShot = computed<ShotVariant | null>(() => {
-    const s = this.remark()!.screenshots.find((x) => x.kind === 'original');
-    return s ? s.variant : null;
-  });
+  protected readonly original = computed<Screenshot | null>(() => this.remark()!.screenshots.find((x) => x.kind === 'original') ?? null);
 
   protected readonly frames = computed<ViewerFrame[]>(() => {
     const shots = this.remark()!.screenshots;
-    if (shots.length === 3) {
-      return [
-        { label: CARD.before, variant: shots[0]!.variant },
-        { label: CARD.after, variant: shots[1]!.variant },
-        { label: CARD.diff, variant: shots[2]!.variant },
-      ];
+    const original = shots.find((s) => s.kind === 'original');
+    const retest = shots.find((s) => s.kind === 'retest');
+    const diff = shots.find((s) => s.kind === 'diff');
+    if (retest) {
+      const frames: ViewerFrame[] = [];
+      if (original) frames.push({ label: CARD.before, variant: original.variant ?? 'grey', src: original.url });
+      frames.push({ label: CARD.after, variant: retest.variant ?? 'blue', src: retest.url });
+      if (diff) frames.push({ label: CARD.diff, variant: diff.variant ?? 'diff', src: diff.url });
+      return frames;
     }
-    const original = this.originalShot();
-    return original ? [{ label: CARD.frame, variant: original }] : [];
+    return original ? [{ label: CARD.frame, variant: original.variant ?? 'grey', src: original.url }] : [];
   });
 
-  protected openViewer(variant: ShotVariant): void {
-    this.viewer.set(variant);
+  protected openViewer(index: number): void {
+    this.viewer.set(index);
   }
 
   // ---------- черновик ----------
@@ -532,7 +550,7 @@ export class RemarkCardPage {
       case 'unspecified':
         return role === 'business' ? PHASE_TEXT.awaiting_pm : PHASE_EXTRA.awaitingBusinessOther;
       case 'defect':
-        return PHASE_EXTRA.inDevWith(this.developerName());
+        return PHASE_EXTRA.inDevWith(r.fixedByName ?? 'разработчика');
       case 'cannot_tell':
         return PHASE_EXTRA.awaitingShot;
       case 'ready_for_retest':
@@ -540,7 +558,7 @@ export class RemarkCardPage {
       case 'awaiting_business_close':
         return PHASE_TEXT.awaiting_business_close;
       case 'closed':
-        return PHASE_EXTRA.closedAt(this.name(r.closedByUserId), r.closedAt ?? '');
+        return PHASE_EXTRA.closedAt(r.closedByName ?? '', r.closedAt ?? '');
       default:
         return STATUS_LABEL[r.status];
     }
@@ -560,41 +578,51 @@ export class RemarkCardPage {
   // ---------- действия ----------
 
   protected onVerdict(e: { code: Exclude<VerdictCode, 'rejected_binding'>; comment: string }): void {
-    this.store.verdict(this.remarkId(), e.code, this.userId(), e.comment);
+    void this.store.verdict(this.remarkId(), e.code, e.comment);
   }
 
   protected onRejectBinding(comment: string): void {
     const remark = this.remark()!;
     const run = this.triage.idle(remark);
     this.runSig.set(run);
-    run.requote(() => this.store.rejectBinding(remark.id, this.userId(), comment));
+    run.requote(() => void this.store.rejectBinding(remark.id, comment));
   }
 
-  protected onAttach(): void {
-    this.store.attachShot(this.remarkId());
+  protected pickFile(action: FileAction): void {
+    this.fileAction = action;
+    this.fileInput ??= document.querySelector<HTMLInputElement>('rr-remark-card-page input[type=file]');
+    this.fileInput?.click();
   }
 
-  protected attachNewFrame(): void {
+  protected async onFile(e: Event): Promise<void> {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !this.fileAction) return;
+    const action = this.fileAction;
+    this.fileAction = null;
     const remark = this.remark()!;
+    if (action === 'attach') {
+      await this.store.attachShot(remark.id, file);
+      this.startedFor.clear();
+      this.runSig.set(this.triage.start(this.remark()!));
+      return;
+    }
     const run = this.triage.idle(remark);
     this.runSig.set(run);
-    run.diff(() => this.store.completeRetest(remark.id, 'likely_addressed', RETEST_EXPLANATION));
+    run.diff(() => void this.store.retest(remark.id, file));
   }
 
   protected onClose(): void {
-    this.store.close(this.remarkId(), this.userId());
+    void this.store.close(this.remarkId());
   }
 
   protected onNotFixed(): void {
-    this.store.notFixed(this.remarkId());
-  }
-
-  protected onChangeDecision(): void {
-    this.store.reopenDecision(this.remarkId());
+    void this.store.notFixed(this.remarkId());
   }
 
   protected onReady(): void {
-    this.store.readyForRetest(this.remarkId(), this.userId());
+    void this.store.readyForRetest(this.remarkId());
   }
 
   protected onRetry(): void {
@@ -602,22 +630,6 @@ export class RemarkCardPage {
   }
 
   protected backLink(): unknown[] {
-    return this.role() === 'developer' ? ['/p', this.projectId(), 'dev'] : ['/p', this.projectId(), 'r', this.round()];
-  }
-
-  // ---------- helpers ----------
-
-  private userId(): string {
-    return this.session.user()?.id ?? '';
-  }
-
-  private name(userId: string | undefined): string {
-    return userId ? (this.session.userById(userId)?.name ?? '') : '';
-  }
-
-  private developerName(): string {
-    const r = this.remark()!;
-    const dev = this.session.userById(r.fixedByUserId ?? '') ?? this.session.users.find((u) => u.role === ('developer' as Role));
-    return dev?.name ?? '';
+    return this.role() === 'developer' ? ['/p', this.projectId(), 'dev'] : ['/p', this.projectId(), 'r', this.store.roundNumber() ?? this.round()];
   }
 }

@@ -2,11 +2,14 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, signal } f
 import type { ImportRow } from '../core/models';
 import { EMPTY, IMPORT, STATUS_LABEL } from '../core/copy';
 import { RemarksStore } from '../core/remarks.store';
-import { IMPORT_FILE_NAME } from '../mock/seed';
+import { IMPORT_FILE_NAME, IMPORT_ROWS } from '../mock/seed';
 import { GlassHeader } from '../ui/glass-header';
 import { StatusPill } from '../ui/status-pill';
 
-/** Импорт журнала (бизнес): только наш шаблон. Нераспознанные строки дописывает человек. */
+/**
+ * Импорт журнала (бизнес): только наш шаблон. Нераспознанные строки дописывает человек.
+ * Парсер CSV/XLSX — фаза 4; пока список строк — мок, а «Сохранить строки» создаёт замечания через API.
+ */
 @Component({
   selector: 'rr-import-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -56,7 +59,7 @@ import { StatusPill } from '../ui/status-pill';
                   </div>
                 }
                 <div class="list__foot">
-                  <button type="button" class="btn btn--primary" (click)="save()">{{ copy.save }}</button>
+                  <button type="button" class="btn btn--primary" [disabled]="store.loading()" (click)="save()">{{ copy.save }}</button>
                 </div>
               </div>
             </section>
@@ -159,7 +162,7 @@ export class ImportPage {
   readonly projectId = input.required<string>();
   readonly round = input.required<string>();
 
-  private readonly store = inject(RemarksStore);
+  protected readonly store = inject(RemarksStore);
 
   protected readonly copy = IMPORT;
   protected readonly unparsed = EMPTY.importUnparsed;
@@ -167,13 +170,17 @@ export class ImportPage {
   protected readonly uploaded = signal(false);
   protected readonly over = signal(false);
   protected readonly drafts = signal<Record<number, string>>({});
+  protected readonly rows = signal<ImportRow[]>(structuredClone(IMPORT_ROWS));
 
-  protected readonly rows = this.store.importRows;
   protected readonly badCount = computed(() => this.rows().filter((r) => r.status === 'needs_human_parse').length);
   protected readonly summary = computed(() => {
     const total = this.rows().length;
     return IMPORT.summary(total - this.badCount(), total, this.badCount());
   });
+
+  constructor() {
+    if (!this.store.round()) queueMicrotask(() => void this.store.enterRound(this.projectId(), this.round()));
+  }
 
   protected upload(): void {
     this.uploaded.set(true);
@@ -203,8 +210,20 @@ export class ImportPage {
     return row.status === 'parsed' ? IMPORT.received : STATUS_LABEL.needs_human_parse;
   }
 
-  protected save(): void {
-    this.store.saveImportRows(this.drafts());
+  /** Дописанные строки становятся замечаниями через API; остальные строки в моке уже «получены». */
+  protected async save(): Promise<void> {
+    const drafts = this.drafts();
+    const next: ImportRow[] = [];
+    for (const row of this.rows()) {
+      const text = drafts[row.rowNumber]?.trim();
+      if (row.status !== 'needs_human_parse' || !text) {
+        next.push(row);
+        continue;
+      }
+      const remark = await this.store.addRemark(this.projectId(), { title: text, pageOrScreen: '', file: null });
+      next.push(remark ? { ...row, text, status: 'parsed', remarkNumber: remark.number } : row);
+    }
+    this.rows.set(next);
     this.drafts.set({});
   }
 }

@@ -1,7 +1,11 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { APP_NAME, LOGIN, TAGLINE } from '../core/copy';
+import { ApiService } from '../core/api.service';
+import { APP_NAME, LOGIN, LOGIN_EXTRA, TAGLINE } from '../core/copy';
+import { homeUrl } from '../core/guards';
 import { SessionService } from '../core/session.service';
+
+const DEMO_EMAILS = ['dana@remarkround.dev', 'aigerim@remarkround.dev', 'timur@remarkround.dev'];
 
 /** Вход: слово RemarkRound, одна строка, e-mail и пароль, «Войти». Без иллюстраций и маркетинга. */
 @Component({
@@ -21,18 +25,19 @@ import { SessionService } from '../core/session.service';
           </label>
           <label class="field">
             <span class="field__label field__label--soft">{{ copy.password }}</span>
-            <input class="input" type="password" name="password" autocomplete="current-password" [value]="password()" (input)="password.set(value($event))" />
+            <input class="input" type="password" name="password" autocomplete="current-password" [value]="password()" (input)="password.set(value($event))" [class.input--danger]="error()" />
           </label>
           @if (error()) {
             <div class="login__error">{{ copy.unknown }}</div>
           }
-          <button type="submit" class="btn btn--primary login__submit">{{ copy.submit }}</button>
+          <button type="submit" class="btn btn--primary login__submit" [disabled]="busy()">{{ copy.submit }}</button>
         </div>
         <div class="meta login__demo">
           {{ copy.demoHint }}
-          @for (u of session.users; track u.id) {
-            <button type="button" class="login__demo-link" (click)="email.set(u.email)">{{ u.email }}</button>
+          @for (e of demoEmails; track e) {
+            <button type="button" class="login__demo-link" (click)="pick(e)">{{ e }}</button>
           }
+          <span>· {{ demoPassword }}</span>
         </div>
       </form>
     </main>
@@ -99,32 +104,45 @@ import { SessionService } from '../core/session.service';
   `,
 })
 export class LoginPage {
-  protected readonly session = inject(SessionService);
+  private readonly session = inject(SessionService);
+  private readonly api = inject(ApiService);
   private readonly router = inject(Router);
 
   protected readonly appName = APP_NAME;
   protected readonly tagline = TAGLINE;
   protected readonly copy = LOGIN;
+  protected readonly demoEmails = DEMO_EMAILS;
+  protected readonly demoPassword = LOGIN_EXTRA.demoPassword;
   protected readonly email = signal('');
   protected readonly password = signal('');
   protected readonly error = signal(false);
+  protected readonly busy = signal(false);
 
   constructor() {
-    if (this.session.isLoggedIn()) void this.router.navigateByUrl('/');
+    if (this.session.isLoggedIn()) void this.router.navigateByUrl(homeUrl(this.session));
   }
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
   }
 
-  protected submit(e: Event): void {
+  protected pick(email: string): void {
+    this.email.set(email);
+    if (!this.password()) this.password.set('remarkround');
+  }
+
+  protected async submit(e: Event): Promise<void> {
     e.preventDefault();
-    const user = this.session.login(this.email());
-    if (!user) {
-      this.error.set(true);
-      return;
-    }
+    this.busy.set(true);
     this.error.set(false);
-    void this.router.navigateByUrl('/');
+    try {
+      const session = await this.api.login(this.email(), this.password());
+      this.session.set(session);
+      await this.router.navigateByUrl(homeUrl(this.session));
+    } catch {
+      this.error.set(true);
+    } finally {
+      this.busy.set(false);
+    }
   }
 }

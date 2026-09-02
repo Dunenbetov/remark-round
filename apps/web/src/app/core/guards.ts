@@ -1,7 +1,6 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
 import type { Role } from './models';
-import { RemarksStore } from './remarks.store';
 import { SessionService } from './session.service';
 
 export const authGuard: CanActivateFn = () => {
@@ -9,34 +8,26 @@ export const authGuard: CanActivateFn = () => {
   return session.isLoggedIn() ? true : inject(Router).createUrlTree(['/login']);
 };
 
-/** Чужой проект → «Нет доступа», без объяснений. */
+/** Чужой проект → «Нет доступа», без объяснений. Сервер проверит ещё раз в SQL. */
 export const projectGuard: CanActivateFn = (route) => {
   const session = inject(SessionService);
-  const store = inject(RemarksStore);
   const projectId = route.paramMap.get('projectId') ?? '';
-  const user = session.user();
-  const allowed = user !== null && store.isMember(projectId, user.id);
-  return allowed ? true : inject(Router).createUrlTree(['/no-access']);
+  return session.isMember(projectId) ? true : inject(Router).createUrlTree(['/no-access']);
 };
 
 export function roleGuard(...roles: Role[]): CanActivateFn {
-  return () => {
+  return (route) => {
     const session = inject(SessionService);
-    const role = session.role();
+    const projectId = route.paramMap.get('projectId') ?? route.parent?.paramMap.get('projectId') ?? '';
+    const role = session.roleIn(projectId);
     if (role && roles.includes(role)) return true;
     return inject(Router).createUrlTree(['/no-access']);
   };
 }
 
-/** Корень: разработчика ведём в очередь, остальных — в журнал. */
-export const homeRedirect: CanActivateFn = () => {
-  const session = inject(SessionService);
-  const store = inject(RemarksStore);
-  const router = inject(Router);
-  const user = session.user();
-  if (!user) return router.createUrlTree(['/login']);
-  const base = ['/p', store.project.id];
-  return user.role === 'developer'
-    ? router.createUrlTree([...base, 'dev'])
-    : router.createUrlTree([...base, 'r', store.round.number]);
-};
+/** Корень: разработчика ведём в очередь, остальных — в последний раунд. */
+export function homeUrl(session: SessionService): string {
+  const membership = session.memberships()[0];
+  if (!membership) return '/login';
+  return membership.role === 'developer' ? `/p/${membership.projectId}/dev` : `/p/${membership.projectId}/r/latest`;
+}

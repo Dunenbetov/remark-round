@@ -2,12 +2,15 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, signal } f
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map } from 'rxjs';
-import { APP_NAME, NAV, ROLE_TITLE } from '../core/copy';
+import { APP_NAME, NAV, PRESENCE_DEMO, ROLE_TITLE } from '../core/copy';
+import type { Role } from '../core/models';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { PresencePill } from './presence-pill';
 
 type Section = 'journal' | 'documents' | 'import' | 'dev';
+
+const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', admin: 'accent', business: 'wait', developer: 'work' };
 
 /**
  * Стеклянная липкая шапка: роль крупно, проект · раунд, нав-пилюли по роли,
@@ -30,47 +33,44 @@ type Section = 'journal' | 'documents' | 'import' | 'dev';
           }
         }
       </div>
-      @if (!brandOnly()) {
+      @if (!brandOnly() && projectId()) {
         <nav class="hdr__nav" aria-label="Разделы">
           @if (role() === 'developer') {
             <a class="hdr__pill hdr__pill--on" [routerLink]="link('dev')">{{ nav.dev }}</a>
           } @else {
             <a class="hdr__pill" [class.hdr__pill--on]="section() === 'documents'" [routerLink]="link('documents')">{{ nav.documents }}</a>
-            <a class="hdr__pill" [class.hdr__pill--on]="section() === 'journal'" [routerLink]="link('r', round)">{{ nav.journal }}</a>
-            <a class="hdr__pill" [class.hdr__pill--on]="section() === 'import'" [routerLink]="link('r', round, 'import')">{{ nav.import }}</a>
+            <a class="hdr__pill" [class.hdr__pill--on]="section() === 'journal'" [routerLink]="link('r', roundParam())">{{ nav.journal }}</a>
+            <a class="hdr__pill" [class.hdr__pill--on]="section() === 'import'" [routerLink]="link('r', roundParam(), 'import')">{{ nav.import }}</a>
           }
         </nav>
       }
       <div class="hdr__right">
-        @if (!brandOnly() && role() === 'pm' && presence() && watcher(); as w) {
-          <rr-presence-pill class="hdr__presence" [user]="w" />
+        @if (!brandOnly() && role() === 'pm' && presence()) {
+          <rr-presence-pill class="hdr__presence" [name]="presenceDemo.name" [roleGenitive]="presenceDemo.roleGenitive" />
         }
-        @if (!brandOnly() && role() === 'business') {
-          <a class="btn btn--primary hdr__add" [routerLink]="link('r', round, 'remarks', 'new')">{{ nav.addRemark }}</a>
+        @if (!brandOnly() && role() === 'business' && projectId()) {
+          <a class="btn btn--primary hdr__add" [routerLink]="link('r', roundParam(), 'remarks', 'new')">{{ nav.addRemark }}</a>
         }
         @if (user(); as u) {
           <div class="hdr__user">
             <button
               type="button"
               class="avatar"
-              [class.avatar--wait]="u.tone === 'wait'"
-              [class.avatar--work]="u.tone === 'work'"
+              [class.avatar--wait]="tone() === 'wait'"
+              [class.avatar--work]="tone() === 'work'"
               [attr.aria-label]="u.name"
               aria-haspopup="menu"
               [attr.aria-expanded]="menuOpen()"
               (click)="menuOpen.set(!menuOpen())"
             >
-              {{ u.initial }}
+              {{ initial() }}
             </button>
             @if (menuOpen()) {
               <div class="menu paper" role="menu">
-                <div class="meta menu__title">{{ nav.switchUser }}</div>
-                @for (person of session.users; track person.id) {
-                  <button type="button" class="menu__item" role="menuitem" [class.menu__item--on]="person.id === u.id" (click)="switchTo(person.id)">
-                    <span class="avatar avatar--sm" [class.avatar--wait]="person.tone === 'wait'" [class.avatar--work]="person.tone === 'work'">{{ person.initial }}</span>
-                    <span>{{ person.name }}<span class="meta"> · {{ roleTitle[person.role] }}</span></span>
-                  </button>
-                }
+                <div class="menu__who">
+                  <div class="menu__name">{{ u.name }}</div>
+                  <div class="meta">{{ u.email }}@if (role()) { · {{ roleTitle[role()!] }}}</div>
+                </div>
                 <button type="button" class="menu__item menu__item--out" role="menuitem" (click)="logout()">{{ nav.logout }}</button>
               </div>
             }
@@ -154,15 +154,18 @@ type Section = 'journal' | 'documents' | 'import' | 'dev';
       gap: 2px;
       z-index: 6;
     }
-    .menu__title {
-      padding: 6px 10px 4px;
+    .menu__who {
+      padding: 6px 10px 8px;
+    }
+    .menu__name {
+      font-weight: 600;
     }
     .menu__item {
       display: flex;
       align-items: center;
       gap: 10px;
       width: 100%;
-      padding: 6px 10px;
+      padding: 8px 10px;
       border: 0;
       border-radius: 8px;
       background: transparent;
@@ -173,19 +176,10 @@ type Section = 'journal' | 'documents' | 'import' | 'dev';
     .menu__item:hover {
       background: var(--rr-surface-2);
     }
-    .menu__item--on {
-      font-weight: 600;
-    }
     .menu__item--out {
-      margin-top: 4px;
       border-top: 1px solid var(--rr-line);
       border-radius: 0 0 8px 8px;
       color: var(--rr-ink-soft);
-    }
-    .avatar--sm {
-      width: 24px;
-      height: 24px;
-      font-size: 11px;
     }
     @media (max-width: 720px) {
       :host {
@@ -209,7 +203,6 @@ type Section = 'journal' | 'documents' | 'import' | 'dev';
       .hdr__sub--compact {
         display: block;
       }
-      .hdr__sub--compact + .hdr__sub,
       .hdr__left:has(.hdr__sub--compact) .hdr__sub:not(.hdr__sub--compact) {
         display: none;
       }
@@ -224,25 +217,29 @@ export class GlassHeader {
   readonly presence = input(true);
   readonly brandOnly = input(false);
 
-  protected readonly session = inject(SessionService);
+  private readonly session = inject(SessionService);
   private readonly store = inject(RemarksStore);
   private readonly router = inject(Router);
 
   protected readonly appName = APP_NAME;
   protected readonly nav = NAV;
   protected readonly roleTitle = ROLE_TITLE;
-  protected readonly round = this.store.round.number;
+  protected readonly presenceDemo = PRESENCE_DEMO;
   protected readonly menuOpen = signal(false);
 
   protected readonly user = this.session.user;
-  protected readonly role = this.session.role;
+  protected readonly projectId = this.store.projectId;
+  protected readonly role = computed<Role | null>(() => this.session.roleIn(this.projectId() ?? this.session.currentProjectId()));
+  protected readonly tone = computed(() => (this.role() ? TONE_BY_ROLE[this.role()!] : 'accent'));
+  protected readonly initial = computed(() => (this.user()?.name ?? '?').charAt(0).toUpperCase());
   protected readonly title = computed(() => (this.role() ? ROLE_TITLE[this.role()!] : APP_NAME));
+  protected readonly roundParam = computed(() => this.store.roundNumber() ?? 'latest');
   protected readonly subtitle = computed(() => {
-    const base = `${this.store.project.name} · Раунд ${this.round}`;
+    const name = this.store.projectName() || this.session.membership(this.session.currentProjectId())?.projectName || '';
+    const round = this.store.roundNumber();
+    const base = [name, round ? `Раунд ${round}` : null].filter(Boolean).join(' · ');
     return this.extra() ? `${base} · ${this.extra()}` : base;
   });
-  /** Кто ещё смотрит: для PM — бизнес (мок присутствия). */
-  protected readonly watcher = computed(() => this.session.users.find((u) => u.role === 'business') ?? null);
 
   private readonly url = toSignal(
     this.router.events.pipe(
@@ -260,13 +257,7 @@ export class GlassHeader {
   });
 
   protected link(...parts: (string | number)[]): unknown[] {
-    return ['/p', this.store.project.id, ...parts];
-  }
-
-  protected switchTo(userId: string): void {
-    this.session.switchTo(userId);
-    this.menuOpen.set(false);
-    void this.router.navigateByUrl('/');
+    return ['/p', this.projectId() ?? this.session.currentProjectId() ?? '', ...parts];
   }
 
   protected logout(): void {

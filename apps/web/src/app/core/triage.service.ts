@@ -1,7 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { Phase, Remark } from './models';
-import { RemarksStore } from './remarks.store';
-import { inject } from '@angular/core';
 
 /** Тайминги из дизайна (артборд 3 и «Живое поведение»). */
 const PHASE_MS = 1500;
@@ -134,9 +132,12 @@ export class TriageRun {
   }
 }
 
+/**
+ * Пока разбор на сервере синхронный (заглушка фазы 3), прогон здесь — только показ фаз
+ * и печати черновика, который уже пришёл из API. В фазе 6 фазы придут по WS.
+ */
 @Injectable({ providedIn: 'root' })
 export class TriageService {
-  private readonly store = inject(RemarksStore);
   private readonly runs = new Map<string, TriageRun>();
 
   /** Активный прогон по замечанию, если есть. */
@@ -147,7 +148,7 @@ export class TriageService {
   /** Запустить (или перезапустить) разбор. По окончании статус становится awaiting_pm. */
   start(remark: Remark): TriageRun {
     this.runs.get(remark.id)?.cancel();
-    const run = new TriageRun(remark.id, remark.draft, () => this.store.finishTriage(remark.id));
+    const run = new TriageRun(remark.id, remark.draft, () => undefined);
     this.runs.set(remark.id, run);
     run.start();
     return run;
@@ -157,7 +158,7 @@ export class TriageService {
   idle(remark: Remark): TriageRun {
     const existing = this.runs.get(remark.id);
     if (existing) return existing;
-    const run = new TriageRun(remark.id, remark.draft, () => this.store.finishTriage(remark.id));
+    const run = new TriageRun(remark.id, remark.draft, () => undefined);
     run.phase.set('awaiting_pm');
     run.typed.set(run.totalWords);
     this.runs.set(remark.id, run);

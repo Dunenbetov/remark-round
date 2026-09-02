@@ -1,9 +1,8 @@
-import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import type { Remark } from '../core/models';
 import { CARD, DECISION, DEV_QUEUE, EMPTY } from '../core/copy';
 import { RemarksStore } from '../core/remarks.store';
-import { SessionService } from '../core/session.service';
 import { GlassHeader } from '../ui/glass-header';
 import { Shot } from '../ui/shot';
 import { StatusPill } from '../ui/status-pill';
@@ -27,7 +26,7 @@ import { StatusPill } from '../ui/status-pill';
             </div>
             <span class="tag">{{ section(r) }}</span>
             @if (r.screenshots[0]; as s) {
-              <span class="thumb thumb--lg"><rr-shot [variant]="s.variant" /></span>
+              <span class="thumb thumb--lg"><rr-shot [variant]="s.variant ?? 'grey'" [src]="s.url" /></span>
             } @else {
               <span class="thumb thumb--lg thumb--empty"></span>
             }
@@ -40,7 +39,7 @@ import { StatusPill } from '../ui/status-pill';
             </span>
           </div>
         } @empty {
-          <div class="paper empty">{{ empty }}</div>
+          <div class="paper empty">{{ store.loading() ? '' : empty }}</div>
         }
       </main>
     </div>
@@ -103,7 +102,6 @@ export class DevQueuePage {
   readonly projectId = input.required<string>();
 
   protected readonly store = inject(RemarksStore);
-  private readonly session = inject(SessionService);
   private readonly router = inject(Router);
 
   protected readonly copy = CARD;
@@ -111,9 +109,17 @@ export class DevQueuePage {
   protected readonly readyLabel = DECISION.readyForRetest;
   protected readonly empty = EMPTY.devEmpty;
 
+  constructor() {
+    effect(() => {
+      const projectId = this.projectId();
+      untracked(() => void this.store.loadDevQueue(projectId));
+    });
+  }
+
   protected section(r: Remark): string {
     const spec = r.citations.find((c) => c.source === 'spec' && c.section);
-    return spec ? `ТЗ ${spec.section}` : 'ТЗ';
+    const number = spec?.section ? /§\S+/.exec(spec.section)?.[0] : null;
+    return number ? `ТЗ ${number}` : 'ТЗ';
   }
 
   protected open(r: Remark): void {
@@ -122,6 +128,6 @@ export class DevQueuePage {
 
   protected ready(e: Event, r: Remark): void {
     e.stopPropagation();
-    this.store.readyForRetest(r.id, this.session.user()?.id ?? '');
+    void this.store.readyForRetest(r.id);
   }
 }

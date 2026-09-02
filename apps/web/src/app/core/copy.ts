@@ -161,6 +161,18 @@ export const PRESENCE = {
   watching: (name: string, roleGenitive: string) => `Смотрит: ${name} · ${roleGenitive}`,
 };
 
+export const ROLE_GENITIVE: Record<Role, string> = {
+  business: 'принимает работу',
+  pm: 'решает, работа ли это',
+  developer: 'разработчик',
+  admin: 'настраивает проект',
+};
+
+/** Присутствие до фазы 6 (WS presence) — демо-значение для экранов PM. */
+export const PRESENCE_DEMO = { initial: 'А', name: 'Айгерим', roleGenitive: 'принимает работу' };
+
+export const LOGIN_EXTRA = { demoPassword: 'пароль remarkround' };
+
 export const EMPTY = {
   noSpec: 'Сначала загрузите ТЗ — без него разбирать замечания не будем.',
   noRemarks: 'Замечаний пока нет. Добавьте с экрана или загрузите журнал по шаблону.',

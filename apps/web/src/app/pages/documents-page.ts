@@ -1,8 +1,11 @@
-import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, input, untracked } from '@angular/core';
 import { DOCUMENTS, DOC_STATUS_LABEL, DOC_STATUS_TONE, EMPTY } from '../core/copy';
+import type { DocumentKind } from '../core/models';
 import { RemarksStore } from '../core/remarks.store';
 import { GlassHeader } from '../ui/glass-header';
 import { StatusPill } from '../ui/status-pill';
+
+const POLL_MS = 2000;
 
 /** Пакет документов проекта: Тип · Дата · Страниц · Статус. Без ТЗ замечания не разбираем. */
 @Component({
@@ -16,9 +19,10 @@ import { StatusPill } from '../ui/status-pill';
         <section class="col">
           <div class="head">
             <h2 class="col-title">{{ copy.title }}</h2>
-            <button type="button" class="btn btn--primary" (click)="store.addDocument()">{{ copy.upload }}</button>
+            <button type="button" class="btn btn--primary" (click)="file.click()">{{ copy.upload }}</button>
+            <input #file type="file" class="visually-hidden" accept=".pdf,.docx,.md,.txt" (change)="upload($event)" />
           </div>
-          @if (store.hasSpec()) {
+          @if (store.documents().length) {
             <div class="paper table">
               <div class="row row--head col-title">
                 @for (c of copy.columns; track c) {
@@ -32,15 +36,15 @@ import { StatusPill } from '../ui/status-pill';
                     <span class="meta">{{ d.fileName }}</span>
                   </span>
                   <span class="meta num">{{ d.date }}</span>
-                  <span class="meta num">{{ copy.pages(d.pages) }}</span>
-                  <span><rr-status-pill [label]="statusLabel[d.status]" [toneOverride]="statusTone[d.status]" [pulse]="d.status === 'parsed'" /></span>
+                  <span class="meta num">{{ d.pages !== null ? copy.pages(d.pages) : '—' }}</span>
+                  <span><rr-status-pill [label]="statusLabel[d.status]" [toneOverride]="statusTone[d.status]" [pulse]="d.status === 'parsed' || d.status === 'uploaded'" /></span>
                 </div>
               }
             </div>
-          } @else {
+          } @else if (!store.loading()) {
             <div class="paper empty-state">
               <div class="empty-state__text">{{ noSpec }}</div>
-              <button type="button" class="btn btn--primary" (click)="store.addDocument()">{{ copy.upload }}</button>
+              <button type="button" class="btn btn--primary" (click)="file.click()">{{ copy.upload }}</button>
             </div>
           }
         </section>
@@ -82,7 +86,6 @@ import { StatusPill } from '../ui/status-pill';
     }
     .row--body {
       height: 60px;
-      cursor: pointer;
     }
     .row--body:hover {
       background: var(--rr-surface-2);
@@ -131,8 +134,38 @@ export class DocumentsPage {
   readonly projectId = input.required<string>();
 
   protected readonly store = inject(RemarksStore);
+  private readonly destroyRef = inject(DestroyRef);
   protected readonly copy = DOCUMENTS;
   protected readonly noSpec = EMPTY.noSpec;
   protected readonly statusLabel = DOC_STATUS_LABEL;
   protected readonly statusTone = DOC_STATUS_TONE;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor() {
+    effect(() => {
+      const projectId = this.projectId();
+      untracked(() => void this.store.loadDocuments(projectId).then(() => this.pollWhileIndexing()));
+    });
+    this.destroyRef.onDestroy(() => {
+      if (this.timer) clearTimeout(this.timer);
+    });
+  }
+
+  protected async upload(e: Event): Promise<void> {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const kind: DocumentKind = this.store.hasSpec() ? 'addendum' : 'spec';
+    await this.store.uploadDocument(this.projectId(), file, kind);
+    this.pollWhileIndexing();
+  }
+
+  /** Статус «Читаем документ…» обновляем опросом, пока индексация в фоне. */
+  private pollWhileIndexing(): void {
+    if (this.timer) clearTimeout(this.timer);
+    const pending = this.store.documents().some((d) => d.status === 'uploaded' || d.status === 'parsed');
+    if (!pending) return;
+    this.timer = setTimeout(() => void this.store.loadDocuments(this.projectId()).then(() => this.pollWhileIndexing()), POLL_MS);
+  }
 }

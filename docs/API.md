@@ -32,6 +32,11 @@
 | POST | `/projects/:projectId/remarks/:id/close` | business | Только после ретест-улик |
 | GET | `/projects/:projectId/dev-queue` | developer | defect + ready_for_retest |
 | GET | `/projects/:projectId/search?q=&k=` | member | Поиск по пакету документов с цитатой (раздел, фрагмент, score). То же, что MCP `search_spec` |
+| POST | `/projects/:projectId/media` | member | Скрин: multipart `file` (PNG, JPG, WebP, GIF, SVG, до 10 МБ) → `{ storageKey, url }` |
+| GET | `/projects/:projectId/media/:fileName` | member | Отдача кадра; путь всегда внутри проекта |
+| POST | `/projects/:projectId/remarks/:id/screenshot` | business, pm | Кадр по «Не хватает скрина» → новый разбор |
+| POST | `/projects/:projectId/remarks/:id/not-fixed` | business | «Не исправлено» → обратно в defect |
+| POST | `/projects/:projectId/remarks/:id/link-duplicate` | pm | `{ duplicateOfNumber }` |
 
 Загрузка файлов: `multipart/form-data`, поле `file`. Скрины — отдельным upload, id кладётся в remark.
 
@@ -48,7 +53,11 @@
 }
 ```
 
-`verdict`: `defect | change_request | unspecified | duplicate | cannot_tell | rejected_binding`.
+`verdict`: `defect | change_request | unspecified | duplicate | cannot_tell | rejected_binding`. Для `duplicate` можно передать `duplicateOfNumber`. `runId` берётся из ответа замечания (`runId`); повтор с тем же `idempotencyKey` возвращает тот же результат без второго вердикта.
+
+## Тело замечания
+
+`POST /projects/:projectId/rounds/:roundId/remarks` — JSON `{ "description", "pageOrScreen"?, "expected"?, "screenshotKey"? }`. Сервер сразу запускает разбор (заглушка фазы 3, граф в фазе 6) и отвечает замечанием в `awaiting_pm` с `proposedClass`, `draft[]`, `citations[]` и `runId`. Форма ответа — `apps/api/src/remarks/remark.dto.ts` (`RemarkView`), она же модель `Remark` на фронте.
 
 ## Чего нет в API
 

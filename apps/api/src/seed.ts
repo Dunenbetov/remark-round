@@ -12,6 +12,7 @@ import { EmbeddingsService } from './llm/embeddings.service';
 import { PrismaService } from './prisma/prisma.service';
 import { RagService } from './rag/rag.service';
 import { StorageService } from './storage/storage.service';
+import { seedRemarks } from './seed-remarks';
 
 const ROOT = resolve(__dirname, '../../..');
 
@@ -59,12 +60,6 @@ export async function seed(prisma: PrismaClient, options: { index?: boolean } = 
       update: { role: u.role },
     });
   }
-  // Дана — ещё и admin проекта, чтобы управлять участниками и документами.
-  await prisma.membership.update({
-    where: { userId_projectId: { userId: SEED.users[0]!.id, projectId: SEED.projectId } },
-    data: { role: 'admin' },
-  });
-
   const o = SEED.otherUser;
   await prisma.user.upsert({
     where: { email: o.email },
@@ -98,6 +93,15 @@ export async function seed(prisma: PrismaClient, options: { index?: boolean } = 
   } else {
     console.log('seed: OPENAI_API_KEY не задан, документы оставлены в статусе uploaded');
   }
+
+  await seedRemarks(prisma, {
+    projectId: SEED.projectId,
+    specDocumentId: SEED.documents[0]!.id,
+    protocolDocumentId: SEED.documents[1]!.id,
+    pmId: SEED.users[0]!.id,
+    businessId: SEED.users[1]!.id,
+    developerId: SEED.users[2]!.id,
+  });
 }
 
 if (require.main === module) {

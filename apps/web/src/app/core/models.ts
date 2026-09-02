@@ -1,5 +1,6 @@
 /**
  * Имена сущностей и кодов — как в packages/db/prisma/schema.prisma и docs/API.md.
+ * Форма Remark совпадает с RemarkView сервера (apps/api/src/remarks/remark.dto.ts).
  * Коды никогда не показываются на экране: русские подписи берутся из core/copy.ts.
  */
 
@@ -59,49 +60,58 @@ export type ImportRowStatus = 'parsed' | 'needs_human_parse' | 'failed';
 
 export type Tone = 'accent' | 'wait' | 'work';
 
+export interface Membership {
+  projectId: string;
+  projectName: string;
+  role: Role;
+}
+
 export interface User {
   id: string;
   email: string;
   name: string;
-  initial: string;
-  role: Role;
-  tone: Tone;
-  /** «принимает работу» — для пилюли присутствия. */
-  roleGenitive: string;
 }
 
-export interface Project {
-  id: string;
-  name: string;
-  memberIds: string[];
+export interface Session {
+  accessToken: string;
+  user: User;
+  memberships: Membership[];
 }
 
 export interface Round {
-  projectId: string;
+  id: string;
   number: number;
   status: 'open' | 'closed';
+  remarks: number;
 }
 
 export interface Citation {
   id: string;
+  chunkId?: string;
   source: 'spec' | 'protocol';
   /** «В ТЗ (§2.1):», «Протокол от 12.03:» */
   heading: string;
-  section?: string;
+  section?: string | null;
   text: string;
   /** Серая полоса: цитата не подтверждает, а фиксирует отсутствие. */
   soft?: boolean;
 }
 
 export interface Screenshot {
+  id?: string;
   kind: ScreenshotKind;
-  variant: ShotVariant;
-  fileName?: string;
+  /** Мок-кадр (компонент Shot), когда нет настоящего файла. */
+  variant?: ShotVariant;
+  /** Защищённый URL API: грузится через MediaService с токеном. */
+  url?: string;
+  width?: number | null;
+  height?: number | null;
 }
 
 export interface Verdict {
   code: VerdictCode;
   userId: string;
+  userName?: string;
   /** «14:02» — локальное время решения. */
   at: string;
   comment?: string;
@@ -115,6 +125,7 @@ export interface Retest {
 export interface Remark {
   id: string;
   projectId: string;
+  roundId?: string;
   roundNumber: number;
   number: number;
   title: string;
@@ -122,7 +133,10 @@ export interface Remark {
   description: string;
   expected?: string;
   status: RemarkStatus;
-  authorId: string;
+  authorId: string | null;
+  authorName?: string;
+  fixedByName?: string;
+  closedByName?: string;
   screenshots: Screenshot[];
   citations: Citation[];
   /** «На скрине видно: …» */
@@ -135,13 +149,15 @@ export interface Remark {
   verdict?: Verdict;
   retest?: Retest;
   duplicateOfNumber?: number;
-  /** «Связать с №4» нажато. */
+  /** «Связать с №4» нажато (локальная пометка). */
   duplicateLinked?: boolean;
   /** Что ждём от разработчика — подпись в очереди «В работу». */
   devNote?: string;
   fixedByUserId?: string;
   closedByUserId?: string;
   closedAt?: string;
+  /** Текущий AgentRun — для идемпотентного вердикта. */
+  runId?: string;
 }
 
 export interface ProjectDocument {
@@ -152,7 +168,8 @@ export interface ProjectDocument {
   fileName: string;
   /** «14.01» */
   date: string;
-  pages: number;
+  pages: number | null;
+  chunks: number;
   status: DocumentStatus;
 }
 
@@ -168,7 +185,7 @@ export interface NewRemarkDto {
   title: string;
   pageOrScreen: string;
   expected?: string;
-  withShot: boolean;
+  file?: File | null;
 }
 
 /** Копия docs/WS.md — чтобы в фазе 6 подменить мок на WS-клиент без правок компонентов. */

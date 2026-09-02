@@ -35,7 +35,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       STORAGE_DIR: /app/apps/api/storage
     volumes:
-      - api-storage:/app/apps/api/storage
+      # Та же папка, что у seed и локального API: файлы документов и кадров общие (в .gitignore)
+      - ./apps/api/storage:/app/apps/api/storage
     ports:
       - '${API_PORT:-3001}:3000'
 
@@ -179,7 +180,6 @@ services:
 
 volumes:
   postgres-data:
-  api-storage:
   langfuse-postgres-data:
   langfuse-clickhouse-data:
   langfuse-clickhouse-logs:

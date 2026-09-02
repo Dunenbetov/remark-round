@@ -43,6 +43,8 @@ pnpm --filter @remarkround/api test   # tenancy.leakage.spec: чужой про�
 
 Поиск по пакету документов (фаза 2): `GET /api/v1/projects/:projectId/search?q=какого цвета primary-кнопка` → чанки с разделом (`§2.1 Primary`), фрагментом и score. Загрузка документа: `POST .../documents` (multipart `file` + `kind`). Индексация требует `OPENAI_API_KEY`; без него документы остаются в статусе `uploaded`. Сравнение стратегий чанкинга: `pnpm --filter @remarkround/api exec tsx src/rag/chunking-eval.ts`.
 
+Замечания (фаза 3): фронт ходит в API через `/api/v1` (в dev — прокси `apps/web/proxy.conf.json`, в Docker — nginx). Seed создаёт раунд 2 с 13 замечаниями и кадрами из `fixtures/screenshots`. Черновик разбора пока считает заглушка на реальном retrieve (`apps/api/src/remarks/triage-stub.service.ts`), граф LangGraph — фаза 6.
+
 Вход: `POST /api/v1/auth/login` `{ "email", "password" }` → `{ accessToken, user, memberships }`. Дальше `Authorization: Bearer <token>`; проектные маршруты `/projects/:projectId/...` проверяют membership (чужой проект — 404) и роль (403).
 
 Индекс pgvector по embedding — после migrate, см. [`packages/db/README.md`](packages/db/README.md).

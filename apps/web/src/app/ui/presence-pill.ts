@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import type { User } from '../core/models';
 import { PRESENCE } from '../core/copy';
 
 /** Пилюля присутствия «Смотрит: Айгерим · принимает работу». Появляется за 150 мс. */
@@ -8,7 +7,7 @@ import { PRESENCE } from '../core/copy';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'presence glass glass--pill' },
   template: `
-    <span class="presence__avatar" aria-hidden="true">{{ user().initial }}</span>
+    <span class="presence__avatar" aria-hidden="true">{{ initial() }}</span>
     <span class="presence__text">{{ text() }}</span>
   `,
   styles: `
@@ -54,6 +53,8 @@ import { PRESENCE } from '../core/copy';
   `,
 })
 export class PresencePill {
-  readonly user = input.required<User>();
-  readonly text = computed(() => PRESENCE.watching(this.user().name, this.user().roleGenitive));
+  readonly name = input.required<string>();
+  readonly roleGenitive = input.required<string>();
+  readonly initial = computed(() => this.name().charAt(0).toUpperCase());
+  readonly text = computed(() => PRESENCE.watching(this.name(), this.roleGenitive()));
 }

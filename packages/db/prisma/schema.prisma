@@ -74,6 +74,22 @@ enum ImportRowStatus {
   failed
 }
 
+/// Предложение модели до решения человека (docs/WS.md ProposedClass)
+enum ProposedClass {
+  defect_candidate
+  change_request_candidate
+  unspecified
+  duplicate
+  cannot_tell
+}
+
+/// Итог ретеста от модели (docs/GRAPH.md). Не closed: закрывает только бизнес.
+enum RetestOutcome {
+  likely_addressed
+  likely_unchanged
+  cannot_tell
+}
+
 enum VerdictCode {
   defect
   change_request
@@ -138,7 +154,7 @@ model DocumentChunk {
   page       Int?
   content    String
   /// vector(N) — N = размерность выбранной embedding-модели, одна на индекс
-  embedding  Unsupported("vector")?
+  embedding  Unsupported("vector(1536)")?
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
@@ -167,6 +183,18 @@ model Remark {
   severity       String?
   status         RemarkStatus  @default(imported)
   duplicateOfId  String?
+  /// Порядковый номер в раунде — «№ 12» на карточке
+  number         Int
+  authorId       String?
+  /// Черновик разбора: предложение модели и обоснование (абзацы через пустую строку)
+  proposedClass  ProposedClass?
+  rationale      String?
+  visionFacts    String?
+  retestOutcome  RetestOutcome?
+  retestExplanation String?
+  fixedByUserId  String?
+  closedByUserId String?
+  closedAt       DateTime?
   round          Round         @relation(fields: [roundId], references: [id])
   screenshots    RemarkScreenshot[]
   citations      EvidenceCitation[]
@@ -176,6 +204,7 @@ model Remark {
 
   @@index([projectId, status])
   @@index([roundId])
+  @@unique([roundId, number])
 }
 
 model RemarkScreenshot {

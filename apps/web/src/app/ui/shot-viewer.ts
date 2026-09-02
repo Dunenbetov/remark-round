@@ -6,6 +6,7 @@ import { Shot } from './shot';
 export interface ViewerFrame {
   label: string;
   variant: ShotVariant;
+  src?: string | null;
 }
 
 const ZOOM_STEPS = [75, 100, 125, 150];
@@ -29,13 +30,13 @@ const ZOOM_STEPS = [75, 100, 125, 150];
     <div class="viewer__backdrop" (click)="closed.emit()"></div>
     <div class="viewer__caption">{{ caption() }}</div>
     <div class="viewer__frame" [style.width.px]="760 * (zoom() / 100)">
-      <rr-shot [variant]="current().variant" />
+      <rr-shot [variant]="current().variant" [src]="current().src" />
     </div>
     <div class="viewer__toolbar glass">
       @if (frames().length > 1) {
         <div class="seg" role="tablist">
-          @for (f of frames(); track f.variant) {
-            <button type="button" class="seg__btn" role="tab" [attr.aria-selected]="f.variant === current().variant" [class.seg__btn--on]="f.variant === current().variant" (click)="select(f)">
+          @for (f of frames(); track f.label) {
+            <button type="button" class="seg__btn" role="tab" [attr.aria-selected]="f === current()" [class.seg__btn--on]="f === current()" (click)="select(f)">
               {{ f.label }}
             </button>
           }
@@ -148,7 +149,7 @@ const ZOOM_STEPS = [75, 100, 125, 150];
 export class ShotViewer {
   readonly title = input.required<string>();
   readonly frames = input.required<ViewerFrame[]>();
-  readonly initial = input<ShotVariant>('grey');
+  readonly initial = input<number>(0);
   readonly closed = output<void>();
 
   protected readonly closeLabel = CARD.viewerClose;
@@ -157,7 +158,7 @@ export class ShotViewer {
 
   protected readonly current = computed<ViewerFrame>(() => {
     const frames = this.frames();
-    return this.selected() ?? frames.find((f) => f.variant === this.initial()) ?? frames[0]!;
+    return this.selected() ?? frames[this.initial()] ?? frames[0]!;
   });
   protected readonly caption = computed(() => `${this.title()} · ${this.current().label.toLowerCase()}`);
 

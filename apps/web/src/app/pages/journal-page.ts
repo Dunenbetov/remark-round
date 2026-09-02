@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { Remark, Screenshot } from '../core/models';
 import { CARD, EMPTY, JOURNAL, JournalChip } from '../core/copy';
@@ -34,21 +34,21 @@ import { StatusPill } from '../ui/status-pill';
               <span class="row__title">{{ r.title }}</span>
               <span>
                 @if (thumb(r); as s) {
-                  <span class="thumb"><rr-shot [variant]="s.variant" /></span>
+                  <span class="thumb"><rr-shot [variant]="s.variant ?? 'grey'" [src]="s.url" /></span>
                 } @else {
                   <span class="dash">—</span>
                 }
               </span>
               <span class="row__draft">
                 <span class="row__draft-text">{{ draftText(r) }}</span>
-                @if (r.status === 'duplicate' && r.duplicateOfNumber && !r.duplicateLinked) {
+                @if (r.status === 'duplicate' && r.duplicateOfNumber && !r.duplicateLinked && role() === 'pm') {
                   <button type="button" class="btn btn--text" (click)="link($event, r)">{{ linkLabel(r.duplicateOfNumber) }}</button>
                 }
               </span>
               <span><rr-status-pill [status]="r.status" /></span>
             </a>
           } @empty {
-            <div class="empty">{{ store.total() === 0 ? empty.noRemarks : emptyFilter }}</div>
+            <div class="empty">{{ store.loading() ? '' : store.total() === 0 ? empty.noRemarks : emptyFilter }}</div>
           }
         </div>
       </main>
@@ -130,12 +130,24 @@ export class JournalPage {
   protected readonly columns = JOURNAL.columns;
   protected readonly empty = EMPTY;
   protected readonly emptyFilter = JOURNAL.emptyFilter;
-  protected readonly filter = signal<JournalChip>(this.session.role() === 'pm' ? 'Ждут меня' : 'Все');
+  protected readonly role = computed(() => this.session.roleIn(this.projectId()));
+  protected readonly filter = signal<JournalChip>('Все');
 
-  protected readonly summary = computed(() => JOURNAL.summary(this.store.total(), this.store.awaitingCount()));
+  protected readonly summary = computed(() => (this.store.round() ? JOURNAL.summary(this.store.total(), this.store.awaitingCount()) : null));
+
+  constructor() {
+    effect(() => {
+      const projectId = this.projectId();
+      const round = this.round();
+      untracked(() => {
+        this.filter.set(this.session.roleIn(projectId) === 'pm' ? 'Ждут меня' : 'Все');
+        void this.store.enterRound(projectId, round);
+      });
+    });
+  }
 
   protected readonly rows = computed<Remark[]>(() => {
-    const role = this.session.role();
+    const role = this.role();
     const list = this.store.remarks();
     switch (this.filter()) {
       case 'Ждут меня':
@@ -158,7 +170,7 @@ export class JournalPage {
   });
 
   protected cardLink(r: Remark): unknown[] {
-    return ['/p', this.projectId(), 'r', this.round(), 'remarks', r.id];
+    return ['/p', this.projectId(), 'r', this.store.roundNumber() ?? this.round(), 'remarks', r.id];
   }
 
   /** Последний кадр без диффа: в журнале видно «стало», если ретест уже был. */
@@ -179,6 +191,6 @@ export class JournalPage {
   protected link(e: Event, r: Remark): void {
     e.preventDefault();
     e.stopPropagation();
-    this.store.linkDuplicate(r.id);
+    void this.store.linkDuplicate(r.id);
   }
 }

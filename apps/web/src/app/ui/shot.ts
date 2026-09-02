@@ -1,11 +1,11 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { MediaService } from '../core/media.service';
 import type { ShotVariant } from '../core/models';
 
 /**
- * Мок-скриншот формы «Профиль компании» (Shot.dc.html из дизайна).
- * Рисуется CSS, масштабируется от ширины контейнера (cqw), поэтому кнопка и маска
- * совпадают на миниатюре 64px, в карточке и в полноэкранном просмотре.
- * grey — серая «Сохранить» (было), blue — синяя (стало), diff — красная маска только над кнопкой.
+ * Кадр замечания. С `src` — настоящий файл из API (грузится с токеном через MediaService),
+ * целиком по object-fit: contain. Без `src` — мок-скриншот формы «Профиль компании»
+ * (Shot.dc.html из дизайна): grey — серая «Сохранить», blue — синяя, diff — маска над кнопкой.
  */
 @Component({
   selector: 'rr-shot',
@@ -14,20 +14,29 @@ import type { ShotVariant } from '../core/models';
     class: 'shot',
     '[class.shot--blue]': "variant() === 'blue'",
     '[class.shot--diff]': "variant() === 'diff'",
+    '[class.shot--real]': '!!src()',
     role: 'img',
     '[attr.aria-label]': 'alt()',
   },
   template: `
-    <div class="shot__body" aria-hidden="true">
-      <div class="shot__title">Профиль компании</div>
-      <div class="shot__field"><div class="shot__label">Название</div><div class="shot__input">ТОО «Алтын Дала»</div></div>
-      <div class="shot__field"><div class="shot__label">БИН</div><div class="shot__input">120940003215</div></div>
-      <div class="shot__field"><div class="shot__label">Телефон</div><div class="shot__input">+7 727 300 12 40</div></div>
-      <div class="shot__footer"><div class="shot__btn">Сохранить</div></div>
-    </div>
-    @if (variant() === 'diff') {
-      <div class="shot__dim" aria-hidden="true"></div>
-      <div class="shot__mask" aria-hidden="true"></div>
+    @if (src()) {
+      @if (objectUrl(); as url) {
+        <img class="shot__img" [src]="url" [alt]="alt()" />
+      } @else {
+        <div class="shot__loading" aria-hidden="true"></div>
+      }
+    } @else {
+      <div class="shot__body" aria-hidden="true">
+        <div class="shot__title">Профиль компании</div>
+        <div class="shot__field"><div class="shot__label">Название</div><div class="shot__input">ТОО «Алтын Дала»</div></div>
+        <div class="shot__field"><div class="shot__label">БИН</div><div class="shot__input">120940003215</div></div>
+        <div class="shot__field"><div class="shot__label">Телефон</div><div class="shot__input">+7 727 300 12 40</div></div>
+        <div class="shot__footer"><div class="shot__btn">Сохранить</div></div>
+      </div>
+      @if (variant() === 'diff') {
+        <div class="shot__dim" aria-hidden="true"></div>
+        <div class="shot__mask" aria-hidden="true"></div>
+      }
     }
     @if (zoom()) {
       <span class="shot__zoom" aria-hidden="true">
@@ -51,6 +60,19 @@ import type { ShotVariant } from '../core/models';
       border: 1px solid var(--rr-line);
       line-height: 1.3;
       color: #26262a;
+    }
+    .shot__img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #f4f3f1;
+    }
+    .shot__loading {
+      position: absolute;
+      inset: 0;
+      background: var(--rr-surface-2);
     }
     .shot__body {
       position: absolute;
@@ -138,6 +160,13 @@ import type { ShotVariant } from '../core/models';
 })
 export class Shot {
   readonly variant = input<ShotVariant>('grey');
+  readonly src = input<string | null | undefined>(null);
   readonly zoom = input(false);
-  readonly alt = input('Скрин экрана «Профиль компании»');
+  readonly alt = input('Скрин экрана');
+
+  private readonly media = inject(MediaService);
+  protected readonly objectUrl = computed(() => {
+    const src = this.src();
+    return src ? this.media.objectUrl(src)() : null;
+  });
 }

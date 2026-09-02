@@ -1,7 +1,6 @@
 import { inject } from '@angular/core';
 import { Routes } from '@angular/router';
-import { authGuard, projectGuard, roleGuard } from './core/guards';
-import { RemarksStore } from './core/remarks.store';
+import { authGuard, homeUrl, projectGuard, roleGuard } from './core/guards';
 import { SessionService } from './core/session.service';
 import { DevQueuePage } from './pages/dev-queue-page';
 import { DocumentsPage } from './pages/documents-page';
@@ -15,17 +14,7 @@ import { RemarkCardPage } from './pages/remark-card-page';
 export const routes: Routes = [
   { path: 'login', component: LoginPage },
   { path: 'no-access', component: NoAccessPage },
-  {
-    path: '',
-    pathMatch: 'full',
-    redirectTo: () => {
-      const session = inject(SessionService);
-      const store = inject(RemarksStore);
-      const user = session.user();
-      if (!user) return '/login';
-      return user.role === 'developer' ? `/p/${store.project.id}/dev` : `/p/${store.project.id}/r/${store.round.number}`;
-    },
-  },
+  { path: '', pathMatch: 'full', redirectTo: () => homeUrl(inject(SessionService)) },
   {
     path: 'p/:projectId',
     canActivate: [authGuard, projectGuard],

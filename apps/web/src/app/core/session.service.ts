@@ -1,36 +1,32 @@
 import { Injectable, computed, signal } from '@angular/core';
-import type { Role, User } from './models';
-import { USERS } from '../mock/seed';
+import type { Membership, Role, Session, User } from './models';
 
 const STORAGE_KEY = 'rr.session';
 
-/**
- * Мок-сессия для демо: три демо-пользователя, любой пароль.
- * В фазе 1+ заменяется на JWT из POST /auth/login.
- */
+/** Сессия из POST /auth/login: токен, пользователь, его membership по проектам. */
 @Injectable({ providedIn: 'root' })
 export class SessionService {
-  private readonly _user = signal<User | null>(readStored());
+  private readonly _session = signal<Session | null>(readStored());
 
-  readonly user = this._user.asReadonly();
-  readonly role = computed<Role | null>(() => this._user()?.role ?? null);
-  readonly isLoggedIn = computed(() => this._user() !== null);
-  readonly users: ReadonlyArray<User> = USERS;
+  readonly session = this._session.asReadonly();
+  readonly user = computed<User | null>(() => this._session()?.user ?? null);
+  readonly token = computed(() => this._session()?.accessToken ?? null);
+  readonly memberships = computed<Membership[]>(() => this._session()?.memberships ?? []);
+  readonly isLoggedIn = computed(() => this._session() !== null);
+  /** Текущий проект: пока один на пользователя, берём первый membership. */
+  readonly currentProjectId = computed(() => this.memberships()[0]?.projectId ?? null);
 
-  login(email: string): User | null {
-    const normalized = email.trim().toLowerCase();
-    const user = USERS.find((u) => u.email.toLowerCase() === normalized) ?? null;
-    if (user) this.set(user);
-    return user;
-  }
-
-  switchTo(userId: string): void {
-    const user = USERS.find((u) => u.id === userId);
-    if (user) this.set(user);
+  set(session: Session): void {
+    this._session.set(session);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    } catch {
+      /* приватный режим */
+    }
   }
 
   logout(): void {
-    this._user.set(null);
+    this._session.set(null);
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -38,24 +34,26 @@ export class SessionService {
     }
   }
 
-  userById(id: string): User | undefined {
-    return USERS.find((u) => u.id === id);
+  membership(projectId: string | null | undefined): Membership | null {
+    if (!projectId) return null;
+    return this.memberships().find((m) => m.projectId === projectId) ?? null;
   }
 
-  private set(user: User): void {
-    this._user.set(user);
-    try {
-      localStorage.setItem(STORAGE_KEY, user.id);
-    } catch {
-      /* приватный режим */
-    }
+  roleIn(projectId: string | null | undefined): Role | null {
+    return this.membership(projectId)?.role ?? null;
+  }
+
+  isMember(projectId: string): boolean {
+    return this.membership(projectId) !== null;
   }
 }
 
-function readStored(): User | null {
+function readStored(): Session | null {
   try {
-    const id = localStorage.getItem(STORAGE_KEY);
-    return USERS.find((u) => u.id === id) ?? null;
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Session>;
+    return parsed.accessToken && parsed.user && Array.isArray(parsed.memberships) ? (parsed as Session) : null;
   } catch {
     return null;
   }

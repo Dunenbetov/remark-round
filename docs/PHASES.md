@@ -35,16 +35,18 @@
 
 Канон UI: `docs/ui/COPY.md`, `VISUAL.md`, `ANTI.md`, `reference.html`. Промпт: `docs/ui/AGENT-PROMPT.md`.
 
-- [ ] Round, Remark, screenshot upload
-- [ ] Карточка: три колонки улики | черновик разбора | решение
-- [ ] Подписи кнопок **дословно** из COPY.md (не Approve)
-- [ ] Шапка с ролью («Вы решаете, работа ли это»)
-- [ ] Скрин крупнее текста модели; клик — на весь экран
-- [ ] Нет канбана, чата, Material indigo, % уверенности (ANTI.md чист)
-- [ ] Пустые состояния из COPY.md
-- [ ] Ещё без LLM, можно заглушка черновика
+- [x] Round, Remark, screenshot upload
+- [x] Карточка: три колонки улики | черновик разбора | решение
+- [x] Подписи кнопок **дословно** из COPY.md (не Approve)
+- [x] Шапка с ролью («Вы решаете, работа ли это»)
+- [x] Скрин крупнее текста модели; клик — на весь экран
+- [x] Нет канбана, чата, Material indigo, % уверенности (ANTI.md чист)
+- [x] Пустые состояния из COPY.md
+- [x] Ещё без LLM, можно заглушка черновика
 
 **DoD:** бизнес создаёт замечание со скрином; PM на карточке за 30 секунд понимает, что жать. Сверка с `reference.html`.
+
+Сделано 3 сентября 2026: `apps/api/src/{rounds,remarks,media}` (RemarksService — единственный путь записи, переходы по STATUS.md, 409 на нелегальные), заглушка черновика `triage-stub.service.ts` поверх настоящего retrieve, тесты `status.illegal-transition`, `verdict.idempotent`, `verdict.model-cannot-close`; фронт переведён с моков на API (`apps/web/src/app/core/{api.service,remarks.store,session.service,media.service}.ts`). Ретест пока без диффа (фаза 5), импорт журнала — мок до фазы 4.
 
 ## Фаза 4 — импорт шаблона
 
