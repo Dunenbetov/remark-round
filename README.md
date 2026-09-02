@@ -32,6 +32,17 @@ pnpm db:migrate:deploy
 
 Для разработки с новой миграцией: `pnpm db:migrate`.
 
+### Демо-данные и тесты API (фаза 1)
+
+```bash
+pnpm --filter @remarkround/api seed   # Дана (pm+admin), Айгерим (business), Тимур (developer), пароль remarkround
+pnpm --filter @remarkround/api test   # tenancy.leakage.spec: чужой проект → 404
+```
+
+`DATABASE_URL` берётся из `.env`; для другого порта Postgres задайте переменную явно. Нужен Node 24 (`.nvmrc`).
+
+Вход: `POST /api/v1/auth/login` `{ "email", "password" }` → `{ accessToken, user, memberships }`. Дальше `Authorization: Bearer <token>`; проектные маршруты `/projects/:projectId/...` проверяют membership (чужой проект — 404) и роль (403).
+
 Индекс pgvector по embedding — после migrate, см. [`packages/db/README.md`](packages/db/README.md).
 
 ### Локальная разработка без Docker

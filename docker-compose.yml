@@ -31,6 +31,7 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://remarkround:remarkround@postgres:5432/remarkround
       WEB_ORIGIN: http://localhost:4200
+      JWT_SECRET: ${JWT_SECRET:-change-me}
     ports:
       - '${API_PORT:-3001}:3000'
 

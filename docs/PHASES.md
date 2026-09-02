@@ -4,19 +4,21 @@
 
 ## Фаза 0 — каркас репо
 
-- [ ] `apps/web` Angular, `apps/api` Nest, `packages/db` Prisma, compose: api+web+postgres+langfuse
-- [ ] `.env.example` без секретов
-- [ ] Этот набор docs не удалять
+- [x] `apps/web` Angular, `apps/api` Nest, `packages/db` Prisma, compose: api+web+postgres+langfuse
+- [x] `.env.example` без секретов
+- [x] Этот набор docs не удалять
 
 **DoD:** `docker compose up` поднимает пустые сервисы.
 
 ## Фаза 1 — тенанси
 
-- [ ] Prisma как в `packages/db/prisma/schema.prisma`
-- [ ] Auth JWT, Project, Membership
-- [ ] Тест leakage
+- [x] Prisma как в `packages/db/prisma/schema.prisma`
+- [x] Auth JWT, Project, Membership
+- [x] Тест leakage
 
 **DoD:** два проекта, пользователь A не читает документы B.
+
+Сделано 2 сентября 2026: `apps/api/src/{auth,tenancy,projects,documents}`, тест `tenancy.leakage.spec.ts` (8 проверок), seed `apps/api/src/seed.ts`.
 
 ## Фаза 2 — RAG без агента
 
