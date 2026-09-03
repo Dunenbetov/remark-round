@@ -47,6 +47,8 @@ pnpm --filter @remarkround/api test   # tenancy.leakage.spec: чужой про�
 
 Импорт журнала (фаза 4): только официальный шаблон — `fixtures/journal/template.csv` / `template.xlsx` (кнопка «Скачать шаблон журнала» в UI). `POST /api/v1/projects/:projectId/imports` (multipart `file` + `roundId`) разбирает `.xlsx` и `.csv` с этой шапкой, чужую шапку отдаёт 422; строка без `description` становится замечанием «Допишите строку журнала» (`needs_human_parse`), картинка из ячейки xlsx — кадром. Демо-журнал: `fixtures/journal/sample-round.csv` / `.xlsx` (10 строк, одна без описания, четыре с кадрами). Пересобрать xlsx-фикстуры: `pnpm --filter @remarkround/api exec tsx src/imports/make-journal-fixtures.ts`.
 
+Ретест (фаза 5): `POST .../remarks/:id/retest` с новым кадром строит детерминированный дифф (`apps/api/src/diff`, pixelmatch): картинка диффа становится третьим кадром карточки, кадры другого размера или формата, а также слишком разные кадры (другой экран, зум) честно дают «Не могу сравнить кадры» с причиной. Модель по диффу не закрывает ничего: закрывает бизнес.
+
 Вход: `POST /api/v1/auth/login` `{ "email", "password" }` → `{ accessToken, user, memberships }`. Дальше `Authorization: Bearer <token>`; проектные маршруты `/projects/:projectId/...` проверяют membership (чужой проект — 404) и роль (403).
 
 Индекс pgvector по embedding — после migrate, см. [`packages/db/README.md`](packages/db/README.md).

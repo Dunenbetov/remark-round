@@ -6,6 +6,7 @@
 import type { PrismaClient, ProposedClass, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { DiffService } from './diff/diff.service';
 import { StorageService } from './storage/storage.service';
 
 const ROOT = resolve(__dirname, '../../..');
@@ -217,8 +218,11 @@ export async function seedRemarks(
   ids: { projectId: string; specDocumentId: string; protocolDocumentId: string; pmId: string; businessId: string; developerId: string },
 ): Promise<void> {
   const storage = new StorageService();
-  const gray = await readFile(resolve(ROOT, 'fixtures/screenshots/before-save-gray.svg'));
-  const blue = await readFile(resolve(ROOT, 'fixtures/screenshots/after-save-blue.svg'));
+  const diff = new DiffService();
+  const gray = await readFile(resolve(ROOT, 'fixtures/screenshots/before-save-gray.png'));
+  const blue = await readFile(resolve(ROOT, 'fixtures/screenshots/after-save-blue.png'));
+  const grayVsBlue = diff.compare(gray, blue);
+  const diffPng = grayVsBlue.kind === 'ok' ? grayVsBlue.png : null;
 
   await prisma.round.upsert({
     where: { id: ROUND_ID },
@@ -257,9 +261,13 @@ export async function seedRemarks(
   // Сначала оригиналы, потом повторы — чтобы duplicateOfId было куда ссылаться.
   const ordered = [...SEED_REMARKS].sort((a, b) => (a.duplicateOfNumber ? 1 : 0) - (b.duplicateOfNumber ? 1 : 0));
   for (const r of ordered) {
-    const screenshots: Array<{ kind: 'original' | 'retest'; storageKey: string; width: number; height: number }> = [];
-    if (r.shot) screenshots.push({ kind: 'original', storageKey: await storage.save(ids.projectId, 'before.svg', gray), width: 800, height: 400 });
-    if (r.retestShot) screenshots.push({ kind: 'retest', storageKey: await storage.save(ids.projectId, 'after.svg', blue), width: 800, height: 400 });
+    const screenshots: Array<{ kind: 'original' | 'retest' | 'diff'; storageKey: string; width: number; height: number }> = [];
+    if (r.shot) screenshots.push({ kind: 'original', storageKey: await storage.save(ids.projectId, 'before.png', gray), width: 800, height: 400 });
+    if (r.retestShot) {
+      screenshots.push({ kind: 'retest', storageKey: await storage.save(ids.projectId, 'after.png', blue), width: 800, height: 400 });
+      // Дифф в демо настоящий: pixelmatch по тем же кадрам, а не нарисованная маска.
+      if (r.shot && diffPng) screenshots.push({ kind: 'diff', storageKey: await storage.save(ids.projectId, 'diff.png', diffPng), width: 800, height: 400 });
+    }
     const chunkIds = (r.cite ?? []).map(chunkFor).filter((x): x is string => Boolean(x));
 
     const remark = await prisma.remark.create({

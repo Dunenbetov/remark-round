@@ -663,13 +663,14 @@ export class RemarkCardPage {
   protected readonly documentsLink = computed(() => ['/p', this.projectId(), 'documents']);
 
   protected readonly retestVerdict = computed(() => {
-    switch (this.remark()!.retest?.outcome) {
+    const r = this.remark()!;
+    switch (r.retest?.outcome) {
       case 'likely_addressed':
         return CARD.likelyAddressed;
       case 'likely_unchanged':
         return CARD.likelyUnchanged;
       default:
-        return CARD.cannotCompare;
+        return r.screenshots.some((s) => s.kind === 'diff') ? CARD.diffReady : CARD.cannotCompare;
     }
   });
 

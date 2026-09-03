@@ -30,7 +30,7 @@
 | POST | `/projects/:projectId/remarks/:id/triage` | pm, business | Старт AgentRun |
 | POST | `/projects/:projectId/remarks/:id/verdict` | pm | HITL (дубль WS, идемпотентно) |
 | POST | `/projects/:projectId/remarks/:id/ready-for-retest` | developer | |
-| POST | `/projects/:projectId/remarks/:id/retest` | business | Новый скрин, запуск диффа+explain |
+| POST | `/projects/:projectId/remarks/:id/retest` | business | Новый скрин `{ screenshotKey }` → pixel-diff: кадр `diff` в `screenshots`, `retest.outcome` (`likely_unchanged` / `cannot_tell`), `retest.explanation` по-русски. Разный размер, формат не PNG/JPG, слишком разные кадры → `cannot_tell` с причиной, без диффа |
 | POST | `/projects/:projectId/remarks/:id/close` | business | Только после ретест-улик |
 | GET | `/projects/:projectId/dev-queue` | developer | defect + ready_for_retest |
 | GET | `/projects/:projectId/search?q=&k=` | member | Поиск по пакету документов с цитатой (раздел, фрагмент, score). То же, что MCP `search_spec` |

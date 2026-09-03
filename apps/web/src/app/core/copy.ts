@@ -127,6 +127,8 @@ export const CARD = {
   likelyAddressed: 'Похоже, исправлено.',
   likelyUnchanged: 'Похоже, не изменилось.',
   cannotCompare: 'Не могу сравнить кадры.',
+  /** Дифф построен, но про претензию ли красное — решает человек (пояснение модели — фаза 6). */
+  diffReady: 'Кадры сравнили, разница на диффе.',
   linkDuplicate: (n: number) => `Связать с №${n}`,
   where: 'Где:',
   addedBy: (name: string) => `Добавила ${name}`,

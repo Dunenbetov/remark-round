@@ -61,10 +61,12 @@
 
 ## Фаза 5 — pixel-diff
 
-- [ ] `DiffModule` на `fixtures/screenshots`
-- [ ] Несопоставимые кадры → `cannot_compare`
+- [x] `DiffModule` на `fixtures/screenshots`
+- [x] Несопоставимые кадры → `cannot_compare`
 
 **DoD:** before/after даёт картинку диффа; before vs zoom → cannot_compare или явный шум.
+
+Сделано 3 сентября 2026: `apps/api/src/diff/diff.service.ts` — pixelmatch 5 (CJS) поверх pngjs/jpeg-js, порог 0.1 без антиалиасинга, кадры не масштабируются: другой размер, не PNG/JPG больше 35 % изменённых пикселей или рамка изменений шире 40 % кадра → `cannot_compare` с причиной по-русски; иначе PNG диффа (старый кадр серым, изменения красным) и рамка изменений с описанием места («слева снизу»). `RemarksService.retest` пишет кадр диффа как `RemarkScreenshot.kind = diff`; исход модели пока `cannot_tell` с текстом «Относится ли это к претензии — решите вы» (нода explain — фаза 6), `likely_unchanged` при совпадении пиксель в пиксель. Seed кладёт PNG-кадры и настоящий дифф. Тест `diff.cannot-compare.spec.ts` (юнит на фикстурах + ретест через API).
 
 ## Фаза 6 — граф + WS
 

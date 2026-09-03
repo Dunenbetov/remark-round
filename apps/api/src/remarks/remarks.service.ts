@@ -1,6 +1,8 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
+import { DiffService, describeRegion, percent } from '../diff/diff.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import { ChunkInfo, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, toRemarkView } from './remark.dto';
 import { TriageStubService } from './triage-stub.service';
@@ -26,6 +28,8 @@ export class RemarksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly triage: TriageStubService,
+    private readonly storage: StorageService,
+    private readonly diff: DiffService,
   ) {}
 
   // ---------- чтение ----------
@@ -258,18 +262,49 @@ export class RemarksService {
     return this.runTriage(ctx, remarkId);
   }
 
-  /** Ретест: новый кадр. Дифф и пояснение модели — фаза 5; пока честный cannot_tell. */
+  /**
+   * Ретест: новый кадр → DiffModule (ADR 002). Несопоставимые кадры → cannot_tell с причиной;
+   * пиксель в пиксель → likely_unchanged; есть разница → картинка диффа, а «про претензию ли красное»
+   * решает человек (пояснение модели по триплету — нода explain графа, фаза 6). Закрыть может только бизнес.
+   */
   async retest(ctx: ProjectContext, remarkId: string, screenshotKey: string): Promise<RemarkView> {
     if (ctx.role !== 'business') throw new ForbiddenException();
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['ready_for_retest'], 'retest');
-    const outcome: RetestOutcome = 'cannot_tell';
+
+    const original = row.screenshots.find((s) => s.kind === 'original');
+    let outcome: RetestOutcome = 'cannot_tell';
+    let explanation = 'Старого кадра нет — сравнить не с чем. Проверьте вручную и закройте, если исправлено.';
+    let retestSize: { width: number | null; height: number | null } = { width: null, height: null };
+    let diffShot: { storageKey: string; width: number; height: number } | null = null;
+
+    if (original) {
+      const [before, after] = await Promise.all([this.storage.read(original.storageKey), this.storage.read(screenshotKey)]);
+      const result = this.diff.compare(before, after);
+      if (result.kind === 'cannot_compare') {
+        explanation = `Не могу сравнить кадры: ${result.reason}.`;
+        if (result.after) retestSize = result.after;
+      } else {
+        retestSize = { width: result.width, height: result.height };
+        if (result.changedPixels === 0 || !result.region) {
+          outcome = 'likely_unchanged';
+          explanation = 'Новый кадр совпадает со старым пиксель в пиксель — ничего не изменилось.';
+        } else {
+          const key = await this.storage.save(ctx.projectId, 'diff.png', result.png);
+          diffShot = { storageKey: key, width: result.width, height: result.height };
+          const region = result.region;
+          explanation = `Красное на диффе: область ${region.width}×${region.height} px ${describeRegion(region, result)}, изменено ${percent(result.ratio)} кадра. Остальное без изменений. Относится ли это к претензии — решите вы.`;
+        }
+      }
+    }
+
     await this.prisma.$transaction([
       this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } }),
-      this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'retest', storageKey: screenshotKey } }),
+      this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'retest', storageKey: screenshotKey, ...retestSize } }),
+      ...(diffShot ? [this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...diffShot } })] : []),
       this.prisma.remark.update({
         where: { id: remarkId },
-        data: { status: 'awaiting_business_close', retestOutcome: outcome, retestExplanation: 'Сравнение кадров подключим в фазе 5. Пока сравните было и стало вручную.' },
+        data: { status: 'awaiting_business_close', retestOutcome: outcome, retestExplanation: explanation },
       }),
     ]);
     return this.get(ctx, remarkId);
