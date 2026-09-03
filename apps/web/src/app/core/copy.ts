@@ -63,6 +63,7 @@ export const PHASE_TEXT: Record<Phase, string> = {
 
 export const PHASE_EXTRA = {
   retry: 'Запустить снова',
+  stop: 'Остановить',
   awaitingShot: 'Ждём скрин',
   awaitingNewShot: 'Ждём, прикрепите новый кадр',
   inDevWith: (name: string) => `В работе у ${name}`,

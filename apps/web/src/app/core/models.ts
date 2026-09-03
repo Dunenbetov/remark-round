@@ -161,6 +161,9 @@ export interface Remark {
   closedAt?: string;
   /** Текущий AgentRun — для идемпотентного вердикта. */
   runId?: string;
+  /** `running` — фазы идут по WS; `awaiting_human` — прогон ждёт кнопки. */
+  runStatus?: 'running' | 'awaiting_human' | 'persisted' | 'cancelled' | 'failed';
+  runMode?: 'triage' | 'retest';
 }
 
 export interface ProjectDocument {
@@ -213,12 +216,23 @@ export interface NewRemarkDto {
   file?: File | null;
 }
 
-/** Копия docs/WS.md — чтобы в фазе 6 подменить мок на WS-клиент без правок компонентов. */
+/** Кто ещё смотрит карточку (presence из комнаты WS). */
+export interface Presence {
+  userId: string;
+  role: Role;
+  name: string;
+}
+
+/** docs/WS.md сервер → клиент (apps/api/src/agent/run-events.ts). */
 export type ServerEvent =
   | { type: 'run.phase'; runId: string; phase: Phase }
   | { type: 'run.token'; runId: string; delta: string }
   | { type: 'run.citations'; runId: string; citations: Citation[] }
   | { type: 'run.proposal'; runId: string; proposedClass: ProposedClass; rationale: string }
   | { type: 'run.persisted'; runId: string; remarkStatus: RemarkStatus }
+  | { type: 'run.cancelled'; runId: string; remarkStatus: RemarkStatus }
   | { type: 'run.failed'; runId: string; message: string }
-  | { type: 'presence'; userId: string; role: Role; action: 'join' | 'leave' };
+  | ({ type: 'presence'; action: 'join' | 'leave' } & Presence);
+
+/** Ответ на join: текущий прогон (если идёт) и кто уже в комнате. */
+export type JoinAck = { ok: true; runId?: string; phase?: Phase; presence: Presence[] } | { ok: false; status: number; message: string };

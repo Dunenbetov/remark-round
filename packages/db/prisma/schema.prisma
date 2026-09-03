@@ -240,11 +240,22 @@ model AgentRun {
   createdAt DateTime       @default(now())
 }
 
+/// Чекпоинт LangGraph (фаза 6): thread_id = AgentRun.id, поэтому interrupt живёт дольше HTTP и рестарта API.
+/// blob/metadata/writes — сериализация JsonPlusSerializer (base64), как в MemorySaver, только в Postgres.
 model GraphCheckpoint {
-  id     String   @id @default(uuid())
-  runId  String
-  blob   Json
-  run    AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  id           String   @id @default(uuid())
+  runId        String
+  ns           String   @default("")
+  checkpointId String
+  parentId     String?
+  blob         Json
+  metadata     Json     @default("{}")
+  /// Ожидающие записи нод по ключу «taskId,idx»: [taskId, channel, value]
+  writes       Json     @default("{}")
+  run          AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([runId, ns, checkpointId])
 }
 
 model HumanVerdict {

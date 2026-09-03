@@ -1,36 +1,74 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Prisma, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
-import { DiffService, describeRegion, percent } from '../diff/diff.service';
+import type { Prisma, ProposedClass, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
+import type { LlmUsage } from '../llm/triage-llm';
 import { PrismaService } from '../prisma/prisma.service';
-import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
-import { ChunkInfo, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, toRemarkView } from './remark.dto';
-import { TriageStubService } from './triage-stub.service';
+import { ChunkInfo, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, quote, toRemarkView } from './remark.dto';
 
 const REMARK_INCLUDE = {
   round: { select: { number: true } },
   screenshots: true,
   citations: { select: { id: true, chunkId: true } },
   verdicts: { select: { code: true, userId: true, comment: true, createdAt: true } },
-  runs: { select: { id: true, createdAt: true } },
+  runs: { select: { id: true, createdAt: true, status: true, mode: true } },
 } satisfies Prisma.RemarkInclude;
 
 /** Разработчик видит только принятые поломки и то, что сам отдал на ретест. */
 const DEVELOPER_STATUSES: RemarkStatus[] = ['defect', 'ready_for_retest'];
 
+/** Снимок замечания для графа триажа: ноды читают через сервис, не через Prisma. */
+export interface TriageFacts {
+  description: string;
+  expected: string | null;
+  pageOrScreen: string | null;
+  hasScreenshot: boolean;
+  screenshotKey: string | null;
+  siblings: Array<{ number: number; description: string }>;
+  /** Цитаты текущего предложения — их исключают после «Не та цитата из ТЗ». */
+  citedChunkIds: string[];
+}
+
+export interface RetestFacts {
+  description: string;
+  expected: string | null;
+  originalKey: string | null;
+  retestKey: string;
+  citations: Array<{ section: string | null; text: string }>;
+}
+
+export interface ProposalInput {
+  proposedClass: ProposedClass;
+  /** Абзацы черновика; первый — заголовок по docs/ui/COPY.md. */
+  rationale: string[];
+  chunkIds: string[];
+  duplicateOfNumber?: number | null;
+  visionFacts?: string | null;
+  usage?: LlmUsage;
+}
+
+export interface RetestResultInput {
+  outcome: RetestOutcome;
+  explanation: string;
+  retestSize: { width: number; height: number } | null;
+  diffShot: { storageKey: string; width: number; height: number } | null;
+  usage?: LlmUsage;
+}
+
+export interface VerdictResult {
+  remark: RemarkView;
+  /** false — повтор idempotencyKey: вердикт не записан второй раз, граф не трогаем. */
+  applied: boolean;
+}
+
 /**
  * Единственный путь записи Remark / Verdict / Run (docs/ENGINEERING.md, паттерн 2).
  * Переходы статусов — строго docs/STATUS.md; нелегальный переход → 409.
- * Модель никогда не ставит `closed`: нет метода, который бы это делал без роли business.
+ * Граф (AgentModule) и MCP пишут только через методы ниже. Модель никогда не ставит `closed`:
+ * нет метода, который бы это делал без роли business.
  */
 @Injectable()
 export class RemarksService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly triage: TriageStubService,
-    private readonly storage: StorageService,
-    private readonly diff: DiffService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   // ---------- чтение ----------
 
@@ -60,9 +98,17 @@ export class RemarksService {
     return (await this.views([row]))[0]!;
   }
 
-  // ---------- создание и разбор ----------
+  async statusOf(ctx: ProjectContext, remarkId: string): Promise<RemarkStatus> {
+    const row = await this.prisma.remark.findFirst({ where: { id: remarkId, projectId: ctx.projectId }, select: { status: true } });
+    if (!row) throw new NotFoundException();
+    return row.status;
+  }
 
+  // ---------- создание ----------
+
+  /** Ручное замечание → `imported`. Разбор стартует AgentService (граф), не здесь. */
   async create(ctx: ProjectContext, roundId: string, dto: CreateRemarkDto): Promise<RemarkView> {
+    if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
     const round = await this.prisma.round.findFirst({ where: { id: roundId, projectId: ctx.projectId } });
     if (!round) throw new NotFoundException();
     const last = await this.prisma.remark.findFirst({ where: { roundId }, orderBy: { number: 'desc' } });
@@ -79,7 +125,7 @@ export class RemarksService {
         screenshots: dto.screenshotKey ? { create: { kind: 'original', storageKey: dto.screenshotKey } } : undefined,
       },
     });
-    return this.runTriage(ctx, remark.id);
+    return this.get(ctx, remark.id);
   }
 
   /**
@@ -91,7 +137,7 @@ export class RemarksService {
     const round = await this.prisma.round.findFirst({ where: { id: roundId, projectId: ctx.projectId } });
     if (!round) throw new NotFoundException();
     const last = await this.prisma.remark.findFirst({ where: { roundId }, orderBy: { number: 'desc' } });
-    const remark = await this.prisma.remark.create({
+    return this.prisma.remark.create({
       data: {
         projectId: ctx.projectId,
         roundId,
@@ -107,10 +153,9 @@ export class RemarksService {
       },
       select: { id: true, number: true, status: true },
     });
-    return remark;
   }
 
-  /** «Допишите строку журнала»: needs_human_parse → imported (человек починил строку) → разбор. */
+  /** «Допишите строку журнала»: needs_human_parse → imported (человек починил строку). Дальше — граф. */
   async fixRow(ctx: ProjectContext, remarkId: string, dto: FixRowDto): Promise<RemarkView> {
     if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
     const row = await this.load(ctx, remarkId);
@@ -124,46 +169,62 @@ export class RemarksService {
         status: 'imported',
       },
     });
-    return this.runTriage(ctx, row.id);
-  }
-
-  /** imported | cannot_tell → triaging → awaiting_pm. Один AgentRun на прогон. */
-  async runTriage(ctx: ProjectContext, remarkId: string): Promise<RemarkView> {
-    const row = await this.load(ctx, remarkId);
-    this.assertTransition(row.status, ['imported', 'cannot_tell', 'reopened', 'triaging'], 'triage');
-    await this.prisma.remark.update({ where: { id: row.id }, data: { status: 'triaging' } });
-    const run = await this.prisma.agentRun.create({ data: { remarkId: row.id, projectId: ctx.projectId, mode: 'triage', status: 'running', model: this.triage.model } });
-
-    try {
-      const siblings = await this.prisma.remark.findMany({
-        where: { roundId: row.roundId, id: { not: row.id }, status: { notIn: ['duplicate'] } },
-        select: { number: true, description: true },
-      });
-      const proposal = await this.triage.propose(ctx, {
-        description: row.description,
-        expected: row.expected,
-        pageOrScreen: row.pageOrScreen,
-        hasScreenshot: row.screenshots.some((s) => s.kind === 'original'),
-        siblings,
-      });
-      await this.applyProposal(row.id, run.id, proposal);
-    } catch (e) {
-      await this.prisma.agentRun.update({ where: { id: run.id }, data: { status: 'failed' } });
-      await this.prisma.remark.update({ where: { id: row.id }, data: { status: 'imported' } });
-      throw e;
-    }
     return this.get(ctx, row.id);
   }
 
-  /** Предложение модели → awaiting_pm. Только сюда пишет граф (и MCP в фазе 7). */
-  private async applyProposal(
-    remarkId: string,
-    runId: string,
-    proposal: { proposedClass: RemarkRow['proposedClass'] & {}; rationale: string[]; chunkIds: string[]; duplicateOfNumber?: number },
-  ): Promise<void> {
-    const remark = await this.prisma.remark.findUniqueOrThrow({ where: { id: remarkId } });
+  /** Новый кадр по «Не хватает скрина»: кадр меняется, статус остаётся до старта графа. */
+  async attachScreenshot(ctx: ProjectContext, remarkId: string, screenshotKey: string): Promise<RemarkView> {
+    if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
+    const row = await this.load(ctx, remarkId);
+    this.assertTransition(row.status, ['cannot_tell', 'imported'], 'attach_screenshot');
+    await this.prisma.$transaction([
+      this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: 'original' } }),
+      this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'original', storageKey: screenshotKey } }),
+    ]);
+    return this.get(ctx, remarkId);
+  }
+
+  // ---------- прогон графа: старт, снимки, запись результата ----------
+
+  /** imported | cannot_tell | reopened → triaging. Один AgentRun на прогон; thread_id графа = его id. */
+  async beginTriage(ctx: ProjectContext, remarkId: string, model: string): Promise<{ runId: string }> {
+    if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
+    const row = await this.load(ctx, remarkId);
+    this.assertTransition(row.status, ['imported', 'cannot_tell', 'reopened'], 'triage');
+    const [, run] = await this.prisma.$transaction([
+      this.prisma.remark.update({ where: { id: row.id }, data: { status: 'triaging' } }),
+      this.prisma.agentRun.create({ data: { remarkId: row.id, projectId: ctx.projectId, mode: 'triage', status: 'running', model } }),
+    ]);
+    return { runId: run.id };
+  }
+
+  async triageFacts(ctx: ProjectContext, remarkId: string): Promise<TriageFacts> {
+    const row = await this.load(ctx, remarkId);
+    const siblings = await this.prisma.remark.findMany({
+      where: { roundId: row.roundId, projectId: ctx.projectId, id: { not: row.id }, status: { notIn: ['duplicate'] } },
+      select: { number: true, description: true },
+      orderBy: { number: 'asc' },
+    });
+    const original = row.screenshots.find((s) => s.kind === 'original');
+    return {
+      description: row.description,
+      expected: row.expected,
+      pageOrScreen: row.pageOrScreen,
+      hasScreenshot: Boolean(original),
+      screenshotKey: original?.storageKey ?? null,
+      siblings,
+      citedChunkIds: row.citations.map((c) => c.chunkId),
+    };
+  }
+
+  /** Предложение модели → awaiting_pm. Сюда пишет только нода propose графа (и MCP в фазе 7). */
+  async applyProposal(ctx: ProjectContext, remarkId: string, runId: string, proposal: ProposalInput): Promise<RemarkView> {
+    const row = await this.load(ctx, remarkId);
+    this.assertTransition(row.status, ['triaging'], 'proposal');
+    const run = await this.prisma.agentRun.findFirst({ where: { id: runId, remarkId, status: 'running' } });
+    if (!run) throw new ConflictException('Прогон уже завершён или остановлен');
     const duplicateOf = proposal.duplicateOfNumber
-      ? await this.prisma.remark.findFirst({ where: { roundId: remark.roundId, number: proposal.duplicateOfNumber } })
+      ? await this.prisma.remark.findFirst({ where: { roundId: row.roundId, number: proposal.duplicateOfNumber } })
       : null;
     await this.prisma.$transaction([
       this.prisma.evidenceCitation.deleteMany({ where: { remarkId } }),
@@ -174,39 +235,89 @@ export class RemarksService {
           status: 'awaiting_pm',
           proposedClass: proposal.proposedClass,
           rationale: proposal.rationale.join('\n\n'),
+          visionFacts: proposal.visionFacts ?? null,
           duplicateOfId: duplicateOf?.id ?? null,
         },
       }),
-      this.prisma.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human' } }),
+      this.prisma.agentRun.update({
+        where: { id: runId },
+        data: { status: 'awaiting_human', ...usageData(proposal.usage) },
+      }),
     ]);
+    return this.get(ctx, remarkId);
+  }
+
+  /** Прогон упал: run = failed, замечание возвращается туда, откуда можно «Запустить снова». */
+  async failRun(runId: string): Promise<RemarkStatus | null> {
+    const run = await this.prisma.agentRun.findUnique({ where: { id: runId }, include: { remark: { select: { id: true, status: true } } } });
+    if (!run || run.status !== 'running') return run?.remark.status ?? null;
+    const next: RemarkStatus = run.mode === 'triage' && run.remark.status === 'triaging' ? 'imported' : run.remark.status;
+    await this.prisma.$transaction([
+      this.prisma.agentRun.update({ where: { id: runId }, data: { status: 'failed' } }),
+      ...(next !== run.remark.status ? [this.prisma.remark.update({ where: { id: run.remark.id }, data: { status: next } })] : []),
+    ]);
+    return next;
+  }
+
+  /** Прогоны, которые остались `running` после падения процесса: чекпоинт есть, исполнителя нет. */
+  async failStaleRuns(olderThanMs: number): Promise<number> {
+    const stale = await this.prisma.agentRun.findMany({ where: { status: 'running', createdAt: { lt: new Date(Date.now() - olderThanMs) } }, select: { id: true } });
+    for (const run of stale) await this.failRun(run.id);
+    return stale.length;
+  }
+
+  /**
+   * run.cancel (docs/WS.md): вердикта нет, run = cancelled. Триаж возвращается в `imported`,
+   * ретест — в `ready_for_retest` без нового кадра. Повтор по уже остановленному прогону — тот же ответ.
+   */
+  async cancelRun(ctx: ProjectContext, remarkId: string, runId: string): Promise<RemarkView> {
+    if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
+    const row = await this.load(ctx, remarkId);
+    const run = row.runs.find((r) => r.id === runId);
+    if (!run) throw new ConflictException('runId не относится к этому замечанию');
+    if (run.status !== 'running' && run.status !== 'awaiting_human') return this.get(ctx, remarkId);
+    const latest = [...row.runs].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+    const ops: Prisma.PrismaPromise<unknown>[] = [this.prisma.agentRun.update({ where: { id: runId }, data: { status: 'cancelled' } })];
+    if (latest?.id === runId) {
+      if (run.mode === 'triage' && (row.status === 'triaging' || row.status === 'awaiting_pm')) {
+        ops.push(this.prisma.remark.update({ where: { id: remarkId }, data: { status: 'imported' } }));
+      }
+      if (run.mode === 'retest' && (row.status === 'ready_for_retest' || row.status === 'awaiting_business_close')) {
+        ops.push(
+          this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } }),
+          this.prisma.remark.update({ where: { id: remarkId }, data: { status: 'ready_for_retest', retestOutcome: null, retestExplanation: null } }),
+        );
+      }
+    }
+    await this.prisma.$transaction(ops);
+    return this.get(ctx, remarkId);
   }
 
   // ---------- решения человека ----------
 
-  async verdict(ctx: ProjectContext, remarkId: string, dto: VerdictDto): Promise<RemarkView> {
+  /**
+   * Вердикт PM (и бизнеса на `unspecified`). `rejected_binding` записывает вердикт и возвращает замечание
+   * в `triaging` того же run — граф продолжает его из чекпоинта (AgentService). Повтор idempotencyKey —
+   * тот же результат без второго HumanVerdict.
+   */
+  async verdict(ctx: ProjectContext, remarkId: string, dto: VerdictDto): Promise<VerdictResult> {
     const row = await this.load(ctx, remarkId);
     const run = row.runs.find((r) => r.id === dto.runId);
     if (!run) throw new ConflictException('runId не относится к этому замечанию');
 
     const existing = await this.prisma.humanVerdict.findUnique({ where: { runId_idempotencyKey: { runId: dto.runId, idempotencyKey: dto.idempotencyKey } } });
-    if (existing) return this.get(ctx, remarkId); // повтор — тот же результат, второго вердикта нет
+    if (existing) return { remark: await this.get(ctx, remarkId), applied: false };
 
     if (dto.verdict === 'rejected_binding') {
       if (ctx.role !== 'pm') throw new ForbiddenException();
       this.assertTransition(row.status, ['awaiting_pm'], 'rejected_binding');
       if (!dto.comment?.trim()) throw new ConflictException('Для «не та цитата» нужен комментарий');
-      await this.prisma.humanVerdict.create({ data: { remarkId, runId: dto.runId, userId: ctx.userId, code: 'rejected_binding', comment: dto.comment, idempotencyKey: dto.idempotencyKey } });
-      const proposal = await this.triage.propose(ctx, {
-        description: row.description,
-        expected: row.expected,
-        pageOrScreen: row.pageOrScreen,
-        hasScreenshot: row.screenshots.some((s) => s.kind === 'original'),
-        siblings: [],
-        rebindComment: dto.comment,
-        excludeChunkIds: row.citations.map((c) => c.chunkId),
-      });
-      await this.applyProposal(remarkId, dto.runId, proposal);
-      return this.get(ctx, remarkId);
+      await this.prisma.$transaction([
+        this.prisma.humanVerdict.create({ data: { remarkId, runId: dto.runId, userId: ctx.userId, code: 'rejected_binding', comment: dto.comment.trim(), idempotencyKey: dto.idempotencyKey } }),
+        this.prisma.remark.update({ where: { id: remarkId }, data: { status: 'triaging' } }),
+        this.prisma.agentRun.update({ where: { id: dto.runId }, data: { status: 'running' } }),
+      ]);
+      return { remark: await this.get(ctx, remarkId), applied: true };
     }
 
     const next = this.nextStatusForVerdict(ctx, row.status, dto.verdict);
@@ -218,7 +329,7 @@ export class RemarksService {
       this.prisma.remark.update({ where: { id: remarkId }, data: { status: next, duplicateOfId: duplicateOf?.id ?? row.duplicateOfId } }),
       this.prisma.agentRun.update({ where: { id: dto.runId }, data: { status: 'persisted' } }),
     ]);
-    return this.get(ctx, remarkId);
+    return { remark: await this.get(ctx, remarkId), applied: true };
   }
 
   private nextStatusForVerdict(ctx: ProjectContext, from: RemarkStatus, code: Exclude<VerdictCode, 'rejected_binding'>): RemarkStatus {
@@ -250,62 +361,53 @@ export class RemarksService {
     return this.get(ctx, remarkId);
   }
 
-  /** Новый кадр по «Не хватает скрина»: cannot_tell → triaging → awaiting_pm. */
-  async attachScreenshot(ctx: ProjectContext, remarkId: string, screenshotKey: string): Promise<RemarkView> {
-    if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
-    const row = await this.load(ctx, remarkId);
-    this.assertTransition(row.status, ['cannot_tell', 'imported'], 'attach_screenshot');
-    await this.prisma.$transaction([
-      this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: 'original' } }),
-      this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'original', storageKey: screenshotKey } }),
-    ]);
-    return this.runTriage(ctx, remarkId);
-  }
+  // ---------- ретест ----------
 
-  /**
-   * Ретест: новый кадр → DiffModule (ADR 002). Несопоставимые кадры → cannot_tell с причиной;
-   * пиксель в пиксель → likely_unchanged; есть разница → картинка диффа, а «про претензию ли красное»
-   * решает человек (пояснение модели по триплету — нода explain графа, фаза 6). Закрыть может только бизнес.
-   */
-  async retest(ctx: ProjectContext, remarkId: string, screenshotKey: string): Promise<RemarkView> {
+  /** Новый кадр от бизнеса: старый ретест и дифф снимаются, стартует AgentRun mode=retest. Статус — до диффа. */
+  async beginRetest(ctx: ProjectContext, remarkId: string, screenshotKey: string, model: string): Promise<{ runId: string }> {
     if (ctx.role !== 'business') throw new ForbiddenException();
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['ready_for_retest'], 'retest');
-
-    const original = row.screenshots.find((s) => s.kind === 'original');
-    let outcome: RetestOutcome = 'cannot_tell';
-    let explanation = 'Старого кадра нет — сравнить не с чем. Проверьте вручную и закройте, если исправлено.';
-    let retestSize: { width: number | null; height: number | null } = { width: null, height: null };
-    let diffShot: { storageKey: string; width: number; height: number } | null = null;
-
-    if (original) {
-      const [before, after] = await Promise.all([this.storage.read(original.storageKey), this.storage.read(screenshotKey)]);
-      const result = this.diff.compare(before, after);
-      if (result.kind === 'cannot_compare') {
-        explanation = `Не могу сравнить кадры: ${result.reason}.`;
-        if (result.after) retestSize = result.after;
-      } else {
-        retestSize = { width: result.width, height: result.height };
-        if (result.changedPixels === 0 || !result.region) {
-          outcome = 'likely_unchanged';
-          explanation = 'Новый кадр совпадает со старым пиксель в пиксель — ничего не изменилось.';
-        } else {
-          const key = await this.storage.save(ctx.projectId, 'diff.png', result.png);
-          diffShot = { storageKey: key, width: result.width, height: result.height };
-          const region = result.region;
-          explanation = `Красное на диффе: область ${region.width}×${region.height} px ${describeRegion(region, result)}, изменено ${percent(result.ratio)} кадра. Остальное без изменений. Относится ли это к претензии — решите вы.`;
-        }
-      }
-    }
-
-    await this.prisma.$transaction([
+    if (row.runs.some((r) => r.mode === 'retest' && r.status === 'running')) throw new ConflictException('Кадры уже сравниваются');
+    const [, , run] = await this.prisma.$transaction([
       this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } }),
-      this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'retest', storageKey: screenshotKey, ...retestSize } }),
-      ...(diffShot ? [this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...diffShot } })] : []),
+      this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'retest', storageKey: screenshotKey } }),
+      this.prisma.agentRun.create({ data: { remarkId, projectId: ctx.projectId, mode: 'retest', status: 'running', model } }),
+    ]);
+    return { runId: run.id };
+  }
+
+  async retestFacts(ctx: ProjectContext, remarkId: string): Promise<RetestFacts> {
+    const row = await this.load(ctx, remarkId);
+    const retest = [...row.screenshots].filter((s) => s.kind === 'retest').sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+    if (!retest) throw new ConflictException('Нет нового кадра для ретеста');
+    const chunkIds = row.citations.map((c) => c.chunkId);
+    const chunks = chunkIds.length ? await this.prisma.documentChunk.findMany({ where: { id: { in: chunkIds }, projectId: ctx.projectId }, select: { section: true, content: true } }) : [];
+    return {
+      description: row.description,
+      expected: row.expected,
+      originalKey: row.screenshots.find((s) => s.kind === 'original')?.storageKey ?? null,
+      retestKey: retest.storageKey,
+      citations: chunks.map((c) => ({ section: c.section, text: quote(c.content) })),
+    };
+  }
+
+  /** Дифф и пояснение → awaiting_business_close. Модель здесь ничего не закрывает: только бизнес. */
+  async applyRetest(ctx: ProjectContext, remarkId: string, runId: string, result: RetestResultInput): Promise<RemarkView> {
+    const row = await this.load(ctx, remarkId);
+    this.assertTransition(row.status, ['ready_for_retest'], 'retest_result');
+    const run = await this.prisma.agentRun.findFirst({ where: { id: runId, remarkId, status: 'running' } });
+    if (!run) throw new ConflictException('Прогон уже завершён или остановлен');
+    const retest = [...row.screenshots].filter((s) => s.kind === 'retest').sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+    await this.prisma.$transaction([
+      ...(retest && result.retestSize ? [this.prisma.remarkScreenshot.update({ where: { id: retest.id }, data: result.retestSize })] : []),
+      this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: 'diff' } }),
+      ...(result.diffShot ? [this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...result.diffShot } })] : []),
       this.prisma.remark.update({
         where: { id: remarkId },
-        data: { status: 'awaiting_business_close', retestOutcome: outcome, retestExplanation: explanation },
+        data: { status: 'awaiting_business_close', retestOutcome: result.outcome, retestExplanation: result.explanation },
       }),
+      this.prisma.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human', ...usageData(result.usage) } }),
     ]);
     return this.get(ctx, remarkId);
   }
@@ -314,7 +416,10 @@ export class RemarksService {
     if (ctx.role !== 'business') throw new ForbiddenException('Закрыть замечание может только тот, кто принимает работу');
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['awaiting_business_close'], 'close');
-    await this.prisma.remark.update({ where: { id: remarkId }, data: { status: 'closed', closedByUserId: ctx.userId, closedAt: new Date() } });
+    await this.prisma.$transaction([
+      this.prisma.remark.update({ where: { id: remarkId }, data: { status: 'closed', closedByUserId: ctx.userId, closedAt: new Date() } }),
+      this.prisma.agentRun.updateMany({ where: { remarkId, mode: 'retest', status: 'awaiting_human' }, data: { status: 'persisted' } }),
+    ]);
     return this.get(ctx, remarkId);
   }
 
@@ -325,6 +430,7 @@ export class RemarksService {
     await this.prisma.$transaction([
       this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } }),
       this.prisma.remark.update({ where: { id: remarkId }, data: { status: 'defect', retestOutcome: null, retestExplanation: null } }),
+      this.prisma.agentRun.updateMany({ where: { remarkId, mode: 'retest', status: 'awaiting_human' }, data: { status: 'persisted' } }),
     ]);
     return this.get(ctx, remarkId);
   }
@@ -361,4 +467,9 @@ export class RemarksService {
 
     return rows.map((r) => toRemarkView(r, { duplicateOfNumber: r.duplicateOfId ? numberById.get(r.duplicateOfId) : undefined, chunks, names }));
   }
+}
+
+function usageData(usage?: LlmUsage): { inputTokens?: number; outputTokens?: number } {
+  if (!usage || (usage.inputTokens === 0 && usage.outputTokens === 0)) return {};
+  return { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens };
 }

@@ -5,6 +5,8 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml .npmrc ./
 COPY packages/db ./packages/db
 COPY apps/api ./apps/api
+# Skill курса подмешивается в ноды графа (docs/GRAPH.md)
+COPY skills ./skills
 
 RUN pnpm install
 RUN pnpm --filter @remarkround/db generate

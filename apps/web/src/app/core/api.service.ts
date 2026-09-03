@@ -74,6 +74,11 @@ export class ApiService {
     return this.run(this.http.post<Remark>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}/${action}`, body));
   }
 
+  /** run.cancel по REST (дубль WS): вердикта нет, run = cancelled. */
+  cancelRun(projectId: string, remarkId: string, body: { runId: string; idempotencyKey: string }): Promise<Remark> {
+    return this.run(this.http.post<Remark>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}/cancel`, body));
+  }
+
   screenshot(projectId: string, remarkId: string, screenshotKey: string): Promise<Remark> {
     return this.run(this.http.post<Remark>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}/screenshot`, { screenshotKey }));
   }

@@ -70,12 +70,14 @@
 
 ## Фаза 6 — граф + WS
 
-- [ ] Ноды `docs/GRAPH.md`, циклы max 2, interrupt
-- [ ] WS `docs/WS.md`
-- [ ] Persist только через RemarksService
-- [ ] Два окна: reject_binding продолжает тот же run
+- [x] Ноды `docs/GRAPH.md`, циклы max 2, interrupt
+- [x] WS `docs/WS.md`
+- [x] Persist только через RemarksService
+- [x] Два окна: reject_binding продолжает тот же run
 
 **DoD:** сюжет DEMO шаги 4–5 без фанеры «setTimeout имитация».
+
+Сделано 3 сентября 2026: `apps/api/src/agent` — граф LangGraph.js (`triage.graph.ts`: ingest → retrieve → maybe_vision → bind → [rewrite ≤ 2] → classify → draft → faithfulness → [bind ≤ 2] → propose → interrupt PM → persist | pause; `retest.graph.ts`: load → pixel_diff → explain → apply → interrupt business), чекпоинты в Postgres через `PrismaCheckpointSaver` (таблица `GraphCheckpoint`, thread_id = `AgentRun.id`), `AgentService` — старт/продолжение/отмена прогона, `RunEvents` — шина событий комнаты. LLM только в `LlmModule`: `OpenAiTriageLlm` (gpt-4.1-mini для vision/rewrite/classify/explain, gpt-4.1 для draft, стрим токенов) и `RulesTriageLlm` без ключа (и в тестах — `test/fake-llm.ts`); Skill `skills/uat-triage/SKILL.md` подмешан в system-промпт. Faithfulness — детерминированная нода (`faithfulness.ts`): ссылка на раздел вне retrieve, дефект без цитаты или «на кадре» без кадра → цикл bind, после двух — `cannot_tell`. WS: `apps/api/src/gateway` (socket.io, путь `/api/v1/ws`, JWT в middleware, membership на `join`, комната `remark:{id}`, `verdict.approve` / `verdict.reject_binding` / `run.cancel` идут в те же методы, что REST, presence по комнате). Разбор идёт в фоне: REST отвечает `triaging` + `runId`, фазы — в комнату; `RemarksService` остался единственным путём записи (`beginTriage` / `applyProposal` / `verdict` / `cancelRun` / `beginRetest` / `applyRetest`), заглушка `triage-stub.service.ts` удалена. Фронт: `core/ws.service.ts`, `TriageRun.applyEvent` вместо таймеров, стрим черновика в колонке «Черновик разбора», «Смотрит: …» из presence, «Остановить» в фазовой строке, `?run=1` убран; без сокета — перечитывание раз в 3 с. Тесты: `graph.same-run.spec` (тот же run после reject_binding, faithfulness-цикл, cancel), `ws.room.spec` (auth, чужой проект, фазы, вердикт по сокету идемпотентен, второе окно видит presence и `run.persisted`), `faithfulness.spec`; старые спеки ждут статус через `h.waitFor`.
 
 ## Фаза 7 — MCP + Skill
 

@@ -17,6 +17,9 @@ export type PhaseTone = 'wait' | 'work' | 'muted';
     @if (retryable()) {
       <button type="button" class="btn btn--text" (click)="retry.emit()">{{ retryLabel }}</button>
     }
+    @if (stoppable()) {
+      <button type="button" class="btn btn--text" (click)="stop.emit()">{{ stopLabel }}</button>
+    }
   `,
   styles: `
     :host {
@@ -40,9 +43,13 @@ export class PhaseLine {
   readonly tone = input<PhaseTone>('wait');
   readonly pulse = input(true);
   readonly retryable = input(false);
+  /** Идёт прогон, и этот человек вправе его остановить (run.cancel, без вердикта). */
+  readonly stoppable = input(false);
   readonly retry = output<void>();
+  readonly stop = output<void>();
 
   protected readonly retryLabel = PHASE_EXTRA.retry;
+  protected readonly stopLabel = PHASE_EXTRA.stop;
   protected readonly shown = signal('');
   protected readonly visible = signal(true);
   private timer: ReturnType<typeof setTimeout> | null = null;

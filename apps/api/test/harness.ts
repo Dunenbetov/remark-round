@@ -4,7 +4,7 @@
  */
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { PrismaClient, type Role } from '@remarkround/db';
+import { PrismaClient, type RemarkStatus, type Role } from '@remarkround/db';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -13,9 +13,11 @@ import { AppModule } from '../src/app.module';
 import { hashPassword } from '../src/auth/password';
 import { DocumentsService } from '../src/documents/documents.service';
 import { EmbeddingsService } from '../src/llm/embeddings.service';
+import { LlmService } from '../src/llm/llm.service';
 import { validationPipe } from '../src/main';
 import { RagService } from '../src/rag/rag.service';
 import { FakeEmbeddingsService } from './fake-embeddings';
+import { FakeLlmService } from './fake-llm';
 
 export const TZ = readFileSync(resolve(__dirname, '../../../fixtures/spec/TZ.md'));
 export const PROTOCOL = readFileSync(resolve(__dirname, '../../../fixtures/protocol/PROTOCOL.md'));
@@ -29,13 +31,23 @@ export interface Harness {
   roundId: string;
   users: Record<Role, { id: string; email: string; token: string }>;
   auth: (role: Role) => Record<string, string>;
+  /** Подменённый LLM графа: правила + ручки для тестов ворот. */
+  llm: FakeLlmService;
+  /**
+   * Разбор идёт в фоне (фазы — по WS): тест ждёт нужный статус, как клиент ждёт `run.persisted`.
+   * Возвращает карточку в этом статусе.
+   */
+  waitFor: (remarkId: string, statuses: RemarkStatus[], role?: Role, timeoutMs?: number) => Promise<Record<string, any>>;
   cleanup: () => Promise<void>;
 }
 
 export async function createHarness(): Promise<Harness> {
+  const llm = new FakeLlmService();
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(EmbeddingsService)
     .useValue(new FakeEmbeddingsService())
+    .overrideProvider(LlmService)
+    .useValue(llm)
     .compile();
   const app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
@@ -72,6 +84,18 @@ export async function createHarness(): Promise<Harness> {
     roundId: round.id,
     users,
     auth: (role) => ({ Authorization: `Bearer ${users[role].token}` }),
+    llm,
+    waitFor: async (remarkId, statuses, role = 'pm', timeoutMs = 20000) => {
+      const started = Date.now();
+      let last = '';
+      while (Date.now() - started < timeoutMs) {
+        const res = await http.get(`/api/v1/projects/${project.id}/remarks/${remarkId}`).set({ Authorization: `Bearer ${users[role].token}` });
+        last = res.body.status;
+        if (res.status === 200 && statuses.includes(res.body.status)) return res.body;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      throw new Error(`waitFor ${remarkId}: ждали ${statuses.join('|')}, сейчас ${last}`);
+    },
     cleanup: async () => {
       const remarkIds = (await prisma.remark.findMany({ where: { projectId: project.id }, select: { id: true } })).map((r) => r.id);
       await prisma.humanVerdict.deleteMany({ where: { remarkId: { in: remarkIds } } });

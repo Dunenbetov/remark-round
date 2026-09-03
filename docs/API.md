@@ -27,10 +27,11 @@
 | GET | `/projects/:projectId/imports/:jobId` | member | Строки: `parsed` vs `needs_human_parse`, номер и статус замечания по каждой |
 | GET | `/projects/:projectId/imports/template.xlsx` | member | «Скачать шаблон журнала» (есть и `template.csv`) |
 | POST | `/projects/:projectId/remarks/:id/fix-row` | business, pm | «Допишите строку журнала»: `{ description, pageOrScreen?, expected? }`, `needs_human_parse` → разбор |
-| POST | `/projects/:projectId/remarks/:id/triage` | pm, business | Старт AgentRun |
-| POST | `/projects/:projectId/remarks/:id/verdict` | pm | HITL (дубль WS, идемпотентно) |
+| POST | `/projects/:projectId/remarks/:id/triage` | pm, business | Старт AgentRun: ответ сразу `triaging` + `runId`, фазы — в комнате WS |
+| POST | `/projects/:projectId/remarks/:id/verdict` | pm | HITL (дубль WS, идемпотентно). `rejected_binding` отвечает `triaging`: тот же run продолжает цикл bind |
+| POST | `/projects/:projectId/remarks/:id/cancel` | pm, business | `{ runId, idempotencyKey }` — дубль `run.cancel`: вердикта нет, run = cancelled, замечание → `imported` |
 | POST | `/projects/:projectId/remarks/:id/ready-for-retest` | developer | |
-| POST | `/projects/:projectId/remarks/:id/retest` | business | Новый скрин `{ screenshotKey }` → pixel-diff: кадр `diff` в `screenshots`, `retest.outcome` (`likely_unchanged` / `cannot_tell`), `retest.explanation` по-русски. Разный размер, формат не PNG/JPG, слишком разные кадры → `cannot_tell` с причиной, без диффа |
+| POST | `/projects/:projectId/remarks/:id/retest` | business | Новый скрин `{ screenshotKey }` → граф ретеста в фоне (ответ: `ready_for_retest`, `runMode: retest`, `runStatus: running`; фаза `diffing` в комнате) → pixel-diff + explain: кадр `diff` в `screenshots`, `retest.outcome` (`likely_addressed` / `likely_unchanged` / `cannot_tell`), `retest.explanation` по-русски, статус `awaiting_business_close`. Разный размер, формат не PNG/JPG, слишком разные кадры → `cannot_tell` с причиной, без диффа |
 | POST | `/projects/:projectId/remarks/:id/close` | business | Только после ретест-улик |
 | GET | `/projects/:projectId/dev-queue` | developer | defect + ready_for_retest |
 | GET | `/projects/:projectId/search?q=&k=` | member | Поиск по пакету документов с цитатой (раздел, фрагмент, score). То же, что MCP `search_spec` |
@@ -61,7 +62,7 @@
 
 ## Тело замечания
 
-`POST /projects/:projectId/rounds/:roundId/remarks` — JSON `{ "description", "pageOrScreen"?, "expected"?, "screenshotKey"? }`. Сервер сразу запускает разбор (заглушка фазы 3, граф в фазе 6) и отвечает замечанием в `awaiting_pm` с `proposedClass`, `draft[]`, `citations[]` и `runId`. Форма ответа — `apps/api/src/remarks/remark.dto.ts` (`RemarkView`), она же модель `Remark` на фронте.
+`POST /projects/:projectId/rounds/:roundId/remarks` — JSON `{ "description", "pageOrScreen"?, "expected"?, "screenshotKey"? }`. Сервер создаёт замечание и запускает граф разбора; ответ приходит сразу — статус `triaging`, `runId`, `runStatus: running`. Фазы прогона (`retrieving` → `vision` → `binding` → `drafting` → `awaiting_pm`) идут в комнату WS (`docs/WS.md`); когда прогон дошёл до interrupt, `GET .../remarks/:id` отдаёт `awaiting_pm` с `proposedClass`, `draft[]`, `citations[]`, `seen` (факты кадра) и тем же `runId`. Форма ответа — `apps/api/src/remarks/remark.dto.ts` (`RemarkView`), она же модель `Remark` на фронте. Те же правила у `fix-row`, `screenshot`, `triage`: они отвечают `triaging`.
 
 ## Чего нет в API
 

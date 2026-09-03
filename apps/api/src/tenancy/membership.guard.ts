@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectRequest } from './project-context';
+import { TenancyService } from './tenancy.service';
 
 /**
  * Tenancy: `:projectId` из URL сверяется с Membership пользователя.
@@ -8,7 +8,7 @@ import type { ProjectRequest } from './project-context';
  */
 @Injectable()
 export class MembershipGuard implements CanActivate {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly tenancy: TenancyService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<ProjectRequest>();
@@ -17,12 +17,10 @@ export class MembershipGuard implements CanActivate {
     if (!projectId) return true;
     if (!req.user) throw new NotFoundException();
 
-    const membership = await this.prisma.membership.findUnique({
-      where: { userId_projectId: { userId: req.user.id, projectId } },
-    });
-    if (!membership) throw new NotFoundException();
+    const ctx = await this.tenancy.contextFor(req.user.id, projectId);
+    if (!ctx) throw new NotFoundException();
 
-    req.ctx = { userId: req.user.id, projectId, role: membership.role };
+    req.ctx = ctx;
     return true;
   }
 }

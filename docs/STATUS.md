@@ -29,6 +29,8 @@ stateDiagram-v2
   awaiting_pm --> duplicate: PM связал с оригиналом
   awaiting_pm --> cannot_tell: мало улик, запросили скрин
   awaiting_pm --> triaging: reject_binding, тот же run, цикл bind
+  triaging --> imported: run.cancel или сбой прогона, без вердикта
+  awaiting_pm --> imported: run.cancel, без вердикта
 
   cannot_tell --> triaging: появился скрин / улика
   unspecified --> defect: человек решил, что это работа
@@ -39,6 +41,7 @@ stateDiagram-v2
   awaiting_business_close --> closed: только business
   awaiting_business_close --> defect: business «не исправлено»
   awaiting_business_close --> cannot_tell: кадры несопоставимы
+  awaiting_business_close --> ready_for_retest: run.cancel, кадр ретеста снимается
 
   closed --> reopened: новый раунд претензии
   reopened --> triaging: новый run
@@ -54,6 +57,7 @@ stateDiagram-v2
 | Вердикт до разработчика, reject_binding | `pm` |
 | `ready_for_retest` | `developer` |
 | Старт триажа, дифф, черновик модели | система |
+| `run.cancel` (без вердикта) | `pm`, `business` |
 | `closed` | только `business` |
 | Авто-close модели | **запрещено** |
 

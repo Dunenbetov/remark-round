@@ -1,12 +1,13 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
-import type { Remark, Screenshot, VerdictCode } from '../core/models';
-import { APP_NAME, CARD, DECISION, EMPTY, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, ROUND, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
+import type { JoinAck, Phase, Presence, Remark, Screenshot, ServerEvent, VerdictCode } from '../core/models';
+import { APP_NAME, CARD, DECISION, EMPTY, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, PRESENCE, ROLE_GENITIVE, ROUND, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
 import { PendingActionService } from '../core/pending-action.service';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { TriageRun, TriageService } from '../core/triage.service';
+import { WsService, initialPhase } from '../core/ws.service';
 import { AppBar } from '../ui/app-bar';
 import { Citation } from '../ui/citation';
 import { DecisionMode, DecisionPanel, DecisionPending, DecisionRecord } from '../ui/decision-panel';
@@ -19,8 +20,8 @@ import { StatusPill } from '../ui/status-pill';
 type Layout = 'running' | 'draft' | 'refuse' | 'retest-wait' | 'retest' | 'fix';
 type FileAction = 'attach' | 'retest';
 
-/** Пока сервер держит замечание в `triaging`, карточка перечитывает его раз в две секунды (до WS фазы 6). */
-const POLL_MS = 2000;
+/** Без сокета (сеть, прокси) карточка перечитывает замечание, пока прогон идёт. С сокетом — только события. */
+const FALLBACK_POLL_MS = 3000;
 
 /**
  * Карточка замечания — главный экран. Три колонки на бумаге: Улики | Черновик разбора | Ваше решение.
@@ -45,6 +46,9 @@ const POLL_MS = 2000;
                   <rr-status-pill class="card__pill" [status]="r.status" [dot]="true" />
                 }
                 <span class="meta card__meta">{{ metaLine() }}</span>
+                @if (watching(); as w) {
+                  <span class="meta card__presence" aria-live="polite">{{ w }}</span>
+                }
               </header>
 
               <div class="grid" [class.grid--retest]="layout() === 'retest'">
@@ -140,6 +144,12 @@ const POLL_MS = 2000;
                               <p class="draft__p">{{ p }}</p>
                             }
                           </div>
+                        } @else if (streamed().length) {
+                          <div class="draft draft--stream" aria-live="polite">
+                            @for (p of streamed(); track $index) {
+                              <p class="draft__p">{{ p }}</p>
+                            }
+                          </div>
                         }
                       }
                     }
@@ -194,7 +204,7 @@ const POLL_MS = 2000;
               </div>
 
               <footer class="card__foot">
-                <rr-phase-line [text]="phaseText()" [tone]="phaseTone()" [pulse]="phasePulse()" [retryable]="failed()" (retry)="onRetry()" />
+                <rr-phase-line [text]="phaseText()" [tone]="phaseTone()" [pulse]="phasePulse()" [retryable]="failed()" [stoppable]="stoppable()" (retry)="onRetry()" (stop)="onStop()" />
               </footer>
             </article>
           </main>
@@ -254,6 +264,13 @@ const POLL_MS = 2000;
     }
     .card__meta {
       margin-left: auto;
+    }
+    .card__presence {
+      flex-basis: 100%;
+      color: var(--rr-ink-3);
+    }
+    .draft--stream {
+      color: var(--rr-ink-2);
     }
     .grid {
       display: grid;
@@ -469,12 +486,11 @@ export class RemarkCardPage {
   readonly projectId = input.required<string>();
   readonly round = input.required<string>();
   readonly remarkId = input.required<string>();
-  /** ?run=1 — короткий показ фаз разбора (после «Сохранить» у бизнеса). */
-  readonly run = input<string>();
 
   protected readonly store = inject(RemarksStore);
   private readonly session = inject(SessionService);
   private readonly triage = inject(TriageService);
+  private readonly ws = inject(WsService);
   private readonly actions = inject(PendingActionService);
   private readonly title = inject(Title);
   private readonly destroyRef = inject(DestroyRef);
@@ -491,11 +507,13 @@ export class RemarkCardPage {
   protected readonly role = computed(() => this.session.roleIn(this.projectId()));
   protected readonly remark = computed<Remark | undefined>(() => this.store.byId(this.remarkId()));
   protected readonly viewer = signal<number | null>(null);
+  /** Кто ещё в комнате замечания (presence из WS), кроме меня. */
+  protected readonly presence = signal<Presence[]>([]);
 
   private readonly runSig = signal<TriageRun | null>(null);
-  private readonly startedFor = new Set<string>();
   private fileAction: FileAction | null = null;
   private fileInput: HTMLInputElement | null = null;
+  private leaveRoom: (() => void) | null = null;
   private poll: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
@@ -505,51 +523,96 @@ export class RemarkCardPage {
       untracked(() => {
         if (!this.store.round()) void this.store.enterRound(projectId, this.round());
         void this.store.loadRemark(projectId, id);
+        this.joinRoom(projectId, id);
       });
     });
+    // Сервер ответил, что прогон идёт (создание, «Прикрепить скрин», ретест): показываем фазы до события из комнаты.
     effect(() => {
-      const id = this.remarkId();
       const remark = this.remark();
-      const wantRun = this.run() === '1';
       untracked(() => {
         if (!remark) return;
-        const key = `${id}:${wantRun ? 'q' : remark.status}`;
-        const shouldStart = (remark.status === 'triaging' || wantRun) && !this.startedFor.has(key);
-        if (shouldStart) {
-          this.startedFor.add(key);
-          this.runSig.set(this.triage.start(remark, wantRun));
-        } else if (!this.runSig() || this.runSig()!.remarkId !== id) {
-          this.runSig.set(this.triage.runFor(id) ?? null);
+        const run = this.triage.runFor(remark.id);
+        if (remark.runStatus === 'running' && remark.runId && (!run || run.runId !== remark.runId || !run.analyzing())) {
+          // После «Не та цитата» тот же run идёт заново с поиска: строка «Ищем другое место в ТЗ…», пока не пришла фаза.
+          this.runSig.set(this.triage.start(remark, remark.runId, run?.rebinding() ? 'binding' : initialPhase(remark)));
+        } else if (remark.runStatus !== 'running' && run?.analyzing() && run.runId === remark.runId) {
+          run.finish(remark.status === 'awaiting_business_close' ? 'awaiting_business_close' : 'awaiting_pm');
         }
+        if (!this.runSig() || this.runSig()!.remarkId !== remark.id) this.runSig.set(this.triage.runFor(remark.id) ?? null);
       });
     });
-    // Сервер вышел из `triaging` — показ фаз заканчивается, черновик проявляется.
+    // Нет сокета — перечитываем, пока сервер разбирает. С сокетом фазы приходят сами.
     effect(() => {
-      const status = this.remark()?.status;
-      const run = this.runSig();
-      untracked(() => {
-        if (run && run.analyzing() && !run.demo && status && status !== 'triaging') run.finish();
-      });
-    });
-    effect(() => {
-      const triaging = this.remark()?.status === 'triaging';
-      untracked(() => this.pollWhileTriaging(triaging));
+      const running = this.remark()?.runStatus === 'running';
+      const offline = !this.ws.connected();
+      untracked(() => this.pollFallback(running && offline));
     });
     effect(() => {
       const r = this.remark();
       if (r) this.title.setTitle(`${TITLE.remark(r.number, r.title)} — ${APP_NAME}`);
       if (r?.status === 'needs_human_parse' && r.pageOrScreen !== '—') untracked(() => this.fixWhere.update((w) => w || r.pageOrScreen));
     });
-    this.destroyRef.onDestroy(() => this.pollWhileTriaging(false));
+    this.destroyRef.onDestroy(() => {
+      this.pollFallback(false);
+      this.leaveRoom?.();
+      this.leaveRoom = null;
+    });
   }
 
-  /** До WS (фаза 6): пока сервер разбирает, перечитываем замечание. Один метод — одно место для замены. */
-  private pollWhileTriaging(on: boolean): void {
+  // ---------- комната замечания ----------
+
+  private joinRoom(projectId: string, remarkId: string): void {
+    this.leaveRoom?.();
+    this.presence.set([]);
+    this.leaveRoom = this.ws.join(
+      projectId,
+      remarkId,
+      (e) => this.onEvent(remarkId, e),
+      (ack) => this.onJoined(projectId, remarkId, ack),
+    );
+  }
+
+  private onJoined(projectId: string, remarkId: string, ack: JoinAck): void {
+    if (!ack.ok) return;
+    const me = this.session.user()?.id;
+    this.presence.set(ack.presence.filter((p) => p.userId !== me));
+    const remark = this.remark();
+    if (ack.runId && ack.phase && remark && ack.phase !== 'awaiting_pm' && ack.phase !== 'awaiting_business_close' && ack.phase !== 'persisted') {
+      this.runSig.set(this.triage.start(remark, ack.runId, ack.phase));
+    }
+    // Между загрузкой и join сервер мог успеть записать результат.
+    void this.store.loadRemark(projectId, remarkId);
+  }
+
+  private onEvent(remarkId: string, e: ServerEvent): void {
+    if (e.type === 'presence') {
+      const me = this.session.user()?.id;
+      if (e.userId === me) return;
+      this.presence.update((list) => {
+        const rest = list.filter((p) => p.userId !== e.userId);
+        return e.action === 'join' ? [...rest, { userId: e.userId, role: e.role, name: e.name }] : rest;
+      });
+      return;
+    }
+    const remark = this.remark();
+    if (!remark) return;
+    const run = this.triage.runFor(remarkId) ?? this.triage.idle(remark);
+    this.runSig.set(run);
+    if (run.applyEvent(e) === 'reload') void this.store.loadRemark(this.projectId(), remarkId);
+  }
+
+  private pollFallback(on: boolean): void {
     if (this.poll) clearInterval(this.poll);
     this.poll = null;
     if (!on) return;
-    this.poll = setInterval(() => void this.store.loadRemark(this.projectId(), this.remarkId()), POLL_MS);
+    this.poll = setInterval(() => void this.store.loadRemark(this.projectId(), this.remarkId()), FALLBACK_POLL_MS);
   }
+
+  protected readonly watching = computed(() => {
+    const list = this.presence();
+    if (!list.length) return null;
+    return list.map((p) => PRESENCE.watching(p.name, ROLE_GENITIVE[p.role])).join(' · ');
+  });
 
   // ---------- доступ и режимы ----------
 
@@ -566,6 +629,16 @@ export class RemarkCardPage {
   protected readonly busy = computed(() => this.runSig()?.busy() ?? false);
   protected readonly quoteVisible = computed(() => this.runSig()?.quoteVisible() ?? true);
   protected readonly draftVisible = computed(() => this.runSig()?.draftVisible() ?? true);
+  /** Черновик по мере печати моделью — только в колонке «Черновик разбора». */
+  protected readonly streamed = computed(() => {
+    const text = this.runSig()?.tokens() ?? '';
+    return text ? text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean) : [];
+  });
+  /** Остановить прогон может тот, кто его запускает: pm или бизнес. */
+  protected readonly stoppable = computed(() => {
+    const role = this.role();
+    return this.running() && !this.busy() && (role === 'pm' || role === 'business');
+  });
 
   protected readonly pendingFor = computed<DecisionPending | null>(() => {
     const p = this.actions.pendingFor(this.remarkId());
@@ -574,7 +647,7 @@ export class RemarkCardPage {
 
   protected readonly layout = computed<Layout>(() => {
     const r = this.remark()!;
-    if (this.running()) return 'running';
+    if (this.running()) return r.runMode === 'retest' && r.status === 'ready_for_retest' ? 'retest-wait' : 'running';
     if (r.status === 'needs_human_parse') return 'fix';
     if (r.status === 'cannot_tell') return 'refuse';
     if (r.status === 'ready_for_retest') return 'retest-wait';
@@ -585,7 +658,10 @@ export class RemarkCardPage {
   protected readonly decisionMode = computed<DecisionMode | null>(() => {
     const r = this.remark()!;
     const role = this.role();
-    if (this.running()) return role === 'pm' ? 'disabled' : null;
+    if (this.running()) {
+      if (r.runMode === 'retest') return role === 'business' ? 'retest-wait' : null;
+      return role === 'pm' ? 'disabled' : null;
+    }
     switch (role) {
       case 'pm':
       case 'admin':
@@ -680,7 +756,10 @@ export class RemarkCardPage {
     const r = this.remark()!;
     const run = this.runSig();
     const role = this.role();
-    if (run && (this.running() || run.busy())) return PHASE_TEXT[run.phase()];
+    if (run && (this.running() || run.busy())) {
+      const phase: Phase = run.rebinding() && run.phase() === 'binding' ? 'rebinding' : run.phase();
+      return PHASE_TEXT[phase];
+    }
     if (this.failed()) return PHASE_TEXT.failed;
     switch (r.status) {
       case 'awaiting_pm':
@@ -757,12 +836,24 @@ export class RemarkCardPage {
     }
   }
 
-  /** «Не та цитата» обратима по смыслу — идёт сразу, без отмены. */
-  protected onRejectBinding(comment: string): void {
+  /** «Не та цитата» обратима по смыслу — идёт сразу, без отмены. Тот же run продолжает цикл bind. */
+  protected async onRejectBinding(comment: string): Promise<void> {
     const remark = this.remark()!;
     const run = this.triage.idle(remark);
     this.runSig.set(run);
-    void run.requote(() => this.store.rejectBinding(remark.id, comment));
+    if (run.busy()) return;
+    run.busy.set(true);
+    run.rebinding.set(true);
+    run.quoteVisible.set(false);
+    try {
+      await this.store.rejectBinding(remark.id, comment);
+    } finally {
+      run.busy.set(false);
+      if (!run.analyzing()) {
+        run.rebinding.set(false);
+        run.quoteVisible.set(true);
+      }
+    }
   }
 
   protected pickFile(action: FileAction): void {
@@ -779,19 +870,30 @@ export class RemarkCardPage {
     const action = this.fileAction;
     this.fileAction = null;
     const remark = this.remark()!;
-    if (action === 'attach') {
-      await this.store.attachShot(remark.id, file);
-      this.startedFor.clear();
-      this.runSig.set(this.triage.start(this.remark()!, true));
-      return;
-    }
     const run = this.triage.idle(remark);
     this.runSig.set(run);
-    void run.diff(() => this.store.retest(remark.id, file));
+    run.busy.set(true);
+    try {
+      if (action === 'attach') await this.store.attachShot(remark.id, file);
+      else await this.store.retest(remark.id, file);
+    } finally {
+      run.busy.set(false);
+    }
   }
 
   protected onRetry(): void {
-    this.runSig()?.retry();
+    void this.store.triageAgain(this.remarkId());
+  }
+
+  protected async onStop(): Promise<void> {
+    const run = this.runSig();
+    if (!run || run.busy()) return;
+    run.busy.set(true);
+    try {
+      await this.store.cancelRun(this.remarkId());
+    } finally {
+      run.busy.set(false);
+    }
   }
 
   protected backLink(): unknown[] {

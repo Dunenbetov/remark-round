@@ -81,9 +81,10 @@ describe('import: официальный шаблон журнала', () => {
       .set(h.auth('business'))
       .send({ description: 'Кнопка «Сохранить» серая при заполненных полях' })
       .expect(200);
-    expect(['awaiting_pm', 'cannot_tell']).toContain(fixed.body.status);
+    expect(fixed.body.status).toBe('triaging');
     expect(fixed.body.title).toBe('Кнопка «Сохранить» серая при заполненных полях');
     expect(fixed.body.runId).toBeDefined();
+    await h.waitFor(row.remarkId!, ['awaiting_pm', 'cannot_tell']);
 
     // Дописать можно только строку, которая ждёт человека.
     await h.http

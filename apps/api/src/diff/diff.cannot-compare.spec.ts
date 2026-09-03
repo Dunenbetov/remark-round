@@ -106,6 +106,7 @@ describe('retest через API', () => {
       .send({ description, expected: 'Синяя primary', pageOrScreen: 'Профиль', screenshotKey: await upload(GRAY, 'before.png') })
       .expect(201);
     const id = created.body.id as string;
+    await h.waitFor(id, ['awaiting_pm']);
     await h.http
       .post(`/api/v1/projects/${h.projectId}/remarks/${id}/verdict`)
       .set(h.auth('pm'))
@@ -115,13 +116,20 @@ describe('retest через API', () => {
     return id;
   }
 
-  it('новый кадр → дифф третьим кадром, статус ждёт закрытия бизнесом, модель не закрывает', async () => {
-    const id = await readyForRetest('Кнопка «Сохранить» серая при заполненных полях');
-    const res = await h.http
+  /** Ретест идёт графом в фоне (фаза diffing по WS): ждём awaiting_business_close. */
+  async function retest(id: string, file: Buffer, name: string): Promise<Record<string, any>> {
+    const started = await h.http
       .post(`/api/v1/projects/${h.projectId}/remarks/${id}/retest`)
       .set(h.auth('business'))
-      .send({ screenshotKey: await upload(BLUE, 'after.png') })
+      .send({ screenshotKey: await upload(file, name) })
       .expect(200);
+    expect(started.body.runMode).toBe('retest');
+    return h.waitFor(id, ['awaiting_business_close'], 'business');
+  }
+
+  it('новый кадр → дифф третьим кадром, статус ждёт закрытия бизнесом, модель не закрывает', async () => {
+    const id = await readyForRetest('Кнопка «Сохранить» серая при заполненных полях');
+    const res = { body: await retest(id, BLUE, 'after.png') };
     expect(res.body.status).toBe('awaiting_business_close');
     expect(res.body.retest.outcome).toBe('cannot_tell');
     expect(res.body.retest.explanation).toMatch(/Красное на диффе/);
@@ -142,11 +150,7 @@ describe('retest через API', () => {
 
   it('кадр другого экрана (zoom) → cannot_tell с причиной, диффа нет, закрыть всё равно может только бизнес', async () => {
     const id = await readyForRetest('Кнопка «Сохранить» не того цвета опять');
-    const res = await h.http
-      .post(`/api/v1/projects/${h.projectId}/remarks/${id}/retest`)
-      .set(h.auth('business'))
-      .send({ screenshotKey: await upload(ZOOM, 'zoom.png') })
-      .expect(200);
+    const res = { body: await retest(id, ZOOM, 'zoom.png') };
     expect(res.body.status).toBe('awaiting_business_close');
     expect(res.body.retest.outcome).toBe('cannot_tell');
     expect(res.body.retest.explanation).toMatch(/Не могу сравнить кадры/);
@@ -159,11 +163,7 @@ describe('retest через API', () => {
 
   it('кадр другого размера → cannot_tell с размерами', async () => {
     const id = await readyForRetest('Шапка перекрывает форму на планшете');
-    const res = await h.http
-      .post(`/api/v1/projects/${h.projectId}/remarks/${id}/retest`)
-      .set(h.auth('business'))
-      .send({ screenshotKey: await upload(solidPng(1440, 900, [244, 244, 244]), 'tablet.png') })
-      .expect(200);
+    const res = { body: await retest(id, solidPng(1440, 900, [244, 244, 244]), 'tablet.png') };
     expect(res.body.retest.outcome).toBe('cannot_tell');
     expect(res.body.retest.explanation).toMatch(/1440×900/);
   });

@@ -16,11 +16,13 @@ describe('status transitions', () => {
       .expect(201);
     remarkId = created.body.id;
     runId = created.body.runId;
+    expect(created.body.status).toBe('triaging'); // разбор идёт в фоне, фазы — по WS
+    await h.waitFor(remarkId, ['awaiting_pm']);
   });
 
   afterAll(() => h.cleanup());
 
-  it('новое замечание сразу разобрано и ждёт PM', async () => {
+  it('новое замечание разобрано графом и ждёт PM', async () => {
     const res = await h.http.get(`/api/v1/projects/${h.projectId}/remarks/${remarkId}`).set(h.auth('pm')).expect(200);
     expect(res.body.status).toBe('awaiting_pm');
     expect(res.body.number).toBe(1);
@@ -73,8 +75,8 @@ describe('status transitions', () => {
       .post(`/api/v1/projects/${h.projectId}/remarks/${remarkId}/retest`)
       .set(h.auth('business'))
       .send({ screenshotKey: `${h.projectId}/${randomUUID()}.svg` })
-      .expect(200)
-      .expect((r) => expect(r.body.status).toBe('awaiting_business_close'));
+      .expect(200);
+    await h.waitFor(remarkId, ['awaiting_business_close'], 'business');
     const closed = await h.http.post(`/api/v1/projects/${h.projectId}/remarks/${remarkId}/close`).set(h.auth('business')).expect(200);
     expect(closed.body.status).toBe('closed');
     expect(closed.body.closedByUserId).toBe(h.users.business.id);

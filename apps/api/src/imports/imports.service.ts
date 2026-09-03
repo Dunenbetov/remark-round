@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { ImportRowStatus, RemarkStatus } from '@remarkround/db';
+import { AgentService } from '../agent/agent.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RemarksService } from '../remarks/remarks.service';
 import { StorageService } from '../storage/storage.service';
@@ -26,6 +27,7 @@ export class ImportService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly remarks: RemarksService,
+    private readonly agent: AgentService,
   ) {}
 
   async create(ctx: ProjectContext, input: ImportInput): Promise<ImportJobView> {
@@ -116,13 +118,13 @@ export class ImportService {
   }
 
   /**
-   * Разбор строк по очереди после ответа клиенту: импорт из 10–12 строк не должен держать запрос.
-   * Упавшая строка остаётся `imported` — с карточки её можно запустить снова.
+   * Разбор строк по очереди после ответа клиенту: импорт из 10–12 строк не должен держать запрос
+   * и не должен запускать десять графов разом. Упавшая строка остаётся `imported` — с карточки её можно запустить снова.
    */
   private async triageInBackground(ctx: ProjectContext, remarkIds: string[]): Promise<void> {
     for (const id of remarkIds) {
       try {
-        await this.remarks.runTriage(ctx, id);
+        await this.agent.startTriage(ctx, id, { wait: true });
       } catch (e) {
         this.log.warn(`import triage ${id}: ${(e as Error).message}`);
       }

@@ -1,15 +1,22 @@
 import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
+import { AgentService } from '../agent/agent.service';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
-import { CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ScreenshotDto, VerdictDto } from './remark.dto';
+import { CancelRunDto, CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ScreenshotDto, VerdictDto } from './remark.dto';
 import { RemarksService } from './remarks.service';
 
-/** Маршруты docs/API.md. Роли проверяет RolesGuard, переходы — RemarksService. */
+/**
+ * Маршруты docs/API.md. Роли проверяет RolesGuard, переходы — RemarksService, прогон графа — AgentService.
+ * Разбор идёт в фоне: ответ приходит сразу со статусом `triaging` и `runId`, фазы — в комнате WS.
+ */
 @Controller('projects/:projectId')
 @UseGuards(MembershipGuard, RolesGuard)
 export class RemarksController {
-  constructor(private readonly remarks: RemarksService) {}
+  constructor(
+    private readonly remarks: RemarksService,
+    private readonly agent: AgentService,
+  ) {}
 
   @Get('rounds/:roundId/remarks')
   list(@Ctx() ctx: ProjectContext, @Param('roundId') roundId: string): Promise<RemarkView[]> {
@@ -19,8 +26,9 @@ export class RemarksController {
   @Post('rounds/:roundId/remarks')
   @Roles('business', 'pm')
   @HttpCode(201)
-  create(@Ctx() ctx: ProjectContext, @Param('roundId') roundId: string, @Body() dto: CreateRemarkDto): Promise<RemarkView> {
-    return this.remarks.create(ctx, roundId, dto);
+  async create(@Ctx() ctx: ProjectContext, @Param('roundId') roundId: string, @Body() dto: CreateRemarkDto): Promise<RemarkView> {
+    const created = await this.remarks.create(ctx, roundId, dto);
+    return this.agent.startTriage(ctx, created.id);
   }
 
   @Get('dev-queue')
@@ -38,22 +46,31 @@ export class RemarksController {
   @Post('remarks/:remarkId/fix-row')
   @Roles('business', 'pm')
   @HttpCode(200)
-  fixRow(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: FixRowDto): Promise<RemarkView> {
-    return this.remarks.fixRow(ctx, remarkId, dto);
+  async fixRow(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: FixRowDto): Promise<RemarkView> {
+    await this.remarks.fixRow(ctx, remarkId, dto);
+    return this.agent.startTriage(ctx, remarkId);
   }
 
   @Post('remarks/:remarkId/triage')
   @Roles('pm', 'business')
   @HttpCode(200)
   triage(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string): Promise<RemarkView> {
-    return this.remarks.runTriage(ctx, remarkId);
+    return this.agent.startTriage(ctx, remarkId);
   }
 
   @Post('remarks/:remarkId/verdict')
   @Roles('pm', 'business')
   @HttpCode(200)
   verdict(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: VerdictDto): Promise<RemarkView> {
-    return this.remarks.verdict(ctx, remarkId, dto);
+    return this.agent.verdict(ctx, remarkId, dto);
+  }
+
+  /** run.cancel по REST (дубль WS): вердикта нет, run = cancelled. */
+  @Post('remarks/:remarkId/cancel')
+  @Roles('pm', 'business')
+  @HttpCode(200)
+  cancel(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: CancelRunDto): Promise<RemarkView> {
+    return this.agent.cancel(ctx, remarkId, dto.runId);
   }
 
   @Post('remarks/:remarkId/link-duplicate')
@@ -66,8 +83,9 @@ export class RemarksController {
   @Post('remarks/:remarkId/screenshot')
   @Roles('business', 'pm')
   @HttpCode(200)
-  attachScreenshot(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: ScreenshotDto): Promise<RemarkView> {
-    return this.remarks.attachScreenshot(ctx, remarkId, dto.screenshotKey);
+  async attachScreenshot(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: ScreenshotDto): Promise<RemarkView> {
+    await this.remarks.attachScreenshot(ctx, remarkId, dto.screenshotKey);
+    return this.agent.startTriage(ctx, remarkId);
   }
 
   @Post('remarks/:remarkId/ready-for-retest')
@@ -81,20 +99,20 @@ export class RemarksController {
   @Roles('business')
   @HttpCode(200)
   retest(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: ScreenshotDto): Promise<RemarkView> {
-    return this.remarks.retest(ctx, remarkId, dto.screenshotKey);
+    return this.agent.retest(ctx, remarkId, dto.screenshotKey);
   }
 
   @Post('remarks/:remarkId/close')
   @Roles('business')
   @HttpCode(200)
   close(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string): Promise<RemarkView> {
-    return this.remarks.close(ctx, remarkId);
+    return this.agent.close(ctx, remarkId);
   }
 
   @Post('remarks/:remarkId/not-fixed')
   @Roles('business')
   @HttpCode(200)
   notFixed(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string): Promise<RemarkView> {
-    return this.remarks.notFixed(ctx, remarkId);
+    return this.agent.notFixed(ctx, remarkId);
   }
 }

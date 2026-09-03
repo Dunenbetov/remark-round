@@ -35,11 +35,14 @@
 
 | Шаг | Модель | temperature | top_p | max_tokens | Почему |
 |---|---|---|---|---|---|
-| bind/classify | | | | | дешевле |
-| draft | | | | | сильнее |
-| vision facts | | | | | только если есть кадр |
-| retest explain | | | | | триплет + дифф |
-| embeddings | | — | — | — | одна на индекс |
+| bind/classify | `gpt-4.1-mini` (`LLM_MODEL_FAST`) | 0 | — | 300 | дешевле; JSON-schema, детерминизм; bind сам по близости, модель только класс |
+| rewrite query | `gpt-4.1-mini` | 0 | — | 60 | одна строка запроса |
+| draft | `gpt-4.1` (`LLM_MODEL_STRONG`) | 0.3 | — | 220 | сильнее, читаемый абзац; заголовок ставит код |
+| vision facts | `gpt-4.1-mini` | 0 | — | 160 | только если есть кадр |
+| retest explain | `gpt-4.1-mini` | 0 | — | 200 | триплет + дифф, JSON-schema |
+| embeddings | `text-embedding-3-small` | — | — | — | одна на индекс |
+
+Цифры по кандидатам (`gpt-5.4-mini`, `gpt-5.4`) — после golden-прогона фазы 9; до этого дефолты выше.
 
 Средняя стоимость триажа: _TBD_  
 Средняя стоимость ретеста: _TBD_

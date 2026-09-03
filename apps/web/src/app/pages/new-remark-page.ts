@@ -191,6 +191,6 @@ export class NewRemarkPage {
       file: this.file(),
     });
     if (!remark) return;
-    void this.router.navigate(['/p', this.projectId(), 'r', remark.roundNumber, 'remarks', remark.id], { queryParams: { run: 1 } });
+    void this.router.navigate(['/p', this.projectId(), 'r', remark.roundNumber, 'remarks', remark.id]);
   }
 }

@@ -1,94 +1,98 @@
 import { Injectable, computed, signal } from '@angular/core';
-import type { Phase, Remark } from './models';
+import type { Phase, Remark, ServerEvent } from './models';
 
-/** Фазы идут по 200 мс — только чтобы человек успел прочитать строку. Печати по словам нет. */
-const STEP_MS = 200;
-const FADE_MS = 180;
-
-const RUN_PHASES: Phase[] = ['retrieving', 'vision', 'binding', 'drafting'];
+/** Фаза, после которой черновик проявляется (fade 180 мс — переход, не имитация работы). */
+const FADE_MS = 16;
 
 /**
- * Один прогон по замечанию. Сигналы читает карточка; таймеры живут здесь.
- * Форма повторяет docs/WS.md (run.phase / run.persisted / run.failed): в фазе 6
- * `applyEvent(ServerEvent)` заменит таймеры, карточка не меняется.
+ * Один прогон графа по замечанию, как его видит карточка. Никаких таймеров «для красоты»:
+ * фазы приходят из комнаты WS (docs/WS.md), сюда их кладёт `applyEvent`.
  */
 export class TriageRun {
   readonly phase = signal<Phase>('retrieving');
-  /** Кнопки решения гаснут на время повторного поиска цитаты или диффа. */
-  readonly busy = signal(false);
-  /** Цитата уходит и приходит с fade. */
-  readonly quoteVisible = signal(true);
-  /** Идёт разбор: фазы показываются, черновик скрыт. */
+  /** Идёт прогон: фазы показываются, черновик скрыт, кнопки решения недоступны. */
   readonly analyzing = signal(false);
-  /** Черновик появляется с fade 180 мс, когда разбор закончен. */
+  /** Ждём ack команды (вердикт, «Не та цитата», отмена). */
+  readonly busy = signal(false);
+  /** Цитата уходит на время повторного поиска. */
+  readonly quoteVisible = signal(true);
   readonly draftVisible = signal(true);
-
+  /** Черновик, как он печатается моделью (run.token). Только внутри «Черновик разбора». */
+  readonly tokens = signal('');
+  /** После «Не та цитата из ТЗ»: та же фаза binding, но текст «Ищем другое место в ТЗ…». */
+  readonly rebinding = signal(false);
   readonly failed = computed(() => this.phase() === 'failed');
-
-  private timers: ReturnType<typeof setTimeout>[] = [];
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     readonly remarkId: string,
-    /** Демо (?run=1): прогон заканчивается сам; иначе ждём, пока сервер выйдет из `triaging`. */
-    readonly demo: boolean,
+    public runId: string | null,
   ) {}
 
-  start(): void {
+  /** Прогон запущен (ответ REST со статусом `running` или первая фаза из комнаты). */
+  start(runId: string | null, phase: Phase): void {
     this.clear();
+    this.runId = runId;
     this.analyzing.set(true);
     this.draftVisible.set(false);
-    this.phase.set('retrieving');
-    RUN_PHASES.forEach((phase, i) => {
-      if (i) this.after(i * STEP_MS, () => this.phase.set(phase));
-    });
-    if (this.demo) this.after(RUN_PHASES.length * STEP_MS + STEP_MS, () => this.finish());
+    this.tokens.set('');
+    this.phase.set(phase);
   }
 
   /** Сервер записал результат: черновик проявляется, кнопки доступны. */
-  finish(): void {
+  finish(phase: Phase): void {
     this.clear();
-    this.phase.set('awaiting_pm');
+    this.phase.set(phase);
     this.analyzing.set(false);
-    this.after(16, () => this.draftVisible.set(true));
+    this.rebinding.set(false);
+    this.quoteVisible.set(true);
+    this.timer = setTimeout(() => this.draftVisible.set(true), FADE_MS);
   }
 
-  /** Строка «Не получилось разобрать. Можно запустить снова». */
   fail(): void {
     this.clear();
     this.phase.set('failed');
     this.analyzing.set(false);
+    this.rebinding.set(false);
+    this.quoteVisible.set(true);
     this.draftVisible.set(true);
   }
 
-  retry(): void {
-    this.start();
-  }
-
-  /** «Не та цитата из ТЗ» с комментарием: та же карточка, цитата меняется без перезагрузки. */
-  async requote(swapCitation: () => Promise<void>): Promise<void> {
-    if (this.busy()) return;
-    this.busy.set(true);
-    this.phase.set('rebinding');
-    this.quoteVisible.set(false);
-    try {
-      await Promise.all([swapCitation(), wait(FADE_MS)]);
-    } finally {
-      this.quoteVisible.set(true);
-      this.phase.set('awaiting_pm');
-      this.busy.set(false);
-    }
-  }
-
-  /** Ретест: «Сравниваем кадры…» → результат в хранилище. */
-  async diff(complete: () => Promise<void>): Promise<void> {
-    if (this.busy()) return;
-    this.busy.set(true);
-    this.phase.set('diffing');
-    try {
-      await complete();
-    } finally {
-      this.phase.set('awaiting_business_close');
-      this.busy.set(false);
+  /**
+   * Событие комнаты. Возвращает `reload`, когда карточку пора перечитать: сервер записал предложение,
+   * решение или отмену — форма ответа REST остаётся единственным источником данных.
+   */
+  applyEvent(e: ServerEvent): 'reload' | null {
+    switch (e.type) {
+      case 'run.phase':
+        if (e.runId !== this.runId) this.start(e.runId, e.phase);
+        if (e.phase === 'awaiting_pm' || e.phase === 'awaiting_business_close') {
+          this.finish(e.phase);
+          return 'reload';
+        }
+        if (e.phase === 'persisted') return 'reload';
+        if (e.phase === 'failed') {
+          this.fail();
+          return 'reload';
+        }
+        this.analyzing.set(true);
+        this.draftVisible.set(false);
+        this.phase.set(e.phase);
+        return null;
+      case 'run.token':
+        if (e.runId === this.runId) this.tokens.update((t) => t + e.delta);
+        return null;
+      case 'run.persisted':
+        this.finish('persisted');
+        return 'reload';
+      case 'run.cancelled':
+        this.finish('persisted');
+        return 'reload';
+      case 'run.failed':
+        this.fail();
+        return 'reload';
+      default:
+        return null;
     }
   }
 
@@ -96,54 +100,43 @@ export class TriageRun {
     this.clear();
   }
 
-  private after(ms: number, fn: () => void): void {
-    this.timers.push(setTimeout(fn, ms));
-  }
-
   private clear(): void {
-    this.timers.forEach(clearTimeout);
-    this.timers = [];
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
   }
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Пока разбор на сервере синхронный (заглушка фазы 3), прогон здесь — только показ фаз.
- * В фазе 6 фазы придут по WS.
- */
 @Injectable({ providedIn: 'root' })
 export class TriageService {
   private readonly runs = new Map<string, TriageRun>();
 
-  /** Активный прогон по замечанию, если есть. */
   runFor(remarkId: string): TriageRun | undefined {
     return this.runs.get(remarkId);
   }
 
-  /** Запустить (или перезапустить) показ разбора. */
-  start(remark: Remark, demo = false): TriageRun {
-    this.runs.get(remark.id)?.cancel();
-    const run = new TriageRun(remark.id, demo);
-    this.runs.set(remark.id, run);
-    run.start();
+  /** Прогон идёт (сервер ответил `runStatus: running` или пришла фаза). */
+  start(remark: Remark, runId: string | null, phase: Phase): TriageRun {
+    const run = this.ensure(remark);
+    run.start(runId, phase);
     return run;
   }
 
-  /** Прогон без анимации фаз — для карточек, которые уже ждут решения. */
+  /** Прогон без фаз — карточка уже ждёт решения или закрыта. */
   idle(remark: Remark): TriageRun {
-    const existing = this.runs.get(remark.id);
-    if (existing) return existing;
-    const run = new TriageRun(remark.id, false);
-    run.phase.set('awaiting_pm');
-    this.runs.set(remark.id, run);
-    return run;
+    return this.ensure(remark);
   }
 
   drop(remarkId: string): void {
     this.runs.get(remarkId)?.cancel();
     this.runs.delete(remarkId);
+  }
+
+  private ensure(remark: Remark): TriageRun {
+    const existing = this.runs.get(remark.id);
+    if (existing) return existing;
+    const run = new TriageRun(remark.id, remark.runId ?? null);
+    run.phase.set(remark.status === 'awaiting_business_close' ? 'awaiting_business_close' : 'awaiting_pm');
+    this.runs.set(remark.id, run);
+    return run;
   }
 }

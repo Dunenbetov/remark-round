@@ -1,4 +1,4 @@
-import type { DocumentKind, ProposedClass, RemarkStatus, RetestOutcome, ScreenshotKind, VerdictCode } from '@remarkround/db';
+import type { AgentRunStatus, DocumentKind, ProposedClass, RemarkStatus, RetestOutcome, ScreenshotKind, VerdictCode } from '@remarkround/db';
 import { IsIn, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
 import { mediaUrl } from '../media/media.controller';
 
@@ -56,6 +56,15 @@ export class ScreenshotDto {
   @IsString()
   @MinLength(1)
   screenshotKey!: string;
+}
+
+/** run.cancel по REST (дубль WS): вердикта нет, run = cancelled. */
+export class CancelRunDto {
+  @IsUUID()
+  runId!: string;
+
+  @IsUUID()
+  idempotencyKey!: string;
 }
 
 export class LinkDuplicateDto {
@@ -154,6 +163,9 @@ export interface RemarkView {
   closedAt?: string;
   /** Текущий AgentRun — нужен для идемпотентного вердикта. */
   runId?: string;
+  /** Состояние текущего прогона: `running` — фазы идут по WS, `awaiting_human` — ждёт кнопки. */
+  runStatus?: AgentRunStatus;
+  runMode?: 'triage' | 'retest';
   createdAt: string;
 }
 
@@ -185,7 +197,7 @@ export interface RemarkRow {
   screenshots: Array<{ id: string; kind: ScreenshotKind; storageKey: string; width: number | null; height: number | null; createdAt: Date }>;
   citations: Array<{ id: string; chunkId: string }>;
   verdicts: Array<{ code: VerdictCode; userId: string; comment: string | null; createdAt: Date }>;
-  runs: Array<{ id: string; createdAt: Date }>;
+  runs: Array<{ id: string; createdAt: Date; status: AgentRunStatus; mode: string }>;
 }
 
 /** Чанк цитаты с документом; грузится отдельно (у EvidenceCitation нет FK на чанк). */
@@ -246,6 +258,8 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra): RemarkView {
     closedByUserId: r.closedByUserId ?? undefined,
     closedAt: r.closedAt ? hhmm(r.closedAt) : undefined,
     runId: run?.id,
+    runStatus: run?.status,
+    runMode: run ? (run.mode === 'retest' ? 'retest' : 'triage') : undefined,
     createdAt: r.createdAt.toISOString(),
   };
 }

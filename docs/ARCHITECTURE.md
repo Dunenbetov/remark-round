@@ -60,6 +60,8 @@ sequenceDiagram
   API->>DB: HumanVerdict + status defect
 ```
 
+Как сделано (фаза 6): `AgentService.startTriage` создаёт `AgentRun` через `RemarksService.beginTriage` и запускает граф в фоне; ответ REST — `triaging` + `runId`. Ноды зовут `RagService.search` (SQL с `projectId`), `LlmService` (OpenAI или правила), `RemarksService.applyProposal`; `RunEvents` раздаёт фазы, токены и цитаты в комнату `remark:{id}` через `RemarkGateway`. Вердикт — `AgentService.verdict` → `RemarksService.verdict` (идемпотентный `HumanVerdict`) → `Command({ resume })` в тот же thread. Чекпоинты — `GraphCheckpoint` (порт MemorySaver на Prisma).
+
 ## Путь: ретест
 
 Новый скрин → `DiffModule` → триплет old/new/diff в vision (пояснить, не закрыть) → interrupt `business` → только тогда `closed`.

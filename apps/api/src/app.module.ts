@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
+import { AgentModule } from './agent/agent.module';
 import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
+import { GatewayModule } from './gateway/gateway.module';
 import { HealthModule } from './health/health.module';
 import { ImportsModule } from './imports/imports.module';
 import { LlmModule } from './llm/llm.module';
@@ -27,6 +29,8 @@ import { TenancyModule } from './tenancy/tenancy.module';
     MediaModule,
     RoundsModule,
     RemarksModule,
+    AgentModule,
+    GatewayModule,
     ImportsModule,
   ],
 })

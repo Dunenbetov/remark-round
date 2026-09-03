@@ -3,6 +3,7 @@ import type { DocumentKind, ImportJob, NewRemarkDto, ProjectDocument, Remark, Ro
 import { ApiDocument, ApiService } from './api.service';
 import { ERROR } from './copy';
 import { SessionService } from './session.service';
+import { WsService } from './ws.service';
 
 const DOC_LABEL: Record<DocumentKind, string> = {
   spec: 'ТЗ',
@@ -19,6 +20,7 @@ const DOC_LABEL: Record<DocumentKind, string> = {
 export class RemarksStore {
   private readonly api = inject(ApiService);
   private readonly session = inject(SessionService);
+  private readonly ws = inject(WsService);
 
   readonly projectId = signal<string | null>(null);
   readonly round = signal<Round | null>(null);
@@ -129,16 +131,34 @@ export class RemarksStore {
     return updated;
   }
 
+  /** Вердикт — в комнату WS (тот же run, идемпотентно); без сокета — REST. */
   async verdict(remarkId: string, code: Exclude<VerdictCode, 'rejected_binding'>, comment?: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark?.runId) return;
-    await this.mutate(() => this.api.verdict(remark.projectId, remarkId, { verdict: code, comment: comment || undefined, runId: remark.runId!, idempotencyKey: crypto.randomUUID() }));
+    const body = { verdict: code, comment: comment || undefined, runId: remark.runId, idempotencyKey: crypto.randomUUID() };
+    await this.mutate(() => this.ws.command('verdict.approve', { remarkId, ...body }, () => this.api.verdict(remark.projectId, remarkId, body)));
   }
 
   async rejectBinding(remarkId: string, comment: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark?.runId) return;
-    await this.mutate(() => this.api.verdict(remark.projectId, remarkId, { verdict: 'rejected_binding', comment, runId: remark.runId!, idempotencyKey: crypto.randomUUID() }));
+    const body = { verdict: 'rejected_binding' as const, comment, runId: remark.runId, idempotencyKey: crypto.randomUUID() };
+    await this.mutate(() => this.ws.command('verdict.reject_binding', { remarkId, ...body }, () => this.api.verdict(remark.projectId, remarkId, body)));
+  }
+
+  /** run.cancel: вердикта нет, замечание снова «Получено». */
+  async cancelRun(remarkId: string): Promise<void> {
+    const remark = this.byId(remarkId);
+    if (!remark?.runId) return;
+    const body = { runId: remark.runId, idempotencyKey: crypto.randomUUID() };
+    await this.mutate(() => this.ws.command('run.cancel', { remarkId, ...body }, () => this.api.cancelRun(remark.projectId, remarkId, body)));
+  }
+
+  /** «Запустить снова» после сбоя: новый прогон. */
+  async triageAgain(remarkId: string): Promise<void> {
+    const remark = this.byId(remarkId);
+    if (!remark) return;
+    await this.mutate(() => this.api.action(remark.projectId, remarkId, 'triage'));
   }
 
   async linkDuplicate(remarkId: string): Promise<void> {

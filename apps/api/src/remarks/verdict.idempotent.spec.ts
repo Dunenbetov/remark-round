@@ -16,6 +16,7 @@ describe('verdict idempotency', () => {
       .expect(201);
     remarkId = created.body.id;
     runId = created.body.runId;
+    await h.waitFor(remarkId, ['awaiting_pm']);
   });
 
   afterAll(() => h.cleanup());
