@@ -18,6 +18,7 @@ docker compose up
 | Web (Angular) | http://localhost:4200 |
 | API health | http://localhost:3001/api/v1/health → `{ "ok": true }` |
 | Langfuse UI | http://localhost:3000 |
+| MCP (Streamable HTTP) | http://localhost:3002/mcp, токен из `POST /api/v1/projects/:id/mcp-token` в `Authorization` |
 | Postgres (app) | `localhost:${POSTGRES_PORT:-5432}`, БД `remarkround` (свой Postgres на 5432? поставьте `POSTGRES_PORT=5434` и тот же порт в `DATABASE_URL`) |
 
 ### Prisma (опционально, с хоста)
@@ -51,6 +52,8 @@ pnpm --filter @remarkround/api test   # tenancy.leakage.spec: чужой про�
 
 Ретест (фаза 5): `POST .../remarks/:id/retest` с новым кадром строит детерминированный дифф (`apps/api/src/diff`, pixelmatch): картинка диффа становится третьим кадром карточки, кадры другого размера или формата, а также слишком разные кадры (другой экран, зум) честно дают «Не могу сравнить кадры» с причиной. Модель по диффу не закрывает ничего: закрывает бизнес.
 
+MCP-фасад (фаза 7): `apps/mcp` — сервер на официальном TypeScript SDK, четыре tool’а поверх тех же REST-маршрутов (`search_spec`, `get_round_remarks`, `apply_human_verdict`, `submit_retest_evidence`) и prompt `uat-triage` с текстом `skills/uat-triage/SKILL.md`. Проект берётся из токена: `POST /api/v1/projects/:projectId/mcp-token` выдаёт JWT с `projectId` из membership, чужой проект для него — 404 даже при membership, `projectId` в аргументах tool’ов нет. Для Cursor в репозитории лежит `.cursor/mcp.json` (stdio, демо-логин Даны, нужен поднятый API на 3001); в compose тот же сервер поднят как `mcp` на `http://localhost:3002/mcp` с токеном в заголовке каждого запроса. Закрыть замечание через MCP нельзя. Подробности и конфиг Claude Desktop — [`apps/mcp/README.md`](apps/mcp/README.md).
+
 Вход: `POST /api/v1/auth/login` `{ "email", "password" }` → `{ accessToken, user, memberships }`. Дальше `Authorization: Bearer <token>`; проектные маршруты `/projects/:projectId/...` проверяют membership (чужой проект — 404) и роль (403).
 
 Индекс pgvector по embedding — после migrate, см. [`packages/db/README.md`](packages/db/README.md).
@@ -70,7 +73,7 @@ pnpm web:dev    # :4200
 ```
 apps/web          Angular
 apps/api          NestJS
-apps/mcp          MCP stub (фаза 7, не в compose)
+apps/mcp          MCP-фасад домена (stdio для Cursor / Claude Desktop, http в compose :3002)
 packages/db       Prisma schema + клиент
 docker-compose.yml
 ```

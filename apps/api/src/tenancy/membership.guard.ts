@@ -16,6 +16,8 @@ export class MembershipGuard implements CanActivate {
     const projectId = Array.isArray(raw) ? raw[0] : raw;
     if (!projectId) return true;
     if (!req.user) throw new NotFoundException();
+    // Токен MCP привязан к одному проекту: любой другой для него не существует, даже при membership.
+    if (req.user.scopedProjectId && req.user.scopedProjectId !== projectId) throw new NotFoundException();
 
     const ctx = await this.tenancy.contextFor(req.user.id, projectId);
     if (!ctx) throw new NotFoundException();

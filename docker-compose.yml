@@ -51,6 +51,22 @@ services:
     ports:
       - '${WEB_PORT:-4200}:80'
 
+  # MCP-фасад домена (ADR 003): те же REST-маршруты, токен проекта в Authorization каждого запроса.
+  # Cursor / Claude Desktop: url http://localhost:3002/mcp + заголовок Bearer <POST /projects/:id/mcp-token>
+  mcp:
+    build:
+      context: .
+      dockerfile: apps/mcp/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      MCP_TRANSPORT: http
+      MCP_PORT: 3002
+      REMARKROUND_API_URL: http://api:3000/api/v1
+    ports:
+      - '${MCP_PORT:-3002}:3002'
+
   # --- Langfuse self-host (official stack, separate DB from app) ---
 
   langfuse-postgres:

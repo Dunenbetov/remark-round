@@ -94,6 +94,7 @@ export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModu
     const projectId = typeof body?.projectId === 'string' ? body.projectId : '';
     const remarkId = typeof body?.remarkId === 'string' ? body.remarkId : '';
     if (!projectId || !remarkId) return { ok: false, status: 422, message: 'Нужны projectId и remarkId' };
+    if (data.user.scopedProjectId && data.user.scopedProjectId !== projectId) return { ok: false, status: 404, message: 'Нет доступа' };
     const ctx = await this.tenancy.contextFor(data.user.id, projectId);
     if (!ctx) return { ok: false, status: 404, message: 'Нет доступа' };
     let remark: RemarkView;

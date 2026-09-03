@@ -16,6 +16,7 @@
 | POST | `/projects` | — | Создать (пилот: любой залогиненный / admin) |
 | GET | `/projects/:projectId` | member | Карточка |
 | GET/POST | `/projects/:projectId/members` | admin | Membership |
+| POST | `/projects/:projectId/mcp-token` | member | Токен для MCP-фасада (`apps/mcp`): JWT с `projectId` из membership, срок `MCP_TOKEN_EXPIRES_SECONDS` (30 дней). С ним любой другой проект — 404, даже при membership |
 | GET/POST | `/projects/:projectId/documents` | admin, pm | Пакет документов |
 | GET | `/projects/:projectId/documents/:id` | member | Мета + статус индекса |
 | POST | `/projects/:projectId/documents/:id/reindex` | admin | |
@@ -67,3 +68,7 @@
 ## Чего нет в API
 
 `/sprints`, `/boards`, `/assignees`, `/points`, `/jira`, `/playwright`, `/chat`.
+
+## MCP (`apps/mcp`)
+
+Тот же контракт для Cursor / Claude Desktop, без второго CRUD: tool'ы фасада зовут маршруты выше с токеном из `POST /projects/:projectId/mcp-token`. `search_spec` = `GET .../search`, `get_round_remarks` = `GET .../rounds` + `GET .../rounds/:roundId/remarks`, `apply_human_verdict` = `GET .../remarks/:id` + `POST .../remarks/:id/verdict` (фасад подставляет `runId` и `idempotencyKey`), `submit_retest_evidence` = `POST .../media` + `POST .../remarks/:id/retest`. `projectId` в аргументах tool'ов нет — он в токене. `close` через MCP недоступен. Подробнее: [`apps/mcp/README.md`](../apps/mcp/README.md).

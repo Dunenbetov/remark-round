@@ -81,12 +81,14 @@
 
 ## Фаза 7 — MCP + Skill
 
-- [ ] `apps/mcp` фасад
-- [ ] 3 tool’а, auth, project из токена
-- [ ] `skills/uat-triage/SKILL.md` в нодах
-- [ ] Cursor находит спеку своего проекта
+- [x] `apps/mcp` фасад
+- [x] 3 tool’а, auth, project из токена
+- [x] `skills/uat-triage/SKILL.md` в нодах
+- [x] Cursor находит спеку своего проекта
 
 **DoD:** ментор может дернуть MCP не из Angular.
+
+Сделано 3 сентября 2026: `apps/mcp` — сервер на официальном TypeScript SDK (`src/server.ts`), фасад тех же REST-маршрутов, что у Angular, без Prisma и своего SQL (ADR 003). Четыре tool’а: `search_spec`, `get_round_remarks`, `apply_human_verdict` (сам берёт `runId`, генерирует `idempotencyKey`, только `awaiting_pm`), `submit_retest_evidence` (локальный файл или `screenshotKey` → pixel-diff); tool’а закрытия нет. Prompt `uat-triage` отдаёт тот же `SKILL.md`, что подмешан в ноды `classify` / `draft` / `explain` (`apps/api/src/llm/skill.ts`, фаза 6). Проект — из токена: `POST /projects/:id/mcp-token` выпускает JWT с `projectId` из membership, `MembershipGuard` и WS `join` отдают 404 на любой другой проект даже при membership; ни один tool не принимает `projectId`, роли режет тот же `RolesGuard`, отказы приходят модели текстом. Транспорты: stdio (Cursor / Claude Desktop, `.cursor/mcp.json` с демо-логином; токен или логин из env) и Streamable HTTP без сессий в compose (`mcp` на 3002, токен в `Authorization` каждого запроса). Тест `apps/api/src/mcp/mcp.facade.spec.ts` (8 проверок) поднимает настоящий процесс `apps/mcp` по stdio: чужой проект пуст при том, что REST его документ находит; вердикт бизнеса отклонён; ретест-кадр даёт дифф.
 
 ## Фаза 8 — Langfuse на каждый LLM-вызов
 

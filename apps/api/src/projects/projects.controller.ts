@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
-import type { AuthUser } from '../auth/auth.service';
+import { AuthService, type AuthUser, type McpTokenResult } from '../auth/auth.service';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
@@ -26,7 +26,20 @@ export class ProjectsController {
 @Controller('projects/:projectId')
 @UseGuards(MembershipGuard, RolesGuard)
 export class ProjectController {
-  constructor(private readonly projects: ProjectsService) {}
+  constructor(
+    private readonly projects: ProjectsService,
+    private readonly auth: AuthService,
+  ) {}
+
+  /**
+   * Токен для MCP-фасада (apps/mcp, ADR 003): привязан к этому проекту и роли membership.
+   * Cursor / Claude Desktop с таким токеном видят только этот проект — чужой projectId для него 404.
+   */
+  @Post('mcp-token')
+  @HttpCode(200)
+  mcpToken(@Ctx() ctx: ProjectContext): Promise<McpTokenResult> {
+    return this.auth.mcpToken(ctx.userId, ctx.projectId);
+  }
 
   @Get()
   get(@Ctx() ctx: ProjectContext): Promise<ProjectSummary> {

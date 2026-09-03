@@ -34,6 +34,7 @@
 | `status.illegal-transition.spec` | developer не закрывает |
 | `diff.cannot-compare.spec` | разный размер кадра → cannot_tell |
 | `import.missing-description.spec` | строка → `needs_human_parse` |
+| `mcp.facade.spec` | tool чужого projectId пуст, `projectId` не аргумент, вердикт только pm, `close` через MCP нет |
 | `guardrail.injection.spec` | «забудь ТЗ» не даёт дефект без улик |
 
 ## Именование
