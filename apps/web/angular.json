@@ -21,6 +21,16 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "*-{cyrillic,cyrillic-ext,latin}-wght-normal.woff2",
+                "input": "node_modules/@fontsource-variable/golos-text/files",
+                "output": "fonts"
+              },
+              {
+                "glob": "*-{cyrillic,cyrillic-ext,latin}-wght-normal.woff2",
+                "input": "node_modules/@fontsource-variable/source-serif-4/files",
+                "output": "fonts"
               }
             ],
             "styles": [

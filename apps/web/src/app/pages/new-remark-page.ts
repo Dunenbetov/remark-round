@@ -1,31 +1,40 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, computed, inject, input, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { EMPTY, NEW_REMARK } from '../core/copy';
 import { RemarksStore } from '../core/remarks.store';
-import { GlassHeader } from '../ui/glass-header';
+import { AppBar } from '../ui/app-bar';
+import { ErrorBanner } from '../ui/error-banner';
 
 /** Добавить замечание (бизнес): «Что не так», «Где», «Как должно быть», «Прикрепить скрин», «Сохранить». */
 @Component({
   selector: 'rr-new-remark-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, GlassHeader],
+  imports: [RouterLink, AppBar, ErrorBanner],
   template: `
     <div class="page">
-      <rr-glass-header [presence]="false" />
-      <main class="page__body page__body--loose">
+      <rr-app-bar [tabs]="false" />
+      <main id="main" class="page__body page__body--loose">
         <form class="paper form" (submit)="save($event)" novalidate>
           <h1 class="form__title">{{ copy.title }}</h1>
           <label class="field">
             <span class="field__label">{{ copy.what }}</span>
-            <textarea class="textarea" rows="4" [placeholder]="copy.whatPlaceholder" [value]="what()" (input)="what.set(value($event))" [class.input--danger]="showError()"></textarea>
+            <textarea
+              class="textarea"
+              rows="4"
+              name="what"
+              [placeholder]="copy.whatPlaceholder"
+              [value]="what()"
+              (input)="what.set(value($event))"
+              [attr.aria-invalid]="showError() ? 'true' : null"
+            ></textarea>
           </label>
           <label class="field">
             <span class="field__label">{{ copy.where }}</span>
-            <input class="input" [placeholder]="copy.wherePlaceholder" [value]="where()" (input)="where.set(value($event))" />
+            <input class="input" name="where" [placeholder]="copy.wherePlaceholder" [value]="where()" (input)="where.set(value($event))" />
           </label>
           <label class="field">
             <span class="field__label">{{ copy.expected }}</span>
-            <textarea class="textarea" rows="2" [placeholder]="copy.expectedPlaceholder" [value]="expected()" (input)="expected.set(value($event))"></textarea>
+            <textarea class="textarea" rows="2" name="expected" [placeholder]="copy.expectedPlaceholder" [value]="expected()" (input)="expected.set(value($event))"></textarea>
           </label>
           <div class="field">
             <span class="field__label">{{ copy.attach }}</span>
@@ -44,11 +53,11 @@ import { GlassHeader } from '../ui/glass-header';
             }
           </div>
           @if (store.error(); as err) {
-            <div class="form__error">{{ err }}</div>
+            <rr-error-banner [message]="err" [retryable]="false" />
           }
           <div class="form__actions">
             <a class="btn btn--secondary" [routerLink]="journalLink()">{{ copy.cancel }}</a>
-            <button type="submit" class="btn btn--primary" [disabled]="store.loading()">{{ copy.save }}</button>
+            <button type="submit" class="btn btn--primary" [class.btn--busy]="store.loading()" [disabled]="store.loading()">{{ copy.save }}</button>
           </div>
         </form>
       </main>
@@ -58,24 +67,24 @@ import { GlassHeader } from '../ui/glass-header';
     .form {
       width: 640px;
       max-width: 100%;
-      margin: 8px auto 0;
-      padding: 28px;
+      margin: 0 auto;
+      padding: var(--sp-7);
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: var(--sp-5);
     }
     .form__title {
       margin: 0;
-      font-size: 22px;
-      line-height: 28px;
-      font-weight: 600;
+      font-size: var(--fs-22);
+      line-height: var(--lh-22);
+      font-weight: var(--fw-semibold);
     }
     .field {
-      gap: 8px;
+      gap: var(--sp-2);
     }
     .shot-row {
       display: flex;
-      gap: 16px;
+      gap: var(--sp-4);
       align-items: flex-start;
     }
     .shot-preview {
@@ -83,8 +92,8 @@ import { GlassHeader } from '../ui/glass-header';
       flex: none;
       aspect-ratio: 4 / 3;
       border: 1px solid var(--rr-line);
-      border-radius: 8px;
-      background: #f4f3f1;
+      border-radius: var(--rr-r-sm);
+      background: var(--rr-thumb-bg);
       overflow: hidden;
     }
     .shot-img {
@@ -95,7 +104,7 @@ import { GlassHeader } from '../ui/glass-header';
     .shot-meta {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: var(--sp-2);
     }
     .shot-replace,
     .shot-attach {
@@ -103,19 +112,17 @@ import { GlassHeader } from '../ui/glass-header';
       padding: 0 14px;
       width: max-content;
     }
-    .form__error {
-      font-size: 13px;
-      line-height: 18px;
-      color: var(--rr-danger);
-    }
     .form__actions {
       display: flex;
       justify-content: flex-end;
-      gap: 8px;
+      gap: var(--sp-2);
     }
     @media (max-width: 720px) {
       .form {
-        padding: 16px;
+        padding: var(--sp-4);
+      }
+      .form__actions > * {
+        flex: 1;
       }
     }
   `,
@@ -126,6 +133,7 @@ export class NewRemarkPage {
 
   protected readonly store = inject(RemarksStore);
   private readonly router = inject(Router);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   protected readonly copy = NEW_REMARK;
   protected readonly needShot = EMPTY.needShot;
@@ -146,6 +154,7 @@ export class NewRemarkPage {
       // страница открыта напрямую: подтянем раунд, чтобы было куда сохранять
       queueMicrotask(() => void this.store.enterRound(this.projectId(), this.round()));
     }
+    afterNextRender(() => this.host.nativeElement.querySelector<HTMLTextAreaElement>('textarea[name=what]')?.focus());
   }
 
   protected value(e: Event): string {
@@ -170,7 +179,10 @@ export class NewRemarkPage {
   protected async save(e: Event): Promise<void> {
     e.preventDefault();
     this.touched.set(true);
-    if (!this.what().trim()) return;
+    if (!this.what().trim()) {
+      this.host.nativeElement.querySelector<HTMLTextAreaElement>('textarea[name=what]')?.focus();
+      return;
+    }
     if (!this.store.round()) await this.store.enterRound(this.projectId(), this.round());
     const remark = await this.store.addRemark(this.projectId(), {
       title: this.what(),

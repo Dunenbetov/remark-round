@@ -1,0 +1,121 @@
+/* RemarkRound — токены. Единственный источник (docs/ui/tokens.css — указатель сюда).
+   Роли: bg → surface → surface-raised; ink / ink-2 / ink-3; accent = заливка, accent-text = текст и ссылки.
+   Все текстовые пары ≥ 4.5:1 (см. docs/ui/VISUAL.md). */
+
+:root {
+  /* ---------- цвет: роли ---------- */
+  --rr-bg: #f3eee6;
+  --rr-bg-accent: #efe6d6;          /* угол радиального градиента фона */
+  --rr-surface: #fffdf8;            /* бумага: карточки, таблицы, поля */
+  --rr-surface-2: #f8f3ea;          /* hover строк, утопленные зоны, dropzone */
+  --rr-surface-raised: #ffffff;     /* меню, undo-бар, тулбар */
+  --rr-ink: #1f1b16;
+  --rr-ink-2: #5c564e;              /* метаданные, подписи колонок */
+  --rr-ink-3: #6b655c;              /* плейсхолдеры, подсказки, «—» */
+  --rr-ink-inverse: #ffffff;
+  --rr-line: #e4d9c8;
+  --rr-line-strong: #cfc3af;        /* границы полей ввода */
+  --rr-accent: #1f4a3c;             /* заливка primary */
+  --rr-accent-hover: #16382d;
+  --rr-accent-text: #1f4a3c;        /* ссылки, текстовые кнопки, активный чип, полоса цитаты */
+  --rr-accent-soft: #e6efeb;        /* фон активного чипа, drop--over, выделение */
+  --rr-accent-ink: #ffffff;         /* текст на accent */
+  --rr-focus: #1f4a3c;
+  --rr-danger: #8f3a30;             /* только «допишите строку», ошибки, маска диффа */
+  --rr-scrim: rgba(31, 27, 22, 0.82);
+  --rr-thumb-bg: #f4f3f1;
+
+  /* статусы: -bg фон пилюли, -ink текст на нём, -dot точка и аватар */
+  --rr-wait-bg: #f8edd6;   --rr-wait-ink: #7a4f0e;   --rr-wait-dot: #b8893a;
+  --rr-work-bg: #e4eef6;   --rr-work-ink: #2b5578;   --rr-work-dot: #2b5578;
+  --rr-muted-bg: #eeeae3;  --rr-muted-ink: #5f5a52;  --rr-muted-dot: #8a847a;
+  --rr-ok-bg: #e3efe8;     --rr-ok-ink: #285e45;     --rr-ok-dot: #2f6b4f;
+  --rr-danger-bg: #f6e3e0; --rr-danger-ink: #8f3a30; --rr-danger-dot: #8f3a30;
+
+  /* стекло: только шапка, undo-бар, тулбар просмотра, липкая панель решения на мобильном */
+  --rr-glass-bg: rgba(255, 253, 248, 0.82);
+  --rr-glass-line: rgba(31, 27, 22, 0.08);
+  --rr-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 8px 32px rgba(31, 27, 22, 0.1);
+
+  /* ---------- отступы (сетка 4px) ---------- */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px; --sp-5: 20px;  --sp-6: 24px;
+  --sp-7: 28px; --sp-8: 32px; --sp-9: 36px; --sp-10: 40px; --sp-11: 44px; --sp-12: 48px;
+
+  /* ---------- шрифт ---------- */
+  --rr-font: 'Golos Text', 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --rr-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif; /* только слово RemarkRound */
+  --fs-12: 12px; --lh-12: 16px;   /* подписи колонок (uppercase) */
+  --fs-13: 13px; --lh-13: 18px;   /* meta, пилюли, подсказки */
+  --fs-14: 14px; --lh-14: 20px;   /* кнопки, чипы */
+  --fs-15: 15px; --lh-15: 22px;   /* основной текст */
+  --fs-16: 16px; --lh-16: 24px;   /* цитата ТЗ */
+  --fs-18: 18px; --lh-18: 24px;   /* h1 на мобильном */
+  --fs-22: 22px; --lh-22: 28px;   /* h1 страницы, заголовок карточки */
+  --fs-28: 28px; --lh-28: 34px;   /* wordmark */
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600;
+
+  /* ---------- форма ---------- */
+  --rr-r-sm: 6px;    /* миниатюры, скелетон */
+  --rr-r-md: 10px;   /* кнопки, поля */
+  --rr-r-lg: 14px;   /* карточки, таблицы */
+  --rr-r-xl: 18px;   /* меню, undo-бар */
+  --rr-r-pill: 999px;
+  --rr-shadow-1: 0 0 0 1px rgba(31, 27, 22, 0.05), 0 1px 2px rgba(31, 27, 22, 0.06);
+  --rr-shadow-2: 0 1px 2px rgba(31, 27, 22, 0.06), 0 10px 40px rgba(31, 27, 22, 0.08);
+
+  /* ---------- движение ---------- */
+  --dur-fast: 120ms; --dur: 180ms; --dur-slow: 240ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --undo-ms: 5000ms;
+
+  /* ---------- слои ---------- */
+  --z-bar: 10; --z-sheet: 15; --z-menu: 20; --z-undo: 30; --z-modal: 40;
+
+  /* ---------- сетка ---------- */
+  --rr-container: 1248px;
+  --rr-bar-h: 56px;
+  --rr-tabbar-h: 56px;
+
+}
+
+/* ---------- тёмная тема: ThemeService ставит data-theme (и в режиме «как в системе») ---------- */
+[data-theme='dark'] {
+  --rr-bg: #16140f;
+  --rr-bg-accent: #1b1813;
+  --rr-surface: #1e1b16;
+  --rr-surface-2: #262219;
+  --rr-surface-raised: #2a2620;
+  --rr-ink: #ece7de;
+  --rr-ink-2: #b5ada0;
+  --rr-ink-3: #948c7f;
+  --rr-ink-inverse: #16140f;
+  --rr-line: #33302a;
+  --rr-line-strong: #45413a;
+  --rr-accent: #2a6b54;
+  --rr-accent-hover: #245c48;
+  --rr-accent-text: #7bbf9f;
+  --rr-accent-soft: #1c3328;
+  --rr-accent-ink: #ffffff;
+  --rr-focus: #9fd6bd;
+  --rr-danger: #e0847a;
+  --rr-scrim: rgba(0, 0, 0, 0.8);
+  --rr-thumb-bg: #2a2620;
+  --rr-wait-bg: #3a2d14;   --rr-wait-ink: #e3b76a;   --rr-wait-dot: #d4a24f;
+  --rr-work-bg: #1c2f40;   --rr-work-ink: #9cc1e3;   --rr-work-dot: #7fb0dc;
+  --rr-muted-bg: #2c2822;  --rr-muted-ink: #b5ada0;  --rr-muted-dot: #8f877a;
+  --rr-ok-bg: #1c3328;     --rr-ok-ink: #8fd1b0;     --rr-ok-dot: #6fb597;
+  --rr-danger-bg: #3e1f1a; --rr-danger-ink: #f0a094; --rr-danger-dot: #e0847a;
+  --rr-glass-bg: rgba(30, 27, 22, 0.82);
+  --rr-glass-line: rgba(255, 253, 248, 0.1);
+  --rr-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 32px rgba(0, 0, 0, 0.5);
+  --rr-shadow-1: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --rr-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--rr-bg);
+  color: var(--rr-ink);
+  font-family: var(--rr-font);
+}

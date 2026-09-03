@@ -4,48 +4,32 @@ import { PHASE_EXTRA } from '../core/copy';
 export type PhaseTone = 'wait' | 'work' | 'muted';
 
 /**
- * Фазовая строка: стекло, липкая к низу окна. Текст меняется через fade 180 мс.
- * Ошибка — та же строка с текстовой кнопкой «Запустить снова», не тост.
+ * Фазовая строка в подвале карточки: точка, короткий текст, при ошибке — «Запустить снова».
+ * Текст меняется через fade 180 мс. Не тост и не лог.
  */
 @Component({
   selector: 'rr-phase-line',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'phase-wrap' },
+  host: { class: 'phase', role: 'status', 'aria-live': 'polite' },
   template: `
-    <div class="glass glass--pill phase" role="status" aria-live="polite">
-      <span class="dot" [class.dot--pulse]="pulse()" [class.dot--work]="tone() === 'work'" [class.dot--muted]="tone() === 'muted'"></span>
-      <span class="phase__text fade" [style.opacity]="visible() ? 1 : 0">{{ shown() }}</span>
-      @if (retryable()) {
-        <button type="button" class="btn btn--text" (click)="retry.emit()">{{ retryLabel }}</button>
-      }
-    </div>
+    <span class="dot" [class.dot--pulse]="pulse()" [class.dot--work]="tone() === 'work'" [class.dot--muted]="tone() === 'muted'"></span>
+    <span class="phase__text fade" [style.opacity]="visible() ? 1 : 0">{{ shown() }}</span>
+    @if (retryable()) {
+      <button type="button" class="btn btn--text" (click)="retry.emit()">{{ retryLabel }}</button>
+    }
   `,
   styles: `
     :host {
-      position: sticky;
-      bottom: 0;
-      z-index: 4;
-      display: flex;
-      justify-content: center;
-      padding: 16px 0 20px;
-      margin-top: auto;
-      pointer-events: none;
-    }
-    .phase {
-      pointer-events: auto;
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      height: 36px;
-      padding: 0 16px 0 14px;
-      width: max-content;
-      max-width: calc(100vw - 32px);
+      min-height: 36px;
+      max-width: 100%;
     }
     .phase__text {
-      font-size: 13px;
-      line-height: 18px;
-      color: var(--rr-ink-soft);
-      white-space: nowrap;
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
+      color: var(--rr-ink-2);
       overflow: hidden;
       text-overflow: ellipsis;
     }

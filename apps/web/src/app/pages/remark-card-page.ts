@@ -1,13 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { Title } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
 import type { Remark, Screenshot, VerdictCode } from '../core/models';
-import { CARD, DECISION, EMPTY, PHASE_EXTRA, PHASE_TEXT, STATUS_LABEL, VERDICT_LABEL } from '../core/copy';
+import { APP_NAME, CARD, DECISION, EMPTY, PHASE_EXTRA, PHASE_TEXT, ROUND, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
+import { PendingActionService } from '../core/pending-action.service';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { TriageRun, TriageService } from '../core/triage.service';
+import { AppBar } from '../ui/app-bar';
 import { Citation } from '../ui/citation';
-import { DecisionMode, DecisionPanel, DecisionRecord } from '../ui/decision-panel';
-import { GlassHeader } from '../ui/glass-header';
+import { DecisionMode, DecisionPanel, DecisionPending, DecisionRecord } from '../ui/decision-panel';
 import { PhaseLine, PhaseTone } from '../ui/phase-line';
 import { Shot } from '../ui/shot';
 import { ShotViewer, ViewerFrame } from '../ui/shot-viewer';
@@ -16,32 +18,30 @@ import { StatusPill } from '../ui/status-pill';
 type Layout = 'running' | 'draft' | 'refuse' | 'retest-wait' | 'retest';
 type FileAction = 'attach' | 'retest';
 
-interface DraftPara {
-  head: string;
-  tail: string;
-}
+/** Пока сервер держит замечание в `triaging`, карточка перечитывает его раз в две секунды (до WS фазы 6). */
+const POLL_MS = 2000;
 
 /**
  * Карточка замечания — главный экран. Три колонки на бумаге: Улики | Черновик разбора | Ваше решение.
- * Режим выбирается по статусу × роли (артборды 3, 4, 4а, 4б, 4в, 5, 5а, 12). Данные и переходы — API.
+ * Режим выбирается по статусу × роли. Данные и переходы — API; решения уходят через PendingActionService.
  */
 @Component({
   selector: 'rr-remark-card-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, GlassHeader, Shot, StatusPill, Citation, DecisionPanel, PhaseLine, ShotViewer],
+  imports: [RouterLink, AppBar, Shot, StatusPill, Citation, DecisionPanel, PhaseLine, ShotViewer],
   template: `
     @if (remark(); as r) {
       @if (allowed()) {
         <div class="page">
-          <rr-glass-header [compact]="'Раунд ' + r.roundNumber + ' · № ' + r.number" />
-          <main class="page__body card-body">
+          <rr-app-bar [tabs]="false" />
+          <main id="main" class="page__body card-body">
             <a class="link card__back" [routerLink]="backLink()">{{ role() === 'developer' ? copy.backDev : copy.back }}</a>
             <article class="paper card" [attr.data-status]="r.status">
               <header class="card__head">
                 <span class="num card__n">№ {{ r.number }}</span>
                 <h1 class="card__title">{{ r.title }}</h1>
                 @if (showPill()) {
-                  <rr-status-pill class="card__pill" [status]="r.status" />
+                  <rr-status-pill class="card__pill" [status]="r.status" [dot]="true" />
                 }
                 <span class="meta card__meta">{{ metaLine() }}</span>
               </header>
@@ -53,14 +53,14 @@ interface DraftPara {
                   @if (layout() === 'retest' && frames().length > 1) {
                     <div class="frames" [class.frames--two]="frames().length === 2">
                       @for (f of frames(); track f.label; let i = $index) {
-                        <button type="button" class="frame" (click)="openViewer(i)">
+                        <button type="button" class="frame" [attr.aria-label]="f.label + ' · ' + copy.zoomOpen" (click)="openViewer(i)">
                           <rr-shot [variant]="f.variant" [src]="f.src" [zoom]="true" />
                           <span class="meta">{{ f.label }}</span>
                         </button>
                       }
                     </div>
                   } @else if (original(); as s) {
-                    <button type="button" class="frame" (click)="openViewer(0)">
+                    <button type="button" class="frame" [attr.aria-label]="copy.frame + ' · ' + copy.zoomOpen" (click)="openViewer(0)">
                       <rr-shot [variant]="s.variant ?? 'grey'" [src]="s.url" [zoom]="true" />
                       @if (layout() === 'retest-wait' || layout() === 'retest') {
                         <span class="meta">{{ copy.before }}</span>
@@ -68,7 +68,7 @@ interface DraftPara {
                     </button>
                     @if (layout() === 'retest-wait' && role() === 'business') {
                       <div class="attach">
-                        <button type="button" class="btn btn--secondary" [disabled]="busy()" (click)="pickFile('retest')">{{ decision.attachShot }}</button>
+                        <button type="button" class="btn btn--secondary" [class.btn--busy]="busy()" [disabled]="busy()" (click)="pickFile('retest')">{{ decision.attachShot }}</button>
                         <span class="meta">{{ decision.attachNewFrame }}</span>
                       </div>
                     }
@@ -113,11 +113,13 @@ interface DraftPara {
                         @if (r.seen) {
                           <div class="soft"><span class="seen">{{ copy.seen }}</span> {{ r.seen }}</div>
                         }
-                        <div class="draft" aria-live="polite">
-                          @for (p of draftView(); track $index) {
-                            <p class="draft__p">{{ p.head }}<span class="draft__tail">{{ p.tail }}</span></p>
-                          }
-                        </div>
+                        @if (!running()) {
+                          <div class="draft fade" [style.opacity]="draftVisible() ? 1 : 0" aria-live="polite">
+                            @for (p of r.draft; track $index) {
+                              <p class="draft__p">{{ p }}</p>
+                            }
+                          </div>
+                        }
                       }
                     }
                   </section>
@@ -131,28 +133,36 @@ interface DraftPara {
                       [mode]="mode"
                       [busy]="busy() || store.loading()"
                       [record]="record()"
+                      [pending]="pendingFor()"
                       [attachHint]="decision.attachFooterHint"
                       (verdict)="onVerdict($event)"
                       (rejectBinding)="onRejectBinding($event)"
                       (attach)="pickFile('attach')"
                       (close)="onClose()"
                       (notFixed)="onNotFixed()"
+                      (undo)="undo()"
                     />
                   } @else if (r.status === 'awaiting_pm' || r.status === 'triaging') {
                     <h2 class="col-title">{{ decision.title }}</h2>
                     <div class="soft">{{ copy.awaitingPmNote }}</div>
                   }
                   @if (role() === 'developer' && r.status === 'defect') {
-                    <button type="button" class="btn btn--primary btn--left dev-ready" [disabled]="store.loading()" (click)="onReady()">{{ decision.readyForRetest }}</button>
+                    @if (pendingFor(); as p) {
+                      <rr-decision-panel mode="record" [pending]="p" (undo)="undo()" />
+                    } @else {
+                      <button type="button" class="btn btn--primary btn--left dev-ready" [disabled]="store.loading()" (click)="onReady()">{{ decision.readyForRetest }}</button>
+                    }
                   }
                   @if (store.error(); as err) {
-                    <div class="card__error">{{ err }}</div>
+                    <div class="card__error" role="alert">{{ err }}</div>
                   }
                 </section>
               </div>
+
+              <footer class="card__foot">
+                <rr-phase-line [text]="phaseText()" [tone]="phaseTone()" [pulse]="phasePulse()" [retryable]="failed()" (retry)="onRetry()" />
+              </footer>
             </article>
-            <div class="card__spacer"></div>
-            <rr-phase-line [text]="phaseText()" [tone]="phaseTone()" [pulse]="phasePulse()" [retryable]="failed()" (retry)="onRetry()" />
           </main>
           <input #file type="file" class="visually-hidden" accept="image/*" (change)="onFile($event)" />
           @if (viewer() !== null) {
@@ -161,47 +171,49 @@ interface DraftPara {
         </div>
       } @else {
         <div class="page">
-          <rr-glass-header [brandOnly]="true" />
-          <main class="page__body denied">{{ empty.noAccess }}</main>
+          <rr-app-bar [brandOnly]="true" />
+          <main id="main" class="page__body denied">{{ empty.noAccess }}</main>
         </div>
       }
     } @else if (!store.loading()) {
       <div class="page">
-        <rr-glass-header [brandOnly]="true" />
-        <main class="page__body denied">{{ empty.noAccess }}</main>
+        <rr-app-bar [brandOnly]="true" />
+        <main id="main" class="page__body denied">{{ empty.noAccess }}</main>
       </div>
     }
   `,
   styles: `
     .card-body {
-      min-height: calc(100vh - 112px);
+      margin-bottom: var(--sp-8);
     }
     .card__back {
       display: inline-block;
-      margin-bottom: 12px;
+      margin-bottom: var(--sp-3);
       align-self: flex-start;
+      font-size: var(--fs-14);
     }
     .card {
-      padding: 24px 28px 28px;
+      padding: var(--sp-6) var(--sp-7) var(--sp-4);
     }
     .card__head {
       display: flex;
       align-items: baseline;
-      gap: 12px;
-      margin-bottom: 20px;
+      gap: var(--sp-3);
+      margin-bottom: var(--sp-5);
       flex-wrap: wrap;
     }
     .card__n {
-      font-size: 22px;
-      line-height: 28px;
-      font-weight: 600;
-      color: var(--rr-ink-soft);
+      font-size: var(--fs-22);
+      line-height: var(--lh-22);
+      font-weight: var(--fw-semibold);
+      color: var(--rr-ink-2);
     }
     .card__title {
       margin: 0;
-      font-size: 22px;
-      line-height: 28px;
-      font-weight: 600;
+      font-size: var(--fs-22);
+      line-height: var(--lh-22);
+      font-weight: var(--fw-semibold);
+      letter-spacing: -0.01em;
     }
     .card__pill {
       align-self: center;
@@ -212,7 +224,7 @@ interface DraftPara {
     .grid {
       display: grid;
       grid-template-columns: 1.15fr 1fr 0.85fr;
-      gap: 28px;
+      gap: var(--sp-7);
       align-items: start;
     }
     .grid--retest {
@@ -221,22 +233,22 @@ interface DraftPara {
     .col {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: var(--sp-3);
       min-width: 0;
     }
     .col--draft {
-      gap: 16px;
+      gap: var(--sp-4);
     }
     .col-title {
       margin: 0;
     }
     .col-title--gap {
-      margin-top: 8px;
+      margin-top: var(--sp-2);
     }
     .frame {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: var(--sp-2);
       padding: 0;
       border: 0;
       background: transparent;
@@ -244,11 +256,12 @@ interface DraftPara {
       cursor: zoom-in;
       width: 100%;
       color: var(--rr-ink);
+      border-radius: var(--rr-r-sm);
     }
     .frames {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
-      gap: 16px;
+      gap: var(--sp-4);
     }
     .frames--two {
       grid-template-columns: 1fr 1fr;
@@ -256,76 +269,81 @@ interface DraftPara {
     .attach {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      margin-top: 4px;
+      gap: var(--sp-2);
+      margin-top: var(--sp-1);
     }
     .no-shot {
       aspect-ratio: 4 / 3;
-      border-radius: 8px;
+      border-radius: var(--rr-r-sm);
       background: var(--rr-surface-2);
-      border: 1px dashed var(--rr-line);
+      border: 1px dashed var(--rr-line-strong);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--rr-muted);
-      font-size: 13px;
+      color: var(--rr-ink-3);
+      font-size: var(--fs-13);
     }
     .soft {
-      color: var(--rr-ink-soft);
+      color: var(--rr-ink-2);
     }
     .seen {
-      font-weight: 600;
+      font-weight: var(--fw-semibold);
       color: var(--rr-ink);
     }
     .refuse {
-      font-size: 15px;
-      line-height: 22px;
-      font-weight: 600;
+      font-size: var(--fs-16);
+      line-height: var(--lh-16);
+      font-weight: var(--fw-semibold);
     }
     .draft {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      min-height: 80px;
+      gap: var(--sp-2);
+      color: var(--rr-ink-2);
     }
     .draft__p {
       margin: 0;
     }
-    .draft__tail {
-      color: var(--rr-muted);
+    .draft__p:first-child {
+      color: var(--rr-ink);
+      font-weight: var(--fw-medium);
     }
     .retest-draft {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: var(--sp-3);
       max-width: 640px;
     }
     .retest-draft__verdict {
-      font-size: 15px;
-      line-height: 22px;
-      font-weight: 600;
+      font-size: var(--fs-16);
+      line-height: var(--lh-16);
+      font-weight: var(--fw-semibold);
     }
     .col-title--decision {
       margin-bottom: 0;
     }
     .dev-ready {
-      margin-top: 8px;
+      margin-top: var(--sp-2);
     }
     .card__error {
-      font-size: 13px;
-      line-height: 18px;
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
       color: var(--rr-danger);
     }
-    .card__spacer {
-      height: 24px;
+    .card__foot {
+      margin-top: var(--sp-6);
+      padding-top: var(--sp-2);
+      border-top: 1px solid var(--rr-line);
+      display: flex;
+      align-items: center;
     }
     .denied {
       align-items: center;
       justify-content: center;
-      font-size: 22px;
-      line-height: 28px;
-      font-weight: 600;
-      color: var(--rr-ink-soft);
+      font-size: var(--fs-22);
+      line-height: var(--lh-22);
+      font-weight: var(--fw-semibold);
+      color: var(--rr-ink-2);
       min-height: calc(100vh - 112px);
     }
     @media (max-width: 960px) {
@@ -340,22 +358,56 @@ interface DraftPara {
     }
     @media (max-width: 720px) {
       .card {
-        padding: 16px;
+        padding: var(--sp-4) var(--sp-4) var(--sp-3);
       }
       .card__n,
       .card__title {
-        font-size: 18px;
-        line-height: 24px;
+        font-size: var(--fs-18);
+        line-height: var(--lh-18);
       }
       .card__meta {
         margin-left: 0;
         flex-basis: 100%;
       }
-      .col-title--decision {
+      /* панель решения липнет к низу внутри потока: ничего не перекрывает */
+      .col--decision {
+        position: sticky;
+        bottom: 0;
+        z-index: var(--z-sheet);
+        margin: 0 calc(-1 * var(--sp-4));
+        padding: var(--sp-3) var(--sp-4);
+        background: var(--rr-glass-bg);
+        -webkit-backdrop-filter: blur(16px) saturate(140%);
+        backdrop-filter: blur(16px) saturate(140%);
+        border-top: 1px solid var(--rr-line);
+      }
+    }
+    @media print {
+      .card__back,
+      rr-decision-panel,
+      rr-phase-line,
+      .card__foot,
+      .attach {
+        display: none !important;
+      }
+      .grid,
+      .grid--retest {
+        display: block;
+      }
+      .col {
+        break-inside: avoid;
+        margin-bottom: var(--sp-4);
+      }
+      .col--decision {
         display: none;
       }
-      .card__spacer {
-        height: 240px;
+      .card {
+        box-shadow: none;
+        border: 0;
+        padding: 0;
+      }
+      .frame {
+        cursor: default;
       }
     }
   `,
@@ -364,12 +416,15 @@ export class RemarkCardPage {
   readonly projectId = input.required<string>();
   readonly round = input.required<string>();
   readonly remarkId = input.required<string>();
-  /** ?run=1 — проиграть показ фаз и печати черновика (демо артборда 3). */
+  /** ?run=1 — короткий показ фаз разбора (после «Сохранить» у бизнеса). */
   readonly run = input<string>();
 
   protected readonly store = inject(RemarksStore);
   private readonly session = inject(SessionService);
   private readonly triage = inject(TriageService);
+  private readonly actions = inject(PendingActionService);
+  private readonly title = inject(Title);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly copy = CARD;
   protected readonly decision = DECISION;
@@ -383,6 +438,7 @@ export class RemarkCardPage {
   private readonly startedFor = new Set<string>();
   private fileAction: FileAction | null = null;
   private fileInput: HTMLInputElement | null = null;
+  private poll: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     effect(() => {
@@ -403,12 +459,37 @@ export class RemarkCardPage {
         const shouldStart = (remark.status === 'triaging' || wantRun) && !this.startedFor.has(key);
         if (shouldStart) {
           this.startedFor.add(key);
-          this.runSig.set(this.triage.start(remark));
-        } else if (!this.runSig()) {
+          this.runSig.set(this.triage.start(remark, wantRun));
+        } else if (!this.runSig() || this.runSig()!.remarkId !== id) {
           this.runSig.set(this.triage.runFor(id) ?? null);
         }
       });
     });
+    // Сервер вышел из `triaging` — показ фаз заканчивается, черновик проявляется.
+    effect(() => {
+      const status = this.remark()?.status;
+      const run = this.runSig();
+      untracked(() => {
+        if (run && run.analyzing() && !run.demo && status && status !== 'triaging') run.finish();
+      });
+    });
+    effect(() => {
+      const triaging = this.remark()?.status === 'triaging';
+      untracked(() => this.pollWhileTriaging(triaging));
+    });
+    effect(() => {
+      const r = this.remark();
+      if (r) this.title.setTitle(`${TITLE.remark(r.number, r.title)} — ${APP_NAME}`);
+    });
+    this.destroyRef.onDestroy(() => this.pollWhileTriaging(false));
+  }
+
+  /** До WS (фаза 6): пока сервер разбирает, перечитываем замечание. Один метод — одно место для замены. */
+  private pollWhileTriaging(on: boolean): void {
+    if (this.poll) clearInterval(this.poll);
+    this.poll = null;
+    if (!on) return;
+    this.poll = setInterval(() => void this.store.loadRemark(this.projectId(), this.remarkId()), POLL_MS);
   }
 
   // ---------- доступ и режимы ----------
@@ -425,6 +506,12 @@ export class RemarkCardPage {
   protected readonly failed = computed(() => this.runSig()?.failed() ?? false);
   protected readonly busy = computed(() => this.runSig()?.busy() ?? false);
   protected readonly quoteVisible = computed(() => this.runSig()?.quoteVisible() ?? true);
+  protected readonly draftVisible = computed(() => this.runSig()?.draftVisible() ?? true);
+
+  protected readonly pendingFor = computed<DecisionPending | null>(() => {
+    const p = this.actions.pendingFor(this.remarkId());
+    return p ? { label: p.label, committing: this.actions.committing() } : null;
+  });
 
   protected readonly layout = computed<Layout>(() => {
     const r = this.remark()!;
@@ -476,10 +563,11 @@ export class RemarkCardPage {
 
   protected readonly metaLine = computed(() => {
     const r = this.remark()!;
+    const round = ROUND.label(r.roundNumber);
     if (r.status === 'ready_for_retest' || r.status === 'awaiting_business_close' || r.status === 'closed') {
-      return `${CARD.fixedBy(r.fixedByName ?? '')} · Раунд ${r.roundNumber}`;
+      return `${CARD.fixedBy(r.fixedByName ?? '')} · ${round}`;
     }
-    return `${CARD.where} ${r.pageOrScreen} · ${CARD.addedBy(r.authorName ?? '')} · Раунд ${r.roundNumber}`;
+    return `${CARD.where} ${r.pageOrScreen} · ${CARD.addedBy(r.authorName ?? '')} · ${round}`;
   });
 
   // ---------- улики ----------
@@ -511,21 +599,6 @@ export class RemarkCardPage {
   protected readonly otherCitations = computed(() => this.remark()!.citations.filter((c) => c.source !== 'spec'));
   protected readonly documentsLink = computed(() => ['/p', this.projectId(), 'documents']);
 
-  protected readonly draftView = computed<DraftPara[]>(() => {
-    const paras = this.remark()!.draft;
-    const run = this.runSig();
-    if (!run || !this.running()) return paras.map((p) => ({ head: p, tail: '' }));
-    let left = run.typed();
-    return paras.map((p) => {
-      const words = p.split(' ');
-      const n = Math.min(left, words.length);
-      left -= n;
-      const complete = n === words.length && left > 0;
-      const cut = complete ? n : Math.max(0, n - 5);
-      return { head: words.slice(0, cut).join(' ') + (cut < n ? ' ' : ''), tail: words.slice(cut, n).join(' ') };
-    });
-  });
-
   protected readonly retestVerdict = computed(() => {
     switch (this.remark()!.retest?.outcome) {
       case 'likely_addressed':
@@ -544,6 +617,7 @@ export class RemarkCardPage {
     const run = this.runSig();
     const role = this.role();
     if (run && (this.running() || run.busy())) return PHASE_TEXT[run.phase()];
+    if (this.failed()) return PHASE_TEXT.failed;
     switch (r.status) {
       case 'awaiting_pm':
         return role === 'pm' ? PHASE_TEXT.awaiting_pm : PHASE_EXTRA.awaitingPmOther;
@@ -575,17 +649,38 @@ export class RemarkCardPage {
 
   protected readonly phasePulse = computed(() => this.phaseTone() === 'wait' && !this.failed());
 
-  // ---------- действия ----------
+  // ---------- действия: необратимые уходят через 5 секунд с «Отменить» ----------
 
   protected onVerdict(e: { code: Exclude<VerdictCode, 'rejected_binding'>; comment: string }): void {
-    void this.store.verdict(this.remarkId(), e.code, e.comment);
+    const id = this.remarkId();
+    this.actions.schedule({ remarkId: id, label: VERDICT_LABEL[e.code], inline: true, commit: () => this.store.verdict(id, e.code, e.comment) });
   }
 
+  protected onClose(): void {
+    const id = this.remarkId();
+    this.actions.schedule({ remarkId: id, label: DECISION.closeFixed, inline: true, commit: () => this.store.close(id) });
+  }
+
+  protected onNotFixed(): void {
+    const id = this.remarkId();
+    this.actions.schedule({ remarkId: id, label: DECISION.notFixed, inline: true, commit: () => this.store.notFixed(id) });
+  }
+
+  protected onReady(): void {
+    const id = this.remarkId();
+    this.actions.schedule({ remarkId: id, label: DECISION.readyForRetest, inline: true, commit: () => this.store.readyForRetest(id) });
+  }
+
+  protected undo(): void {
+    this.actions.cancel();
+  }
+
+  /** «Не та цитата» обратима по смыслу — идёт сразу, без отмены. */
   protected onRejectBinding(comment: string): void {
     const remark = this.remark()!;
     const run = this.triage.idle(remark);
     this.runSig.set(run);
-    run.requote(() => void this.store.rejectBinding(remark.id, comment));
+    void run.requote(() => this.store.rejectBinding(remark.id, comment));
   }
 
   protected pickFile(action: FileAction): void {
@@ -605,24 +700,12 @@ export class RemarkCardPage {
     if (action === 'attach') {
       await this.store.attachShot(remark.id, file);
       this.startedFor.clear();
-      this.runSig.set(this.triage.start(this.remark()!));
+      this.runSig.set(this.triage.start(this.remark()!, true));
       return;
     }
     const run = this.triage.idle(remark);
     this.runSig.set(run);
-    run.diff(() => void this.store.retest(remark.id, file));
-  }
-
-  protected onClose(): void {
-    void this.store.close(this.remarkId());
-  }
-
-  protected onNotFixed(): void {
-    void this.store.notFixed(this.remarkId());
-  }
-
-  protected onReady(): void {
-    void this.store.readyForRetest(this.remarkId());
+    void run.diff(() => this.store.retest(remark.id, file));
   }
 
   protected onRetry(): void {

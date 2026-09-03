@@ -136,6 +136,7 @@ export const CARD = {
   frame: 'Кадр',
   viewerClose: 'Закрыть',
   awaitingPmNote: 'Решение принимает руководитель приёмки.',
+  zoomOpen: 'Открыть кадр',
 };
 
 export const JOURNAL = {
@@ -155,6 +156,42 @@ export const NAV = {
   addRemark: 'Добавить замечание',
   logout: 'Выйти',
   switchUser: 'Сменить пользователя',
+  skip: 'К содержимому',
+  sections: 'Разделы',
+  menu: 'Меню',
+  project: 'Проект',
+  round: 'Раунд',
+  theme: 'Тема',
+  themeAuto: 'Как в системе',
+  themeLight: 'Светлая',
+  themeDark: 'Тёмная',
+};
+
+/** Служебные подписи (добавлены при переработке UI, см. docs/ui/COPY.md). */
+export const COMMON = {
+  undo: 'Отменить',
+  retry: 'Повторить',
+  loading: 'Загружаем…',
+};
+
+export const ERROR = {
+  load: 'Не удалось загрузить',
+  request: 'Ошибка запроса',
+};
+
+export const ROUND = {
+  label: (n: number) => `Раунд ${n}`,
+  closed: 'закрыт',
+};
+
+export const TITLE = {
+  journal: (n: number | null) => (n ? `Журнал · Раунд ${n}` : 'Журнал'),
+  remark: (n: number, title: string) => `№ ${n} · ${title}`,
+};
+
+export const VIEWER = {
+  zoomIn: 'Увеличить',
+  zoomOut: 'Уменьшить',
 };
 
 export const PRESENCE = {
@@ -167,9 +204,6 @@ export const ROLE_GENITIVE: Record<Role, string> = {
   developer: 'разработчик',
   admin: 'настраивает проект',
 };
-
-/** Присутствие до фазы 6 (WS presence) — демо-значение для экранов PM. */
-export const PRESENCE_DEMO = { initial: 'А', name: 'Айгерим', roleGenitive: 'принимает работу' };
 
 export const LOGIN_EXTRA = { demoPassword: 'пароль remarkround' };
 
@@ -190,6 +224,7 @@ export const IMPORT = {
   title: 'Журнал замечаний из файла',
   drop: 'Перетащите файл журнала сюда',
   dropHint: '.xlsx или .csv по шаблону',
+  dropOver: 'Отпустите, чтобы загрузить',
   template: 'Скачать шаблон журнала',
   upload: 'Загрузить файл',
   after: (fileName: string) => `После загрузки · ${fileName}`,
@@ -238,6 +273,9 @@ export const NEW_REMARK = {
 };
 
 export const LOGIN = {
+  pageTitle: 'Вход',
+  showPassword: 'Показать пароль',
+  hidePassword: 'Скрыть пароль',
   email: 'E-mail',
   password: 'Пароль',
   submit: 'Войти',

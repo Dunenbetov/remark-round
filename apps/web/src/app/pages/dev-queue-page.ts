@@ -1,27 +1,38 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, untracked } from '@angular/core';
-import { Router } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import type { Remark } from '../core/models';
-import { CARD, DECISION, DEV_QUEUE, EMPTY } from '../core/copy';
+import { CARD, DECISION, DEV_QUEUE, EMPTY, ROLE_TITLE } from '../core/copy';
+import { PendingActionService } from '../core/pending-action.service';
 import { RemarksStore } from '../core/remarks.store';
-import { GlassHeader } from '../ui/glass-header';
+import { AppBar } from '../ui/app-bar';
+import { EmptyState } from '../ui/empty-state';
+import { ErrorBanner } from '../ui/error-banner';
+import { PageHeader } from '../ui/page-header';
 import { Shot } from '../ui/shot';
+import { Skeleton } from '../ui/skeleton';
 import { StatusPill } from '../ui/status-pill';
 
 /** Очередь разработчика: только принятые поломки. Кнопки «Закрыть» нет. */
 @Component({
   selector: 'rr-dev-queue-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [GlassHeader, Shot, StatusPill],
+  imports: [RouterLink, AppBar, PageHeader, ErrorBanner, EmptyState, Skeleton, Shot, StatusPill],
   template: `
     <div class="page">
-      <rr-glass-header [presence]="false" />
-      <main class="page__body page__body--loose queue">
-        <p class="queue__subtitle">{{ subtitle }}</p>
+      <rr-app-bar />
+      <main id="main" class="page__body page__body--loose queue">
+        <rr-page-header [title]="roleTitle" [subtitle]="subtitle" />
+        @if (store.error(); as err) {
+          <rr-error-banner [message]="err" [busy]="store.loading()" (retry)="reload()" />
+        }
+        @if (store.loading() && !store.devQueue().length && !store.error()) {
+          <rr-skeleton kind="cards" [rows]="3" />
+        }
         @for (r of store.devQueue(); track r.id) {
-          <div class="paper item" [attr.data-status]="r.status" (click)="open(r)" role="link" tabindex="0" (keydown.enter)="open(r)">
+          <article class="paper item" [attr.data-status]="r.status">
             <span class="num item__n">{{ r.number }}</span>
             <div class="item__text">
-              <div class="item__title">{{ r.title }}</div>
+              <h2 class="item__title"><a class="row-link" [routerLink]="cardLink(r)">{{ r.title }}</a></h2>
               <div class="meta">{{ copy.where }} {{ r.pageOrScreen }}@if (r.devNote) { · {{ r.devNote }}}</div>
             </div>
             <span class="tag">{{ section(r) }}</span>
@@ -32,49 +43,52 @@ import { StatusPill } from '../ui/status-pill';
             }
             <span class="item__action">
               @if (r.status === 'defect') {
-                <button type="button" class="btn btn--primary" (click)="ready($event, r)">{{ readyLabel }}</button>
+                <button type="button" class="btn btn--primary act" [disabled]="store.loading() || !!actions.pendingFor(r.id)" (click)="ready(r)">{{ readyLabel }}</button>
               } @else {
-                <rr-status-pill [status]="r.status" />
+                <rr-status-pill [status]="r.status" [dot]="true" />
               }
             </span>
-          </div>
+          </article>
         } @empty {
-          <div class="paper empty">{{ store.loading() ? '' : empty }}</div>
+          @if (!store.loading() && !store.error()) {
+            <rr-empty-state [title]="empty" />
+          }
         }
       </main>
     </div>
   `,
   styles: `
     .queue {
-      gap: 16px;
-    }
-    .queue__subtitle {
-      margin: 0;
-      color: var(--rr-ink-soft);
-      max-width: 720px;
+      gap: var(--sp-4);
     }
     .item {
-      padding: 20px 24px;
+      position: relative;
+      padding: var(--sp-5) var(--sp-6);
       display: grid;
       grid-template-columns: 72px 1fr 160px 200px 260px;
-      gap: 16px;
+      gap: var(--sp-4);
       align-items: center;
-      cursor: pointer;
+      transition: background-color var(--dur-fast) var(--ease);
     }
     .item:hover {
       background: var(--rr-surface-2);
     }
+    .item:has(.row-link:focus-visible) {
+      outline: 2px solid var(--rr-focus);
+      outline-offset: 2px;
+    }
     .item__n {
-      color: var(--rr-ink-soft);
-      font-size: 15px;
+      color: var(--rr-ink-2);
+      font-size: var(--fs-16);
     }
     .item__text {
       min-width: 0;
     }
     .item__title {
-      font-weight: 600;
-      font-size: 15px;
-      line-height: 22px;
+      margin: 0;
+      font-weight: var(--fw-semibold);
+      font-size: var(--fs-16);
+      line-height: var(--lh-16);
     }
     .item__action {
       display: flex;
@@ -102,9 +116,10 @@ export class DevQueuePage {
   readonly projectId = input.required<string>();
 
   protected readonly store = inject(RemarksStore);
-  private readonly router = inject(Router);
+  protected readonly actions = inject(PendingActionService);
 
   protected readonly copy = CARD;
+  protected readonly roleTitle = ROLE_TITLE.developer;
   protected readonly subtitle = DEV_QUEUE.subtitle;
   protected readonly readyLabel = DECISION.readyForRetest;
   protected readonly empty = EMPTY.devEmpty;
@@ -116,18 +131,22 @@ export class DevQueuePage {
     });
   }
 
+  protected reload(): void {
+    void this.store.loadDevQueue(this.projectId());
+  }
+
   protected section(r: Remark): string {
     const spec = r.citations.find((c) => c.source === 'spec' && c.section);
     const number = spec?.section ? /§\S+/.exec(spec.section)?.[0] : null;
     return number ? `ТЗ ${number}` : 'ТЗ';
   }
 
-  protected open(r: Remark): void {
-    void this.router.navigate(['/p', this.projectId(), 'r', r.roundNumber, 'remarks', r.id]);
+  protected cardLink(r: Remark): unknown[] {
+    return ['/p', this.projectId(), 'r', r.roundNumber, 'remarks', r.id];
   }
 
-  protected ready(e: Event, r: Remark): void {
-    e.stopPropagation();
-    void this.store.readyForRetest(r.id);
+  /** «Готово, можно смотреть снова» уходит через 5 секунд — внизу полоса с «Отменить». */
+  protected ready(r: Remark): void {
+    this.actions.schedule({ remarkId: r.id, label: DECISION.readyForRetest, inline: false, commit: () => this.store.readyForRetest(r.id) });
   }
 }

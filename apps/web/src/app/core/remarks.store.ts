@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { DocumentKind, NewRemarkDto, ProjectDocument, Remark, Round, VerdictCode } from './models';
 import { ApiDocument, ApiService } from './api.service';
+import { ERROR } from './copy';
 import { SessionService } from './session.service';
 
 const DOC_LABEL: Record<DocumentKind, string> = {
@@ -192,7 +193,7 @@ export class RemarksStore {
     try {
       return await fn();
     } catch (e) {
-      const message = (e as { error?: { message?: string | string[] }; message?: string }).error?.message ?? (e as Error).message ?? 'Ошибка запроса';
+      const message = (e as { error?: { message?: string | string[] }; message?: string }).error?.message ?? (e as Error).message ?? ERROR.request;
       this.error.set(Array.isArray(message) ? message.join(', ') : String(message));
       return null;
     } finally {

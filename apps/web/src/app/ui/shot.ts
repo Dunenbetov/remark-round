@@ -53,8 +53,8 @@ import type { ShotVariant } from '../core/models';
       container-type: inline-size;
       width: 100%;
       aspect-ratio: 4 / 3;
-      background: #f4f3f1;
-      border-radius: 8px;
+      background: var(--rr-thumb-bg);
+      border-radius: var(--rr-r-sm);
       overflow: hidden;
       position: relative;
       border: 1px solid var(--rr-line);
@@ -67,7 +67,7 @@ import type { ShotVariant } from '../core/models';
       width: 100%;
       height: 100%;
       object-fit: contain;
-      background: #f4f3f1;
+      background: var(--rr-thumb-bg);
     }
     .shot__loading {
       position: absolute;
@@ -146,15 +146,27 @@ import type { ShotVariant } from '../core/models';
       position: absolute;
       top: 8px;
       right: 8px;
-      width: 24px;
-      height: 24px;
-      border-radius: 999px;
-      background: rgba(255, 253, 248, 0.92);
-      border: 1px solid rgba(31, 27, 22, 0.08);
+      width: 28px;
+      height: 28px;
+      border-radius: var(--rr-r-pill);
+      background: rgba(255, 253, 248, 0.94);
+      border: 1px solid rgba(31, 27, 22, 0.1);
+      box-shadow: 0 1px 3px rgba(31, 27, 22, 0.12);
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--rr-ink);
+      color: #1f1b16;
+      opacity: 0;
+      transition: opacity var(--dur-fast) var(--ease);
+    }
+    :host-context(.frame:hover) .shot__zoom,
+    :host-context(.frame:focus-visible) .shot__zoom {
+      opacity: 1;
+    }
+    @media (hover: none) {
+      .shot__zoom {
+        opacity: 1;
+      }
     }
   `,
 })

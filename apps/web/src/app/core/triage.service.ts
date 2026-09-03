@@ -1,121 +1,99 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { Phase, Remark } from './models';
 
-/** Тайминги из дизайна (артборд 3 и «Живое поведение»). */
-const PHASE_MS = 1500;
-const DRAFTING_MS = 3000;
-const WORD_MS = 130;
+/** Фазы идут по 200 мс — только чтобы человек успел прочитать строку. Печати по словам нет. */
+const STEP_MS = 200;
 const FADE_MS = 180;
-const DIFF_MS = 1500;
 
-const RUN_PHASES: Phase[] = ['retrieving', 'vision', 'binding', 'drafting', 'awaiting_pm'];
+const RUN_PHASES: Phase[] = ['retrieving', 'vision', 'binding', 'drafting'];
 
 /**
  * Один прогон по замечанию. Сигналы читает карточка; таймеры живут здесь.
- * Форма событий повторяет docs/WS.md (run.phase / run.token / run.persisted / run.failed),
- * чтобы в фазе 6 подменить на WS без правок карточки.
+ * Форма повторяет docs/WS.md (run.phase / run.persisted / run.failed): в фазе 6
+ * `applyEvent(ServerEvent)` заменит таймеры, карточка не меняется.
  */
 export class TriageRun {
   readonly phase = signal<Phase>('retrieving');
-  /** Сколько слов черновика уже «напечатано». */
-  readonly typed = signal(0);
-  /** Кнопки решения гаснут на время повторного поиска цитаты. */
+  /** Кнопки решения гаснут на время повторного поиска цитаты или диффа. */
   readonly busy = signal(false);
   /** Цитата уходит и приходит с fade. */
   readonly quoteVisible = signal(true);
-  /** Идёт разбор (фазы + печать черновика). Повторный поиск цитаты и дифф сюда не входят. */
+  /** Идёт разбор: фазы показываются, черновик скрыт. */
   readonly analyzing = signal(false);
+  /** Черновик появляется с fade 180 мс, когда разбор закончен. */
+  readonly draftVisible = signal(true);
 
-  readonly words: string[][];
-  readonly totalWords: number;
   readonly failed = computed(() => this.phase() === 'failed');
-  readonly done = computed(() => this.phase() === 'awaiting_pm' && this.typed() >= this.totalWords);
 
   private timers: ReturnType<typeof setTimeout>[] = [];
-  private typer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     readonly remarkId: string,
-    draft: string[],
-    private readonly onPersisted: () => void,
-  ) {
-    this.words = draft.map((p) => p.split(' '));
-    this.totalWords = this.words.reduce((n, w) => n + w.length, 0);
-  }
+    /** Демо (?run=1): прогон заканчивается сам; иначе ждём, пока сервер выйдет из `triaging`. */
+    readonly demo: boolean,
+  ) {}
 
   start(): void {
     this.clear();
     this.analyzing.set(true);
+    this.draftVisible.set(false);
     this.phase.set('retrieving');
-    this.typed.set(0);
-    let t = 0;
     RUN_PHASES.forEach((phase, i) => {
-      if (i === 0) return;
-      const prev = RUN_PHASES[i - 1];
-      t += prev === 'drafting' ? DRAFTING_MS : PHASE_MS;
-      this.after(t, () => {
-        this.phase.set(phase);
-        if (phase === 'binding') this.startTyping();
-        if (phase === 'awaiting_pm') {
-          this.typed.set(this.totalWords);
-          this.analyzing.set(false);
-          this.onPersisted();
-        }
-      });
+      if (i) this.after(i * STEP_MS, () => this.phase.set(phase));
     });
+    if (this.demo) this.after(RUN_PHASES.length * STEP_MS + STEP_MS, () => this.finish());
   }
 
-  /** Демо ошибки: строка «Не получилось разобрать. Можно запустить снова». */
+  /** Сервер записал результат: черновик проявляется, кнопки доступны. */
+  finish(): void {
+    this.clear();
+    this.phase.set('awaiting_pm');
+    this.analyzing.set(false);
+    this.after(16, () => this.draftVisible.set(true));
+  }
+
+  /** Строка «Не получилось разобрать. Можно запустить снова». */
   fail(): void {
     this.clear();
     this.phase.set('failed');
+    this.analyzing.set(false);
+    this.draftVisible.set(true);
   }
 
   retry(): void {
     this.start();
   }
 
-  /** «Не та цитата из ТЗ» с комментарием: та же карточка, без перезагрузки. */
-  requote(swapCitation: () => void): void {
+  /** «Не та цитата из ТЗ» с комментарием: та же карточка, цитата меняется без перезагрузки. */
+  async requote(swapCitation: () => Promise<void>): Promise<void> {
     if (this.busy()) return;
     this.busy.set(true);
-    this.after(FADE_MS, () => this.phase.set('rebinding'));
-    this.after(900, () => this.quoteVisible.set(false));
-    this.after(1100, () => {
-      swapCitation();
+    this.phase.set('rebinding');
+    this.quoteVisible.set(false);
+    try {
+      await Promise.all([swapCitation(), wait(FADE_MS)]);
+    } finally {
       this.quoteVisible.set(true);
-    });
-    this.after(1300, () => {
       this.phase.set('awaiting_pm');
       this.busy.set(false);
-    });
+    }
   }
 
   /** Ретест: «Сравниваем кадры…» → результат в хранилище. */
-  diff(complete: () => void): void {
+  async diff(complete: () => Promise<void>): Promise<void> {
+    if (this.busy()) return;
     this.busy.set(true);
     this.phase.set('diffing');
-    this.after(DIFF_MS, () => {
-      complete();
+    try {
+      await complete();
+    } finally {
       this.phase.set('awaiting_business_close');
       this.busy.set(false);
-    });
+    }
   }
 
   cancel(): void {
     this.clear();
-  }
-
-  private startTyping(): void {
-    if (this.typer) clearInterval(this.typer);
-    this.typer = setInterval(() => {
-      if (this.typed() >= this.totalWords) {
-        if (this.typer) clearInterval(this.typer);
-        this.typer = null;
-        return;
-      }
-      this.typed.update((n) => n + 1);
-    }, WORD_MS);
   }
 
   private after(ms: number, fn: () => void): void {
@@ -125,16 +103,16 @@ export class TriageRun {
   private clear(): void {
     this.timers.forEach(clearTimeout);
     this.timers = [];
-    if (this.typer) clearInterval(this.typer);
-    this.typer = null;
-    this.busy.set(false);
-    this.quoteVisible.set(true);
   }
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Пока разбор на сервере синхронный (заглушка фазы 3), прогон здесь — только показ фаз
- * и печати черновика, который уже пришёл из API. В фазе 6 фазы придут по WS.
+ * Пока разбор на сервере синхронный (заглушка фазы 3), прогон здесь — только показ фаз.
+ * В фазе 6 фазы придут по WS.
  */
 @Injectable({ providedIn: 'root' })
 export class TriageService {
@@ -145,10 +123,10 @@ export class TriageService {
     return this.runs.get(remarkId);
   }
 
-  /** Запустить (или перезапустить) разбор. По окончании статус становится awaiting_pm. */
-  start(remark: Remark): TriageRun {
+  /** Запустить (или перезапустить) показ разбора. */
+  start(remark: Remark, demo = false): TriageRun {
     this.runs.get(remark.id)?.cancel();
-    const run = new TriageRun(remark.id, remark.draft, () => undefined);
+    const run = new TriageRun(remark.id, demo);
     this.runs.set(remark.id, run);
     run.start();
     return run;
@@ -158,9 +136,8 @@ export class TriageService {
   idle(remark: Remark): TriageRun {
     const existing = this.runs.get(remark.id);
     if (existing) return existing;
-    const run = new TriageRun(remark.id, remark.draft, () => undefined);
+    const run = new TriageRun(remark.id, false);
     run.phase.set('awaiting_pm');
-    run.typed.set(run.totalWords);
     this.runs.set(remark.id, run);
     return run;
   }

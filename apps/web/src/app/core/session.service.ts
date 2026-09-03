@@ -2,6 +2,7 @@ import { Injectable, computed, signal } from '@angular/core';
 import type { Membership, Role, Session, User } from './models';
 
 const STORAGE_KEY = 'rr.session';
+const PROJECT_KEY = 'rr.project';
 
 /** Сессия из POST /auth/login: токен, пользователь, его membership по проектам. */
 @Injectable({ providedIn: 'root' })
@@ -13,8 +14,21 @@ export class SessionService {
   readonly token = computed(() => this._session()?.accessToken ?? null);
   readonly memberships = computed<Membership[]>(() => this._session()?.memberships ?? []);
   readonly isLoggedIn = computed(() => this._session() !== null);
-  /** Текущий проект: пока один на пользователя, берём первый membership. */
-  readonly currentProjectId = computed(() => this.memberships()[0]?.projectId ?? null);
+  private readonly preferred = signal<string | null>(readPreferred());
+  /** Текущий проект: выбранный в шапке, иначе первый membership. */
+  readonly currentProjectId = computed(() => {
+    const list = this.memberships();
+    return (list.find((m) => m.projectId === this.preferred()) ?? list[0])?.projectId ?? null;
+  });
+
+  selectProject(projectId: string): void {
+    this.preferred.set(projectId);
+    try {
+      localStorage.setItem(PROJECT_KEY, projectId);
+    } catch {
+      /* приватный режим */
+    }
+  }
 
   set(session: Session): void {
     this._session.set(session);
@@ -45,6 +59,14 @@ export class SessionService {
 
   isMember(projectId: string): boolean {
     return this.membership(projectId) !== null;
+  }
+}
+
+function readPreferred(): string | null {
+  try {
+    return localStorage.getItem(PROJECT_KEY);
+  } catch {
+    return null;
   }
 }
 

@@ -3,7 +3,6 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml .npmrc ./
-COPY docs/ui/tokens.css ./docs/ui/tokens.css
 COPY apps/web ./apps/web
 
 RUN pnpm install

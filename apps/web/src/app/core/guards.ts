@@ -1,6 +1,6 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import type { Role } from './models';
+import type { Membership, Role } from './models';
 import { SessionService } from './session.service';
 
 export const authGuard: CanActivateFn = () => {
@@ -27,7 +27,10 @@ export function roleGuard(...roles: Role[]): CanActivateFn {
 
 /** Корень: разработчика ведём в очередь, остальных — в последний раунд. */
 export function homeUrl(session: SessionService): string {
-  const membership = session.memberships()[0];
-  if (!membership) return '/login';
+  const membership = session.membership(session.currentProjectId());
+  return membership ? homeUrlFor(membership) : '/login';
+}
+
+export function homeUrlFor(membership: Membership): string {
   return membership.role === 'developer' ? `/p/${membership.projectId}/dev` : `/p/${membership.projectId}/r/latest`;
 }
