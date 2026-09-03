@@ -262,13 +262,19 @@ model HumanVerdict {
   @@unique([runId, idempotencyKey])
 }
 
+/// Загрузка журнала по официальному шаблону (REMARKROUND.md §14). projectId дублирует round.projectId
+/// ради прямого SQL-фильтра тенанси; storageKey — исходный файл, чтобы ничего не терять.
 model ImportJob {
   id        String      @id @default(uuid())
+  projectId String
   roundId   String
+  fileName  String
   storageKey String
   round     Round       @relation(fields: [roundId], references: [id])
   rows      ImportRow[]
   createdAt DateTime    @default(now())
+
+  @@index([projectId])
 }
 
 model ImportRow {
@@ -276,7 +282,12 @@ model ImportRow {
   jobId      String
   rowNumber  Int
   status     ImportRowStatus
+  /// Ячейки строки как есть — человек дописывает, парсер не выдумывает
   rawJson    Json
+  /// Почему строка ушла человеку: «пустое описание», «больше ячеек, чем колонок»
+  reason     String?
   remarkId   String?
   job        ImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
 }

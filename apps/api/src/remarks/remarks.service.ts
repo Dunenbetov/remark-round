@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException } 
 import type { Prisma, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectContext } from '../tenancy/project-context';
-import { ChunkInfo, CreateRemarkDto, RemarkRow, RemarkView, VerdictDto, toRemarkView } from './remark.dto';
+import { ChunkInfo, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, toRemarkView } from './remark.dto';
 import { TriageStubService } from './triage-stub.service';
 
 const REMARK_INCLUDE = {
@@ -76,6 +76,51 @@ export class RemarksService {
       },
     });
     return this.runTriage(ctx, remark.id);
+  }
+
+  /**
+   * Строка журнала из ImportService. Разбор здесь не стартует: импорт запускает его сам по распарсенным
+   * строкам, а needs_human_parse ждёт человека (docs/STATUS.md: «граф не стартовать»).
+   */
+  async createImported(ctx: ProjectContext, roundId: string, input: ImportedRemarkInput): Promise<{ id: string; number: number; status: RemarkStatus }> {
+    if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
+    const round = await this.prisma.round.findFirst({ where: { id: roundId, projectId: ctx.projectId } });
+    if (!round) throw new NotFoundException();
+    const last = await this.prisma.remark.findFirst({ where: { roundId }, orderBy: { number: 'desc' } });
+    const remark = await this.prisma.remark.create({
+      data: {
+        projectId: ctx.projectId,
+        roundId,
+        number: (last?.number ?? 0) + 1,
+        externalId: input.externalId,
+        pageOrScreen: input.pageOrScreen,
+        description: input.description.trim(),
+        expected: input.expected,
+        severity: input.severity,
+        status: input.status,
+        authorId: ctx.userId,
+        screenshots: input.screenshot ? { create: { kind: 'original', ...input.screenshot } } : undefined,
+      },
+      select: { id: true, number: true, status: true },
+    });
+    return remark;
+  }
+
+  /** «Допишите строку журнала»: needs_human_parse → imported (человек починил строку) → разбор. */
+  async fixRow(ctx: ProjectContext, remarkId: string, dto: FixRowDto): Promise<RemarkView> {
+    if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
+    const row = await this.load(ctx, remarkId);
+    this.assertTransition(row.status, ['needs_human_parse'], 'fix_row');
+    await this.prisma.remark.update({
+      where: { id: row.id },
+      data: {
+        description: dto.description.trim(),
+        pageOrScreen: dto.pageOrScreen?.trim() || row.pageOrScreen,
+        expected: dto.expected?.trim() || row.expected,
+        status: 'imported',
+      },
+    });
+    return this.runTriage(ctx, row.id);
   }
 
   /** imported | cannot_tell → triaging → awaiting_pm. Один AgentRun на прогон. */

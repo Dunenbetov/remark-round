@@ -10,7 +10,8 @@ services:
       POSTGRES_PASSWORD: remarkround
       POSTGRES_DB: remarkround
     ports:
-      - '5432:5432'
+      # Хост-порт: если на машине уже есть свой Postgres на 5432, задайте POSTGRES_PORT в .env
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HealthModule } from './health/health.module';
+import { ImportsModule } from './imports/imports.module';
 import { LlmModule } from './llm/llm.module';
 import { MediaModule } from './media/media.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -26,6 +27,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
     MediaModule,
     RoundsModule,
     RemarksModule,
+    ImportsModule,
   ],
 })
 export class AppModule {}

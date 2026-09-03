@@ -64,6 +64,35 @@ export class LinkDuplicateDto {
   duplicateOfNumber!: number;
 }
 
+/** «Допишите строку журнала»: человек дописывает то, чего парсер не выдумывает. */
+export class FixRowDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  description!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  pageOrScreen?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  expected?: string;
+}
+
+/** Строка журнала после парсера шаблона (ImportService). Разбор не стартует: это делает импорт отдельно. */
+export interface ImportedRemarkInput {
+  externalId: string | null;
+  pageOrScreen: string | null;
+  description: string;
+  expected: string | null;
+  severity: string | null;
+  screenshot: { storageKey: string; width: number | null; height: number | null } | null;
+  status: 'imported' | 'needs_human_parse';
+}
+
 // ---------- ответ: та же форма, что модель Remark на фронте ----------
 
 export interface ScreenshotView {
@@ -103,6 +132,9 @@ export interface RemarkView {
   description: string;
   expected?: string;
   status: RemarkStatus;
+  /** Номер строки заказчика из журнала («J-01»), если замечание пришло импортом. */
+  externalId?: string;
+  severity?: string;
   authorId: string | null;
   authorName?: string;
   fixedByName?: string;
@@ -136,6 +168,8 @@ export interface RemarkRow {
   description: string;
   expected: string | null;
   status: RemarkStatus;
+  externalId: string | null;
+  severity: string | null;
   authorId: string | null;
   proposedClass: ProposedClass | null;
   rationale: string | null;
@@ -180,11 +214,13 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra): RemarkView {
     roundId: r.roundId,
     roundNumber: r.round.number,
     number: r.number,
-    title: firstLine(r.description),
+    title: firstLine(r.description) || untitled(r.externalId),
     pageOrScreen: r.pageOrScreen ?? '—',
     description: r.description,
     expected: r.expected ?? undefined,
     status: r.status,
+    externalId: r.externalId ?? undefined,
+    severity: r.severity ?? undefined,
     authorId: r.authorId,
     authorName: r.authorId ? extra.names.get(r.authorId) : undefined,
     fixedByName: r.fixedByUserId ? extra.names.get(r.fixedByUserId) : undefined,
@@ -248,6 +284,11 @@ export function quote(content: string): string {
 function firstLine(s: string): string {
   const line = s.split('\n').map((l) => l.trim()).find(Boolean) ?? s;
   return line.length > 120 ? `${line.slice(0, 117).trimEnd()}…` : line;
+}
+
+/** Строка журнала без описания: заголовок карточки до того, как человек её допишет. */
+function untitled(externalId: string | null): string {
+  return externalId ? `Строка ${externalId} журнала без описания` : 'Строка журнала без описания';
 }
 
 function hhmm(d: Date): string {

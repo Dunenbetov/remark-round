@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse, HttpInterceptorFn, HttpParams } from '@a
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, firstValueFrom } from 'rxjs';
-import type { DocumentKind, Remark, Round, Session, VerdictCode } from './models';
+import type { DocumentKind, ImportJob, Remark, Round, Session, VerdictCode } from './models';
 import { SessionService } from './session.service';
 
 export const API_BASE = '/api/v1';
@@ -105,6 +105,23 @@ export class ApiService {
     form.append('file', file, file.name);
     form.append('kind', kind);
     return this.run(this.http.post<ApiDocument>(`${API_BASE}/projects/${projectId}/documents`, form));
+  }
+
+  /** Импорт журнала по шаблону: multipart `file` + `roundId`. 422 — не наш шаблон. */
+  importJournal(projectId: string, roundId: string, file: File): Promise<ImportJob> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    form.append('roundId', roundId);
+    return this.run(this.http.post<ImportJob>(`${API_BASE}/projects/${projectId}/imports`, form));
+  }
+
+  importJob(projectId: string, jobId: string): Promise<ImportJob> {
+    return this.run(this.http.get<ImportJob>(`${API_BASE}/projects/${projectId}/imports/${jobId}`));
+  }
+
+  /** «Допишите строку журнала»: needs_human_parse → разбор. */
+  fixRow(projectId: string, remarkId: string, body: { description: string; pageOrScreen?: string; expected?: string }): Promise<Remark> {
+    return this.run(this.http.post<Remark>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}/fix-row`, body));
   }
 
   search(projectId: string, q: string, k = 5): Promise<{ query: string; hits: unknown[] }> {

@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
-import { CreateRemarkDto, LinkDuplicateDto, RemarkView, ScreenshotDto, VerdictDto } from './remark.dto';
+import { CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ScreenshotDto, VerdictDto } from './remark.dto';
 import { RemarksService } from './remarks.service';
 
 /** Маршруты docs/API.md. Роли проверяет RolesGuard, переходы — RemarksService. */
@@ -32,6 +32,14 @@ export class RemarksController {
   @Get('remarks/:remarkId')
   get(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string): Promise<RemarkView> {
     return this.remarks.get(ctx, remarkId);
+  }
+
+  /** «Допишите строку журнала»: needs_human_parse → imported → разбор. */
+  @Post('remarks/:remarkId/fix-row')
+  @Roles('business', 'pm')
+  @HttpCode(200)
+  fixRow(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: FixRowDto): Promise<RemarkView> {
+    return this.remarks.fixRow(ctx, remarkId, dto);
   }
 
   @Post('remarks/:remarkId/triage')

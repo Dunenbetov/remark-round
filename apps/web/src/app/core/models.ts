@@ -133,6 +133,9 @@ export interface Remark {
   description: string;
   expected?: string;
   status: RemarkStatus;
+  /** Номер строки заказчика из журнала («J-01»), если пришло импортом. */
+  externalId?: string;
+  severity?: string;
   authorId: string | null;
   authorName?: string;
   fixedByName?: string;
@@ -173,12 +176,34 @@ export interface ProjectDocument {
   status: DocumentStatus;
 }
 
+/** Строка импорта — ответ GET /projects/:id/imports/:jobId (apps/api/src/imports/import.dto.ts). */
 export interface ImportRow {
   rowNumber: number;
-  text: string;
   status: ImportRowStatus;
+  externalId: string | null;
+  /** Первая строка description. */
+  text: string;
+  pageOrScreen: string | null;
+  /** Почему строка ушла человеку — по-русски, с сервера. */
+  reason: string | null;
+  /** Ссылка на скрин из файла: её не тянем, кадр прикрепляют на карточке. */
+  screenshotRef: string | null;
+  hasScreenshot: boolean;
+  remarkId: string | null;
   /** «строка 10 → №13» */
-  remarkNumber?: number;
+  remarkNumber: number | null;
+  remarkStatus: RemarkStatus | null;
+}
+
+export interface ImportJob {
+  id: string;
+  projectId: string;
+  roundId: string;
+  fileName: string;
+  createdAt: string;
+  rows: ImportRow[];
+  parsed: number;
+  needsHumanParse: number;
 }
 
 export interface NewRemarkDto {

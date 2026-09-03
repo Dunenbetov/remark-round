@@ -50,12 +50,14 @@
 
 ## Фаза 4 — импорт шаблона
 
-- [ ] Скачать `fixtures/journal/template.csv` / xlsx
-- [ ] Парсер только этих колонок
-- [ ] Пустой description → `needs_human_parse`
-- [ ] Картинки из xlsx, если есть
+- [x] Скачать `fixtures/journal/template.csv` / xlsx
+- [x] Парсер только этих колонок
+- [x] Пустой description → `needs_human_parse`
+- [x] Картинки из xlsx, если есть
 
 **DoD:** `sample-round.csv` даёт смесь parsed + needs_human_parse. Чужой Excel с другой шапкой не «магически» маппится.
+
+Сделано 3 сентября 2026: `apps/api/src/imports` (`journal-template.ts` — колонки шаблона в одном месте и генерация xlsx; `journal-parser.ts` — CSV/XLSX только с нашей шапкой, чужая → 422, картинка из ячейки xlsx → `RemarkScreenshot`; `ImportService` пишет `ImportJob`/`ImportRow`, замечания создаёт через `RemarksService.createImported`, разбор распарсенных строк идёт в фоне после ответа), `POST /remarks/:id/fix-row` («Допишите строку журнала» → `imported` → разбор), тест `import.missing-description.spec.ts` (7 проверок), фикстуры `fixtures/journal/{template,sample-round}.xlsx` и PNG-кадры в `fixtures/screenshots` (генератор `make-journal-fixtures.ts`). Фронт: страница импорта грузит настоящий файл, строки без описания дописываются там же или на карточке; кнопка «Скачать шаблон журнала» отдаёт xlsx. Ссылку из колонки `screenshot` в CSV сервер не тянет (SSRF): кадр прикрепляют на карточке.
 
 ## Фаза 5 — pixel-diff
 

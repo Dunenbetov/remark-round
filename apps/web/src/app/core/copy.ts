@@ -137,6 +137,10 @@ export const CARD = {
   viewerClose: 'Закрыть',
   awaitingPmNote: 'Решение принимает руководитель приёмки.',
   zoomOpen: 'Открыть кадр',
+  fromJournal: (id: string) => `Из журнала · ${id}`,
+  severity: 'Важность:',
+  /** Карточка строки без описания: ячейки из файла как есть, человек дописывает. */
+  fixRowHint: 'Ячейки из файла оставили как есть. Опишите, что не так и где — и запустим разбор.',
 };
 
 export const JOURNAL = {
@@ -232,6 +236,10 @@ export const IMPORT = {
     `Разобрали ${parsed} из ${total}. ${capitalize(numWord(bad, 'f'))} ${plural(bad, 'строку', 'строки', 'строк')} нужно дописать.`,
   rowPlaceholder: 'Опишите, что не так и где',
   rowLink: (row: number, n: number) => `строка ${row} → №${n}`,
+  /** «Строка 4: пустое описание — допишите сами.» (docs/ui/03-import.md) */
+  rowReason: (row: number, reason: string) => `Строка ${row}: ${reason} — допишите сами.`,
+  linkNotFetched: 'скрин по ссылке из файла не загружаем — прикрепите на карточке',
+  uploading: 'Загружаем журнал…',
   save: 'Сохранить строки',
   received: 'Получено',
 };

@@ -18,6 +18,7 @@
     "@remarkround/db": "workspace:*",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "exceljs": "4.4.0",
     "mammoth": "^1.12.2",
     "openai": "^7.9.0",
     "pdf-parse": "1.1.1",

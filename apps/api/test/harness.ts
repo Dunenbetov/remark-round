@@ -77,6 +77,7 @@ export async function createHarness(): Promise<Harness> {
       await prisma.humanVerdict.deleteMany({ where: { remarkId: { in: remarkIds } } });
       await prisma.agentRun.deleteMany({ where: { projectId: project.id } });
       await prisma.remark.deleteMany({ where: { projectId: project.id } });
+      await prisma.importJob.deleteMany({ where: { projectId: project.id } });
       await prisma.round.deleteMany({ where: { projectId: project.id } });
       await prisma.documentChunk.deleteMany({ where: { projectId: project.id } });
       await prisma.document.deleteMany({ where: { projectId: project.id } });

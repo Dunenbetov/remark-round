@@ -1,5 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import type { DocumentKind, NewRemarkDto, ProjectDocument, Remark, Round, VerdictCode } from './models';
+import type { DocumentKind, ImportJob, NewRemarkDto, ProjectDocument, Remark, Round, VerdictCode } from './models';
 import { ApiDocument, ApiService } from './api.service';
 import { ERROR } from './copy';
 import { SessionService } from './session.service';
@@ -102,6 +102,33 @@ export class RemarksStore {
     });
   }
 
+  /** Импорт журнала в текущий раунд; журнал перечитывается — строки уже стали замечаниями. */
+  async importJournal(projectId: string, file: File): Promise<ImportJob | null> {
+    const round = this.round();
+    if (!round) return null;
+    const job = await this.guard(() => this.api.importJournal(projectId, round.id, file));
+    if (job) await this.reloadRemarks(projectId, round.id);
+    return job;
+  }
+
+  /** Статус строк импорта: разбор идёт на сервере после ответа, страница перечитывает задание. */
+  async refreshImport(projectId: string, jobId: string): Promise<ImportJob | null> {
+    try {
+      return await this.api.importJob(projectId, jobId);
+    } catch {
+      return null;
+    }
+  }
+
+  /** «Допишите строку журнала» → сервер запускает разбор и отдаёт замечание уже с черновиком. */
+  async fixRow(remarkId: string, body: { description: string; pageOrScreen?: string; expected?: string }): Promise<Remark | null> {
+    const remark = this.byId(remarkId);
+    if (!remark) return null;
+    const updated = await this.guard(() => this.api.fixRow(remark.projectId, remarkId, body));
+    if (updated) this.upsert(updated);
+    return updated;
+  }
+
   async verdict(remarkId: string, code: Exclude<VerdictCode, 'rejected_binding'>, comment?: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark?.runId) return;
@@ -159,6 +186,11 @@ export class RemarksStore {
   }
 
   // ---------- helpers ----------
+
+  private async reloadRemarks(projectId: string, roundId: string): Promise<void> {
+    const remarks = await this.guard(() => this.api.remarks(projectId, roundId));
+    if (remarks) this.remarks.set(remarks);
+  }
 
   private async mutate(fn: () => Promise<Remark>): Promise<void> {
     const updated = await this.guard(fn);

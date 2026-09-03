@@ -18,7 +18,7 @@ docker compose up
 | Web (Angular) | http://localhost:4200 |
 | API health | http://localhost:3001/api/v1/health → `{ "ok": true }` |
 | Langfuse UI | http://localhost:3000 |
-| Postgres (app) | `localhost:5432`, БД `remarkround` |
+| Postgres (app) | `localhost:${POSTGRES_PORT:-5432}`, БД `remarkround` (свой Postgres на 5432? поставьте `POSTGRES_PORT=5434` и тот же порт в `DATABASE_URL`) |
 
 ### Prisma (опционально, с хоста)
 
@@ -36,7 +36,7 @@ pnpm db:migrate:deploy
 
 ```bash
 pnpm --filter @remarkround/api seed   # Дана (pm+admin), Айгерим (business), Тимур (developer), пароль remarkround
-pnpm --filter @remarkround/api test   # tenancy.leakage.spec: чужой проект → 404
+pnpm --filter @remarkround/api test   # tenancy.leakage.spec: чужой проект → 404; DATABASE_URL берётся из .env
 ```
 
 `DATABASE_URL` берётся из `.env`; для другого порта Postgres задайте переменную явно. Нужен Node 24 (`.nvmrc`).
@@ -44,6 +44,8 @@ pnpm --filter @remarkround/api test   # tenancy.leakage.spec: чужой про�
 Поиск по пакету документов (фаза 2): `GET /api/v1/projects/:projectId/search?q=какого цвета primary-кнопка` → чанки с разделом (`§2.1 Primary`), фрагментом и score. Загрузка документа: `POST .../documents` (multipart `file` + `kind`). Индексация требует `OPENAI_API_KEY`; без него документы остаются в статусе `uploaded`. Сравнение стратегий чанкинга: `pnpm --filter @remarkround/api exec tsx src/rag/chunking-eval.ts`.
 
 Замечания (фаза 3): фронт ходит в API через `/api/v1` (в dev — прокси `apps/web/proxy.conf.json`, в Docker — nginx). Seed создаёт раунд 2 с 13 замечаниями и кадрами из `fixtures/screenshots`. Черновик разбора пока считает заглушка на реальном retrieve (`apps/api/src/remarks/triage-stub.service.ts`), граф LangGraph — фаза 6.
+
+Импорт журнала (фаза 4): только официальный шаблон — `fixtures/journal/template.csv` / `template.xlsx` (кнопка «Скачать шаблон журнала» в UI). `POST /api/v1/projects/:projectId/imports` (multipart `file` + `roundId`) разбирает `.xlsx` и `.csv` с этой шапкой, чужую шапку отдаёт 422; строка без `description` становится замечанием «Допишите строку журнала» (`needs_human_parse`), картинка из ячейки xlsx — кадром. Демо-журнал: `fixtures/journal/sample-round.csv` / `.xlsx` (10 строк, одна без описания, четыре с кадрами). Пересобрать xlsx-фикстуры: `pnpm --filter @remarkround/api exec tsx src/imports/make-journal-fixtures.ts`.
 
 Вход: `POST /api/v1/auth/login` `{ "email", "password" }` → `{ accessToken, user, memberships }`. Дальше `Authorization: Bearer <token>`; проектные маршруты `/projects/:projectId/...` проверяют membership (чужой проект — 404) и роль (403).
 

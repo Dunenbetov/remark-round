@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { Title } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
 import type { Remark, Screenshot, VerdictCode } from '../core/models';
-import { APP_NAME, CARD, DECISION, EMPTY, PHASE_EXTRA, PHASE_TEXT, ROUND, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
+import { APP_NAME, CARD, DECISION, EMPTY, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, ROUND, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
 import { PendingActionService } from '../core/pending-action.service';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
@@ -15,7 +15,8 @@ import { Shot } from '../ui/shot';
 import { ShotViewer, ViewerFrame } from '../ui/shot-viewer';
 import { StatusPill } from '../ui/status-pill';
 
-type Layout = 'running' | 'draft' | 'refuse' | 'retest-wait' | 'retest';
+/** fix — строка журнала без описания: человек дописывает её прямо на карточке. */
+type Layout = 'running' | 'draft' | 'refuse' | 'retest-wait' | 'retest' | 'fix';
 type FileAction = 'attach' | 'retest';
 
 /** Пока сервер держит замечание в `triaging`, карточка перечитывает его раз в две секунды (до WS фазы 6). */
@@ -75,6 +76,22 @@ const POLL_MS = 2000;
                   } @else {
                     <div class="no-shot">{{ copy.noShot }}</div>
                   }
+                  @if (layout() === 'fix') {
+                    <dl class="cells">
+                      @if (r.pageOrScreen !== '—') {
+                        <dt>{{ copy.where }}</dt>
+                        <dd>{{ r.pageOrScreen }}</dd>
+                      }
+                      @if (r.expected) {
+                        <dt>{{ newRemark.expected }}</dt>
+                        <dd>{{ r.expected }}</dd>
+                      }
+                      @if (r.severity) {
+                        <dt>{{ copy.severity }}</dt>
+                        <dd>{{ r.severity }}</dd>
+                      }
+                    </dl>
+                  }
 
                   @if (layout() === 'retest') {
                     <h2 class="col-title col-title--gap">{{ copy.draft }}</h2>
@@ -93,6 +110,10 @@ const POLL_MS = 2000;
                   <section class="col col--draft">
                     <h2 class="col-title">{{ copy.draft }}</h2>
                     @switch (layout()) {
+                      @case ('fix') {
+                        <div class="refuse">{{ empty.importUnparsed }}</div>
+                        <div class="soft">{{ copy.fixRowHint }}</div>
+                      }
                       @case ('refuse') {
                         <div class="refuse">{{ copy.refuse }}</div>
                         <div class="soft">{{ copy.refuseWhy }}</div>
@@ -145,6 +166,19 @@ const POLL_MS = 2000;
                   } @else if (r.status === 'awaiting_pm' || r.status === 'triaging') {
                     <h2 class="col-title">{{ decision.title }}</h2>
                     <div class="soft">{{ copy.awaitingPmNote }}</div>
+                  } @else if (layout() === 'fix' && canFix()) {
+                    <h2 class="col-title col-title--decision">{{ statusLabel.needs_human_parse }}</h2>
+                    <form class="fix" (submit)="onFix($event)" novalidate>
+                      <label class="field">
+                        <span class="field__label">{{ newRemark.what }}</span>
+                        <textarea class="textarea" rows="4" name="what" [placeholder]="newRemark.whatPlaceholder" [value]="fixWhat()" [disabled]="store.loading()" (input)="fixWhat.set(value($event))"></textarea>
+                      </label>
+                      <label class="field">
+                        <span class="field__label">{{ newRemark.where }}</span>
+                        <input class="input" name="where" [placeholder]="newRemark.wherePlaceholder" [value]="fixWhere()" [disabled]="store.loading()" (input)="fixWhere.set(value($event))" />
+                      </label>
+                      <button type="submit" class="btn btn--primary btn--left" [class.btn--busy]="store.loading()" [disabled]="store.loading() || !fixWhat().trim()">{{ newRemark.save }}</button>
+                    </form>
                   }
                   @if (role() === 'developer' && r.status === 'defect') {
                     @if (pendingFor(); as p) {
@@ -325,6 +359,25 @@ const POLL_MS = 2000;
     .dev-ready {
       margin-top: var(--sp-2);
     }
+    .cells {
+      margin: 0;
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 4px var(--sp-3);
+      font-size: var(--fs-14);
+      line-height: var(--lh-14);
+    }
+    .cells dt {
+      color: var(--rr-ink-2);
+    }
+    .cells dd {
+      margin: 0;
+    }
+    .fix {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-3);
+    }
     .card__error {
       font-size: var(--fs-13);
       line-height: var(--lh-13);
@@ -429,6 +482,11 @@ export class RemarkCardPage {
   protected readonly copy = CARD;
   protected readonly decision = DECISION;
   protected readonly empty = EMPTY;
+  protected readonly newRemark = NEW_REMARK;
+  protected readonly statusLabel = STATUS_LABEL;
+  /** Поля «Допишите строку журнала»; «Где» предзаполняется ячейкой из файла. */
+  protected readonly fixWhat = signal('');
+  protected readonly fixWhere = signal('');
 
   protected readonly role = computed(() => this.session.roleIn(this.projectId()));
   protected readonly remark = computed<Remark | undefined>(() => this.store.byId(this.remarkId()));
@@ -480,6 +538,7 @@ export class RemarkCardPage {
     effect(() => {
       const r = this.remark();
       if (r) this.title.setTitle(`${TITLE.remark(r.number, r.title)} — ${APP_NAME}`);
+      if (r?.status === 'needs_human_parse' && r.pageOrScreen !== '—') untracked(() => this.fixWhere.update((w) => w || r.pageOrScreen));
     });
     this.destroyRef.onDestroy(() => this.pollWhileTriaging(false));
   }
@@ -516,6 +575,7 @@ export class RemarkCardPage {
   protected readonly layout = computed<Layout>(() => {
     const r = this.remark()!;
     if (this.running()) return 'running';
+    if (r.status === 'needs_human_parse') return 'fix';
     if (r.status === 'cannot_tell') return 'refuse';
     if (r.status === 'ready_for_retest') return 'retest-wait';
     if ((r.status === 'awaiting_business_close' || r.status === 'closed') && r.retest) return 'retest';
@@ -546,6 +606,8 @@ export class RemarkCardPage {
     }
   });
 
+  protected readonly canFix = computed(() => this.role() === 'business' || this.role() === 'pm');
+
   protected readonly record = computed<DecisionRecord | null>(() => {
     const r = this.remark()!;
     if (r.status === 'closed') {
@@ -567,7 +629,8 @@ export class RemarkCardPage {
     if (r.status === 'ready_for_retest' || r.status === 'awaiting_business_close' || r.status === 'closed') {
       return `${CARD.fixedBy(r.fixedByName ?? '')} · ${round}`;
     }
-    return `${CARD.where} ${r.pageOrScreen} · ${CARD.addedBy(r.authorName ?? '')} · ${round}`;
+    const journal = r.externalId ? ` · ${CARD.fromJournal(r.externalId)}` : '';
+    return `${CARD.where} ${r.pageOrScreen} · ${CARD.addedBy(r.authorName ?? '')}${journal} · ${round}`;
   });
 
   // ---------- улики ----------
@@ -643,7 +706,7 @@ export class RemarkCardPage {
     if (this.failed()) return 'muted';
     if (this.running()) return 'wait';
     if (s === 'defect') return 'work';
-    if (s === 'closed' || s === 'change_request' || s === 'duplicate') return 'muted';
+    if (s === 'closed' || s === 'change_request' || s === 'duplicate' || s === 'needs_human_parse') return 'muted';
     return 'wait';
   });
 
@@ -673,6 +736,24 @@ export class RemarkCardPage {
 
   protected undo(): void {
     this.actions.cancel();
+  }
+
+  protected value(e: Event): string {
+    return (e.target as HTMLInputElement | HTMLTextAreaElement).value;
+  }
+
+  /** «Допишите строку журнала»: обратимо по смыслу (дальше решает PM), поэтому без окна «Отменить». */
+  protected async onFix(e: Event): Promise<void> {
+    e.preventDefault();
+    const remark = this.remark()!;
+    const description = this.fixWhat().trim();
+    if (!description) return;
+    const where = this.fixWhere().trim();
+    const updated = await this.store.fixRow(remark.id, { description, pageOrScreen: where || undefined });
+    if (updated) {
+      this.fixWhat.set('');
+      this.fixWhere.set('');
+    }
   }
 
   /** «Не та цитата» обратима по смыслу — идёт сразу, без отмены. */
