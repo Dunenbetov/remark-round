@@ -166,6 +166,8 @@ export interface RemarkView {
   /** Состояние текущего прогона: `running` — фазы идут по WS, `awaiting_human` — ждёт кнопки. */
   runStatus?: AgentRunStatus;
   runMode?: 'triage' | 'retest';
+  /** Trace этого прогона в Langfuse (фаза 8): есть только когда Langfuse настроен. */
+  traceUrl?: string;
   createdAt: string;
 }
 
@@ -213,6 +215,8 @@ export interface ViewExtra {
   chunks: Map<string, ChunkInfo>;
   /** userId → имя, для «Добавила Айгерим», «Исправил Тимур», «Дана · 14:02». */
   names: Map<string, string>;
+  /** runId → ссылка на trace Langfuse; undefined, когда Langfuse не настроен. */
+  traceUrl?: (runId: string) => string | undefined;
 }
 
 export function toRemarkView(r: RemarkRow, extra: ViewExtra): RemarkView {
@@ -260,6 +264,7 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra): RemarkView {
     runId: run?.id,
     runStatus: run?.status,
     runMode: run ? (run.mode === 'retest' ? 'retest' : 'triage') : undefined,
+    traceUrl: run ? extra.traceUrl?.(run.id) : undefined,
     createdAt: r.createdAt.toISOString(),
   };
 }

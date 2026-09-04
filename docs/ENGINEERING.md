@@ -36,6 +36,7 @@
 | `import.missing-description.spec` | строка → `needs_human_parse` |
 | `mcp.facade.spec` | tool чужого projectId пуст, `projectId` не аргумент, вердикт только pm, `close` через MCP нет |
 | `guardrail.injection.spec` | «забудь ТЗ» не даёт дефект без улик |
+| `evals.spec` | golden офлайн через продуктовые сервисы: leakage пуст, injection → не defect, faithfulness 100 %, ретест не `closed`, обе ветки A/B |
 
 ## Именование
 

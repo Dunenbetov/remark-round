@@ -54,6 +54,10 @@ pnpm --filter @remarkround/api test   # tenancy.leakage.spec: чужой про�
 
 MCP-фасад (фаза 7): `apps/mcp` — сервер на официальном TypeScript SDK, четыре tool’а поверх тех же REST-маршрутов (`search_spec`, `get_round_remarks`, `apply_human_verdict`, `submit_retest_evidence`) и prompt `uat-triage` с текстом `skills/uat-triage/SKILL.md`. Проект берётся из токена: `POST /api/v1/projects/:projectId/mcp-token` выдаёт JWT с `projectId` из membership, чужой проект для него — 404 даже при membership, `projectId` в аргументах tool’ов нет. Для Cursor в репозитории лежит `.cursor/mcp.json` (stdio, демо-логин Даны, нужен поднятый API на 3001); в compose тот же сервер поднят как `mcp` на `http://localhost:3002/mcp` с токеном в заголовке каждого запроса. Закрыть замечание через MCP нельзя. Подробности и конфиг Claude Desktop — [`apps/mcp/README.md`](apps/mcp/README.md).
 
+Langfuse (фаза 8): каждый вызов модели и эмбеддингов — span в Langfuse (`apps/api/src/observability`, SDK v5 поверх OpenTelemetry). Один прогон (`AgentRun`) = один trace, продолжение после interrupt — в тот же trace; сессия = замечание. `docker compose up` инициализирует Langfuse сам (проект `remarkround`, ключи `pk-lf-remarkround-local` / `sk-lf-remarkround-local`, вход в UI dana@remarkround.dev / remarkround — плейсхолдеры для локального стенда, см. `.env.example`). У PM в подвале карточки — «Трейс в Langfuse». Без ключей трейсы просто не пишутся.
+
+Evals и A/B (фаза 9): `pnpm evals` гоняет golden set (`evals/golden.json`: 30 кейсов триажа по 12 типам, 11 ретест-кейсов, leakage) через те же сервисы, что REST, и пишет отчёт в `evals/results/`. Две метрики — binding quality (класс или законный abstain + нужный раздел в цитатах) и faithfulness (ни одной ссылки на раздел без цитаты, ни «на кадре» без кадра, ни «закрыто» от модели). A/B ретеста на одном коде: pixel-diff + explain против «два кадра в LLM»; победитель (diff+explain) включён по умолчанию (`RETEST_STRATEGY`), цифры и вывод — [`docs/EVALS.md`](docs/EVALS.md). Без ключа тот же раннер идёт офлайн (`pnpm evals -- --offline`), инварианты проверяет `evals.spec.ts` на каждом `pnpm test`, CI — `.github/workflows/ci.yml`.
+
 Вход: `POST /api/v1/auth/login` `{ "email", "password" }` → `{ accessToken, user, memberships }`. Дальше `Authorization: Bearer <token>`; проектные маршруты `/projects/:projectId/...` проверяют membership (чужой проект — 404) и роль (403).
 
 Индекс pgvector по embedding — после migrate, см. [`packages/db/README.md`](packages/db/README.md).
@@ -91,7 +95,7 @@ docker-compose.yml
 | [`docs/WS.md`](docs/WS.md) | Комната замечания |
 | [`docs/GRAPH.md`](docs/GRAPH.md) | Ноды LangGraph |
 | [`docs/ENGINEERING.md`](docs/ENGINEERING.md) | Паттерны Nest, тесты-ворота |
-| [`docs/EVALS.md`](docs/EVALS.md) | Метрики и A/B (шаблон цифр) |
+| [`docs/EVALS.md`](docs/EVALS.md) | Метрики, A/B и выбор моделей — цифры прогона |
 | [`docs/PHASES.md`](docs/PHASES.md) | Порядок работ + DoD |
 | [`docs/DEMO.md`](docs/DEMO.md) | Сюжет защиты 10 мин |
 | [`docs/adr/`](docs/adr/) | Три решения судьи, не переспоривать |
@@ -99,7 +103,7 @@ docker-compose.yml
 | [`packages/db/prisma/schema.prisma`](packages/db/prisma/schema.prisma) | Имена сущностей |
 | [`skills/uat-triage/SKILL.md`](skills/uat-triage/SKILL.md) | Skill курса |
 | [`fixtures/`](fixtures/) | ТЗ, протокол, журнал, скрины, eval-семена |
-| [`evals/`](evals/) | Куда класть golden set при коде |
+| [`evals/`](evals/) | Golden set и отчёты `pnpm evals` |
 
 ## Стек (жёсткий)
 

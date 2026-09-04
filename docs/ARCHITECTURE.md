@@ -89,7 +89,7 @@ sequenceDiagram
 
 - LLM-провайдер за `LlmModule`
 - embedding-модель (одна на индекс)
-- Langfuse ↔ LangSmith как бэкенд трейсов
+- Langfuse ↔ LangSmith как бэкенд трейсов (span'ы — OpenTelemetry, `apps/api/src/observability`; сменить экспортёр, не код нод)
 - pixelmatch ↔ odiff
 
 Не заменять: pgvector как основное хранилище, HITL, SQL-тенанси.

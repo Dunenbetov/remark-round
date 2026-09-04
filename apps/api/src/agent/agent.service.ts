@@ -3,6 +3,7 @@ import { Command } from '@langchain/langgraph';
 import type { RemarkStatus } from '@remarkround/db';
 import { DiffService } from '../diff/diff.service';
 import { LlmService } from '../llm/llm.service';
+import { ObservabilityService, type RunTrace } from '../observability/observability.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagService } from '../rag/rag.service';
 import type { RemarkView, VerdictDto } from '../remarks/remark.dto';
@@ -10,9 +11,9 @@ import { RemarksService } from '../remarks/remarks.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import type { GraphDeps } from './graph-deps';
-import type { HumanDecision, RetestDecision } from './graph-state';
+import type { HumanDecision, RetestDecision, RetestStrategy } from './graph-state';
 import { PrismaCheckpointSaver } from './prisma-checkpointer';
-import { buildRetestGraph, type RetestGraph, type RetestInput } from './retest.graph';
+import { buildRetestGraph, retestStrategyFromEnv, type RetestGraph, type RetestInput } from './retest.graph';
 import { RunEvents, type Phase } from './run-events';
 import { buildTriageGraph, type TriageGraph, type TriageInput } from './triage.graph';
 
@@ -35,6 +36,8 @@ export class AgentService implements OnModuleInit {
   private retestGraph!: RetestGraph;
   private checkpointer!: PrismaCheckpointSaver;
   private readonly running = new Map<string, AbortController>();
+  /** Ветка ретеста (ADR 002 п.4): дефолт — победитель A/B; раннер evals переключает её, чтобы сравнить обе на одном коде. */
+  retestStrategy: RetestStrategy = retestStrategyFromEnv();
 
   constructor(
     private readonly remarks: RemarksService,
@@ -44,6 +47,7 @@ export class AgentService implements OnModuleInit {
     private readonly llm: LlmService,
     private readonly prisma: PrismaService,
     private readonly events: RunEvents,
+    private readonly observability: ObservabilityService,
   ) {}
 
   onModuleInit(): void {
@@ -69,7 +73,7 @@ export class AgentService implements OnModuleInit {
   async startTriage(ctx: ProjectContext, remarkId: string, opts: RunOptions = {}): Promise<RemarkView> {
     const { runId } = await this.remarks.beginTriage(ctx, remarkId, this.llm.model);
     const input: TriageInput = { projectId: ctx.projectId, userId: ctx.userId, role: ctx.role, remarkId, runId, humanComment: null, excludeChunkIds: [] };
-    const done = this.run(this.triage, remarkId, runId, input);
+    const done = this.run(this.triage, remarkId, runId, input, this.trace(ctx, 'triage', runId, remarkId, false, { remarkId }));
     if (opts.wait) await done;
     return this.remarks.get(ctx, remarkId);
   }
@@ -91,12 +95,13 @@ export class AgentService implements OnModuleInit {
         humanComment: dto.comment ?? '',
         excludeChunkIds: remark.citations.map((c) => c.chunkId),
       };
-      const done = this.resume(this.triage, remarkId, dto.runId, { kind: 'reject_binding', comment: dto.comment ?? '' }, fallback);
+      const decision: HumanDecision = { kind: 'reject_binding', comment: dto.comment ?? '' };
+      const done = this.resume(this.triage, remarkId, dto.runId, decision, this.trace(ctx, 'triage', dto.runId, remarkId, true, { verdict: dto.verdict, decision }), fallback);
       if (opts.wait) await done;
       return remark;
     }
     const decision: HumanDecision = dto.verdict === 'cannot_tell' ? { kind: 'request_screenshot' } : { kind: 'accept' };
-    const done = this.resume(this.triage, remarkId, dto.runId, decision).then(() => this.emitPersisted(ctx, remarkId, dto.runId));
+    const done = this.resume(this.triage, remarkId, dto.runId, decision, this.trace(ctx, 'triage', dto.runId, remarkId, true, { verdict: dto.verdict, decision })).then(() => this.emitPersisted(ctx, remarkId, dto.runId));
     if (opts.wait) await done;
     return remark;
   }
@@ -117,8 +122,8 @@ export class AgentService implements OnModuleInit {
   /** Ретест: новый кадр → граф (дифф → explain) → awaiting_business_close; закрывает только бизнес. */
   async retest(ctx: ProjectContext, remarkId: string, screenshotKey: string, opts: RunOptions = {}): Promise<RemarkView> {
     const { runId } = await this.remarks.beginRetest(ctx, remarkId, screenshotKey, this.llm.model);
-    const input: RetestInput = { projectId: ctx.projectId, userId: ctx.userId, role: ctx.role, remarkId, runId };
-    const done = this.run(this.retestGraph, remarkId, runId, input);
+    const input: RetestInput = { projectId: ctx.projectId, userId: ctx.userId, role: ctx.role, remarkId, runId, strategy: this.retestStrategy };
+    const done = this.run(this.retestGraph, remarkId, runId, input, this.trace(ctx, 'retest', runId, remarkId, false, { remarkId, screenshotKey, strategy: this.retestStrategy }));
     if (opts.wait) await done;
     return this.remarks.get(ctx, remarkId);
   }
@@ -138,16 +143,33 @@ export class AgentService implements OnModuleInit {
   private finishRetest(ctx: ProjectContext, view: RemarkView, decision: RetestDecision): void {
     if (!view.runId || view.runMode !== 'retest') return;
     const runId = view.runId;
-    void this.resume(this.retestGraph, view.id, runId, decision).then(() => this.emitPersisted(ctx, view.id, runId));
+    void this.resume(this.retestGraph, view.id, runId, decision, this.trace(ctx, 'retest', runId, view.id, true, { decision })).then(() => this.emitPersisted(ctx, view.id, runId));
+  }
+
+  /** Атрибуты trace Langfuse одного прогона: кто нажал, какое замечание, какой run (фаза 8). */
+  private trace(ctx: ProjectContext, mode: RunTrace['mode'], runId: string, remarkId: string, resume: boolean, input: unknown): RunTrace {
+    return { mode, runId, remarkId, projectId: ctx.projectId, userId: ctx.userId, role: ctx.role, model: this.llm.model, resume, input };
   }
 
   // ---------- исполнение ----------
 
-  private async run(graph: TriageGraph | RetestGraph, remarkId: string, runId: string, input: TriageInput | RetestInput | Command): Promise<void> {
+  /**
+   * Один вызов графа = один корневой span в trace прогона (Langfuse, фаза 8): ноды графа под ним через CallbackHandler,
+   * вызовы OpenAI и эмбеддинги — как generation / embedding. Ошибка прогона попадает в span, отмена — тоже.
+   */
+  private async run(graph: TriageGraph | RetestGraph, remarkId: string, runId: string, input: TriageInput | RetestInput | Command, trace: RunTrace): Promise<void> {
     const ac = new AbortController();
     this.running.set(runId, ac);
     try {
-      await (graph as TriageGraph).invoke(input as TriageInput, { configurable: { thread_id: runId }, signal: ac.signal, recursionLimit: 80 });
+      await this.observability.run(trace, async (span) => {
+        const state = await (graph as TriageGraph).invoke(input as TriageInput, {
+          configurable: { thread_id: runId },
+          signal: ac.signal,
+          recursionLimit: 80,
+          callbacks: this.observability.callbacks(trace),
+        });
+        span.update({ output: summarize(trace.mode, state as Record<string, unknown>) });
+      });
     } catch (e) {
       if (ac.signal.aborted) return;
       const message = (e as Error).message ?? String(e);
@@ -160,7 +182,7 @@ export class AgentService implements OnModuleInit {
   }
 
   /** Продолжить run из чекпоинта; если чекпоинта нет (seed, старые прогоны) — начать заново тем же runId. */
-  private async resume(graph: TriageGraph | RetestGraph, remarkId: string, runId: string, decision: HumanDecision | RetestDecision, fallback?: TriageInput): Promise<void> {
+  private async resume(graph: TriageGraph | RetestGraph, remarkId: string, runId: string, decision: HumanDecision | RetestDecision, trace: RunTrace, fallback?: TriageInput): Promise<void> {
     const config = { configurable: { thread_id: runId } };
     let pending = false;
     try {
@@ -169,8 +191,8 @@ export class AgentService implements OnModuleInit {
     } catch (e) {
       this.log.warn(`getState ${runId}: ${(e as Error).message}`);
     }
-    if (pending) return this.run(graph, remarkId, runId, new Command({ resume: decision }));
-    if (fallback) return this.run(graph, remarkId, runId, fallback);
+    if (pending) return this.run(graph, remarkId, runId, new Command({ resume: decision }), trace);
+    if (fallback) return this.run(graph, remarkId, runId, fallback, { ...trace, resume: false });
   }
 
   private async emitPersisted(ctx: ProjectContext, remarkId: string, runId: string): Promise<void> {
@@ -182,4 +204,20 @@ export class AgentService implements OnModuleInit {
     }
     this.events.emit(remarkId, { type: 'run.persisted', runId, remarkStatus });
   }
+}
+
+/** Итог прогона для корня trace: без кадров, без токенов черновика — только то, что решает человек. */
+function summarize(mode: RunTrace['mode'], state: Record<string, unknown>): Record<string, unknown> {
+  if (mode === 'retest') return { strategy: state['strategy'] ?? null, result: state['result'] ?? null, diff: (state['diff'] as { regionText?: string } | null)?.regionText ?? null, decision: state['decision'] ?? null };
+  return {
+    proposedClass: state['proposedClass'] ?? null,
+    duplicateOfNumber: state['duplicateOfNumber'] ?? null,
+    binding: state['binding'] ?? null,
+    chunkIds: state['chunkIds'] ?? [],
+    rewriteCount: state['rewriteCount'] ?? 0,
+    bindLoops: state['bindLoops'] ?? 0,
+    faithfulnessIssue: state['faithfulnessIssue'] ?? null,
+    rationale: state['rationale'] ?? [],
+    decision: state['decision'] ?? null,
+  };
 }

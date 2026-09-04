@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="800" viewBox="0 0 400 800">
+  <rect width="400" height="800" fill="#f4f4f4"/>
+  <text x="16" y="40" font-family="sans-serif" font-size="18" fill="#222">Профиль · мобильный</text>
+  <rect x="16" y="70" width="368" height="40" fill="#fff" stroke="#999"/>
+  <text x="28" y="96" font-family="sans-serif" font-size="14" fill="#666">Название: ТОО «Алтын Дала»</text>
+  <rect x="16" y="120" width="368" height="40" fill="#fff" stroke="#999"/>
+  <text x="28" y="146" font-family="sans-serif" font-size="14" fill="#666">БИН: 120940003215</text>
+  <rect x="16" y="180" width="368" height="44" rx="4" fill="#0B5FFF"/>
+  <text x="150" y="208" font-family="sans-serif" font-size="16" fill="#fff">Сохранить</text>
+  <text x="16" y="260" font-family="sans-serif" font-size="12" fill="#999">Кадр 400×800 с телефона: с «было» 800×400 несопоставим</text>
+</svg>

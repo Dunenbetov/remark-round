@@ -65,6 +65,8 @@ flowchart TD
 
 Реализация: нода `pixel_diff` (DiffService) → `explain` только если дифф есть и кадры не совпали пиксель в пиксель (без модели: `cannot_tell`, «Относится ли это к претензии — решите вы»); `apply_retest` пишет `RemarksService.applyRetest` → `awaiting_business_close`; `interrupt` бизнеса; «Закрыть: исправлено» / «Не исправлено» — `RemarksService.close` / `notFixed`, затем граф закрывается.
 
+A/B (фаза 9, ADR 002 п.4): в состоянии графа есть `strategy`. `diff_explain` — путь выше (победитель, дефолт `DEFAULT_RETEST_STRATEGY`); `llm_only` — после `load` идёт нода `judge_frames`: модель получает только «было» и «стало» (`TriageLlm.retestJudge`) без диффа и без проверки размеров. Переключатель — `RETEST_STRATEGY` (`AgentService.retestStrategy`); раннер evals гоняет обе ветки на одном коде, цифры — `docs/EVALS.md`.
+
 ## Skill
 
 Текст `skills/uat-triage/SKILL.md` подмешивается в `classify`, `draft`, `explain` (ретест) — `apps/api/src/llm/skill.ts` читает файл (в Docker он копируется в `/app/skills`).

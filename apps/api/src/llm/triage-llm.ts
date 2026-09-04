@@ -7,7 +7,7 @@ import type { DocumentKind, ProposedClass, RetestOutcome } from '@remarkround/db
  */
 
 export interface LlmCallMeta {
-  node: 'vision' | 'rewrite' | 'classify' | 'draft' | 'explain';
+  node: 'vision' | 'rewrite' | 'classify' | 'draft' | 'explain' | 'judge';
   runId: string;
   remarkId: string;
   projectId: string;
@@ -85,9 +85,20 @@ export interface RetestExplainResult {
   explanation: string;
 }
 
+/** H0 в A/B (docs/EVALS.md): два кадра без диффа — «исправлено ли?». В продукте выключен, если не победил. */
+export interface RetestJudgeInput {
+  description: string;
+  expected: string | null;
+  before: Frame;
+  after: Frame;
+  citations: Array<{ section: string | null; text: string }>;
+}
+
 export interface LlmUsage {
   inputTokens: number;
   outputTokens: number;
+  /** Стоимость по прайсу модели (apps/api/src/llm/pricing.ts); 0 без сети. */
+  costUsd: number;
 }
 
 export interface TriageLlm {
@@ -101,7 +112,9 @@ export interface TriageLlm {
   /** Абзац обоснования (без первой строки-заголовка: её ставит граф по классу). */
   draft(meta: LlmCallMeta, input: DraftInput, onToken?: (delta: string) => void): Promise<string>;
   retestExplain(meta: LlmCallMeta, input: RetestExplainInput): Promise<RetestExplainResult>;
-  /** Токены, накопленные по runId с последнего вызова; после — обнуляются. */
+  /** Ретест без диффа (стратегия `llm_only`, H0 A/B): та же тройка исходов, модель видит только два кадра. */
+  retestJudge(meta: LlmCallMeta, input: RetestJudgeInput): Promise<RetestExplainResult>;
+  /** Токены и стоимость, накопленные по runId с последнего вызова; после — обнуляются. */
   takeUsage(runId: string): LlmUsage;
 }
 
@@ -202,8 +215,12 @@ export class RulesTriageLlm implements TriageLlm {
     return { outcome: 'cannot_tell', explanation: `Красное на диффе: ${input.regionText}. Остальное без изменений. Относится ли это к претензии — решите вы.` };
   }
 
+  async retestJudge(): Promise<RetestExplainResult> {
+    return { outcome: 'cannot_tell', explanation: 'Без модели по двум кадрам не сужу: сравните сами и закройте, если исправлено.' };
+  }
+
   takeUsage(): LlmUsage {
-    return { inputTokens: 0, outputTokens: 0 };
+    return { inputTokens: 0, outputTokens: 0, costUsd: 0 };
   }
 }
 

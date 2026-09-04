@@ -92,15 +92,24 @@
 
 ## Фаза 8 — Langfuse на каждый LLM-вызов
 
+- [x] `ObservabilityModule`: generation-span на каждый вызов OpenAI, embedding-span на эмбеддинги
+- [x] Один trace на `AgentRun`, продолжение после interrupt — в тот же trace
+- [x] Langfuse поднимается из compose готовым: проект, ключи, пользователь UI
+- [x] Ссылка на trace с карточки (PM)
+
 **DoD:** открыл UI Langfuse, виден сценарий DEMO.
+
+Сделано 4 сентября 2026: `apps/api/src/observability` — Langfuse JS SDK v5 поверх OpenTelemetry (`LangfuseSpanProcessor` + `NodeTracerProvider`, регистрируется один раз на процесс; без ключей или с `LANGFUSE_TRACING_ENABLED=false` — noop, код нод не меняется). `AgentService.run` оборачивает каждый вызов графа в корневой span прогона: traceId детерминирован из `runId` (sha256), поэтому старт и продолжение после interrupt (вердикт PM, закрытие бизнесом — другой HTTP-запрос, через часы) ложатся в один trace; `propagateAttributes` даёт всем вложенным span'ам userId (кто нажал), sessionId = remarkId (все прогоны замечания — одна сессия), теги `triage` / `retest` и metadata projectId / remarkId / runId / model. Внутри: ноды LangGraph через `@langfuse/langchain` CallbackHandler (видны циклы rewrite / bind и interrupt), `generation` на каждый вызов OpenAI через `observeOpenAI` с именем ноды (`vision` / `rewrite` / `classify` / `draft` / `explain`; модель, параметры, токены, стрим — Langfuse считает стоимость), `embedding` на каждый вызов `EmbeddingsService`, `retrieve` (retriever) с запросом, projectId и найденными разделами, `index_document` — свой trace на индексацию. Compose: `langfuse-web` инициализируется headless (`LANGFUSE_INIT_*`: организация, проект `remarkround`, ключи, пользователь UI dana@remarkround.dev / remarkround), `api` шлёт span'ы на `http://langfuse-web:3000` теми же ключами, так что `docker compose up` даёт трейсы без ручной настройки; `.env.example` — те же локальные плейсхолдеры для API с хоста. `RemarkView.traceUrl` → «Трейс в Langfuse» в подвале карточки у PM. Тест `observability.spec.ts`: экспортёр в памяти, прогон с FakeLlm — один traceId у старта и продолжения, ноды графа и `retrieve` внутри, metadata прогона; OpenAI-обёртка на заглушке клиента даёт generation с моделью и токенами. Спеки по умолчанию идут с `LANGFUSE_TRACING_ENABLED=false`.
 
 ## Фаза 9 — evals ≥30 + A/B
 
-- [ ] Добить golden от seed
-- [ ] Две метрики
-- [ ] A/B цифры в EVALS.md и дефолт в коде
+- [x] Добить golden от seed
+- [x] Две метрики
+- [x] A/B цифры в EVALS.md и дефолт в коде
 
 **DoD:** `pnpm evals` в CI или одной командой.
+
+Сделано 4 сентября 2026: golden `evals/golden.json` — 30 кейсов триажа по 12 типам судьи (дефект с опорой, CR, дыра, конфликт, дубль, «текст врёт — скрин спасает», injection, визуальная претензия без кадра, ложная цитата), 13 ретест-кейсов (дифф не про претензию, зум, другой размер, 2× DPR, «почти тот» hex, secondary вместо primary, пиксель в пиксель, три настоящих исправления; новые кадры — `fixtures/screenshots`, растеризатор `apps/api/src/evals/make-frames.ts`) и leakage. Раннер `apps/api/src/evals` (`pnpm evals`, отчёт в `evals/results/`) гоняет golden через те же сервисы, что REST и MCP: `AgentService` → граф → `RemarksService`; live с ключом (трейсы в Langfuse, environment `evals`) или офлайн правилами. Метрики (`metrics.ts`): binding quality (класс или законный abstain + нужный раздел в цитатах + оригинал у повтора) и faithfulness (ни ссылки без цитаты, ни «на кадре» без кадра, ни дефекта без цитаты, ни «закрыто» от модели, ни ложных цитат). A/B ретеста на одном коде: в состоянии графа `strategy`, H0 `llm_only` — нода `judge_frames` (`TriageLlm.retestJudge`, два кадра без диффа), H1 `diff_explain` — прежний путь; переключатель `RETEST_STRATEGY`, победитель `DEFAULT_RETEST_STRATEGY = 'diff_explain'` в коде. Стоимость вызовов считается по прайсу (`llm/pricing.ts`) и пишется в `AgentRun.costUsd`. Три живые итерации за день (22 → 23 → 25 из 30 binding, faithfulness 30/30): classify по шагам (повтор → кадр → сверка «документ vs прод» → класс), ворота faithfulness пропускают только процитированные разделы и не считают дословную цитату замечания ссылкой модели. A/B: H1 12/13 без ложных «исправлено», $0.0040 / 1.3 с; H0 12/13 с ложным «исправлено» на кадре 2× DPR, $0.0047 / 1.8 с — цифры и слайд ограничений в `docs/EVALS.md`. CI `.github/workflows/ci.yml`: тесты API (включая `evals.spec.ts` офлайн — инварианты leakage / injection / faithfulness / «ретест не closed») и `pnpm evals -- --offline` с отчётом в артефакт.
 
 ## Фаза 10 — guardrails и артефакты сдачи
 

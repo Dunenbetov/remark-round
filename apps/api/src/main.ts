@@ -14,6 +14,8 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: process.env['WEB_ORIGIN'] ?? 'http://localhost:4200',
   });
+  // SIGTERM в compose: дослать батч span'ов в Langfuse (ObservabilityService.onApplicationShutdown).
+  app.enableShutdownHooks();
   const port = Number(process.env['PORT'] ?? 3000);
   await app.listen(port);
 }

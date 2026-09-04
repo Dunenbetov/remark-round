@@ -205,6 +205,9 @@ const FALLBACK_POLL_MS = 3000;
 
               <footer class="card__foot">
                 <rr-phase-line [text]="phaseText()" [tone]="phaseTone()" [pulse]="phasePulse()" [retryable]="failed()" [stoppable]="stoppable()" (retry)="onRetry()" (stop)="onStop()" />
+                @if (r.traceUrl && role() === 'pm') {
+                  <a class="link card__trace" [href]="r.traceUrl" target="_blank" rel="noopener">{{ traceLabel }}</a>
+                }
               </footer>
             </article>
           </main>
@@ -406,6 +409,15 @@ const FALLBACK_POLL_MS = 3000;
       border-top: 1px solid var(--rr-line);
       display: flex;
       align-items: center;
+      gap: var(--sp-4);
+    }
+    /* Служебная ссылка PM на trace прогона: справа, тихо, не кнопка решения. */
+    .card__trace {
+      margin-left: auto;
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
+      color: var(--rr-ink-2);
+      white-space: nowrap;
     }
     .denied {
       align-items: center;
@@ -496,6 +508,7 @@ export class RemarkCardPage {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly copy = CARD;
+  protected readonly traceLabel = PHASE_EXTRA.trace;
   protected readonly decision = DECISION;
   protected readonly empty = EMPTY;
   protected readonly newRemark = NEW_REMARK;

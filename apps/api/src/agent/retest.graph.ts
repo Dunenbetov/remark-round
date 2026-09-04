@@ -3,8 +3,18 @@ import { describeRegion, percent } from '../diff/diff.service';
 import type { LlmCallMeta } from '../llm/triage-llm';
 import type { ProjectContext } from '../tenancy/project-context';
 import { loadFrame, type GraphDeps } from './graph-deps';
-import { RetestState, type RetestDecision, type RetestStateType as S } from './graph-state';
+import { RetestState, type RetestDecision, type RetestStateType as S, type RetestStrategy } from './graph-state';
 import type { Phase } from './run-events';
+
+/**
+ * Победитель A/B фазы 9 (docs/EVALS.md «A/B»): pixel-diff + explain. `RETEST_STRATEGY=llm_only` включает
+ * проигравшую ветку для сравнения, не для продукта.
+ */
+export const DEFAULT_RETEST_STRATEGY: RetestStrategy = 'diff_explain';
+
+export function retestStrategyFromEnv(value = process.env['RETEST_STRATEGY']): RetestStrategy {
+  return value === 'llm_only' ? 'llm_only' : DEFAULT_RETEST_STRATEGY;
+}
 
 export interface RetestInput {
   projectId: string;
@@ -12,6 +22,7 @@ export interface RetestInput {
   role: ProjectContext['role'];
   remarkId: string;
   runId: string;
+  strategy: RetestStrategy;
 }
 
 /**
@@ -48,6 +59,22 @@ export function buildRetestGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
   };
 
   const afterDiff = (s: S): 'apply_retest' | 'explain' => (s.result ? 'apply_retest' : 'explain');
+
+  const afterLoad = (s: S): 'pixel_diff' | 'judge_frames' => (s.strategy === 'llm_only' ? 'judge_frames' : 'pixel_diff');
+
+  /** H0 (llm_only): «исправлено ли по двум кадрам» — без диффа, без проверки размеров. Проигравшая ветка A/B, оставлена для сравнения. */
+  const judge = async (s: S) => {
+    const facts = s.facts!;
+    if (!facts.originalKey) {
+      return { result: { outcome: 'cannot_tell' as const, explanation: 'Старого кадра нет — сравнить не с чем. Проверьте вручную и закройте, если исправлено.' } };
+    }
+    const [before, after] = await Promise.all([loadFrame(deps.storage, facts.originalKey), loadFrame(deps.storage, facts.retestKey)]);
+    if (!before || !after) {
+      return { result: { outcome: 'cannot_tell' as const, explanation: 'Кадр не PNG/JPG — модели не показать. Проверьте вручную.' } };
+    }
+    const result = await deps.llm.retestJudge(meta(s, 'judge'), { description: facts.description, expected: facts.expected, before, after, citations: facts.citations });
+    return { result };
+  };
 
   /** Vision на триплете old/new/diff + претензия + цитаты. Не «исправлено ли по двум кадрам». */
   const explain = async (s: S) => {
@@ -93,14 +120,16 @@ export function buildRetestGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
   return new StateGraph(RetestState)
     .addNode('load', load)
     .addNode('pixel_diff', diff)
+    .addNode('judge_frames', judge)
     .addNode('explain', explain)
     .addNode('apply_retest', apply)
     .addNode('hitl_business', hitl)
     .addNode('persist', persist)
     .addEdge(START, 'load')
-    .addEdge('load', 'pixel_diff')
+    .addConditionalEdges('load', afterLoad, ['pixel_diff', 'judge_frames'])
     .addConditionalEdges('pixel_diff', afterDiff, ['apply_retest', 'explain'])
     .addEdge('explain', 'apply_retest')
+    .addEdge('judge_frames', 'apply_retest')
     .addEdge('apply_retest', 'hitl_business')
     .addEdge('hitl_business', 'persist')
     .addEdge('persist', END)

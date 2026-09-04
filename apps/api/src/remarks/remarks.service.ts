@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma, ProposedClass, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
 import type { LlmUsage } from '../llm/triage-llm';
+import { ObservabilityService } from '../observability/observability.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import { ChunkInfo, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, quote, toRemarkView } from './remark.dto';
@@ -68,7 +69,10 @@ export interface VerdictResult {
  */
 @Injectable()
 export class RemarksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly observability: ObservabilityService,
+  ) {}
 
   // ---------- чтение ----------
 
@@ -465,11 +469,12 @@ export class RemarksService {
     const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
     const names = new Map(users.map((u) => [u.id, u.name]));
 
-    return rows.map((r) => toRemarkView(r, { duplicateOfNumber: r.duplicateOfId ? numberById.get(r.duplicateOfId) : undefined, chunks, names }));
+    const traceUrl = (runId: string) => this.observability.traceUrl(runId);
+    return rows.map((r) => toRemarkView(r, { duplicateOfNumber: r.duplicateOfId ? numberById.get(r.duplicateOfId) : undefined, chunks, names, traceUrl }));
   }
 }
 
-function usageData(usage?: LlmUsage): { inputTokens?: number; outputTokens?: number } {
+function usageData(usage?: LlmUsage): { inputTokens?: number; outputTokens?: number; costUsd?: number } {
   if (!usage || (usage.inputTokens === 0 && usage.outputTokens === 0)) return {};
-  return { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens };
+  return { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: usage.costUsd };
 }

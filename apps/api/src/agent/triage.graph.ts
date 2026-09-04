@@ -132,11 +132,13 @@ export function buildTriageGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
     return { rationale: [head, body] };
   };
 
-  /** Без LLM: черновик не ссылается на то, чего не было в retrieve (REMARKROUND.md §12 guardrail выхода). */
+  /** Без LLM: черновик не ссылается на раздел, которого нет среди цитат (REMARKROUND.md §12 guardrail выхода). */
   const faithfulness = (s: S) => {
+    const cited = new Set(s.chunkIds);
     const check = checkFaithfulness({
       rationale: s.rationale.join('\n\n'),
-      retrievedSections: s.hits.map((h) => h.section),
+      allowedSections: s.hits.filter((h) => cited.has(h.chunkId)).map((h) => h.section),
+      remarkText: s.facts?.description,
       proposedClass: s.proposedClass!,
       chunkIds: s.chunkIds,
       hasScreenshot: Boolean(s.facts?.screenshotKey),

@@ -16,3 +16,5 @@ if (!process.env['DATABASE_URL']) {
   }
 }
 process.env['JWT_SECRET'] ??= 'test-secret';
+// Спеки офлайн: LLM и эмбеддинги подменены, span'ы Langfuse не шлём (observability.spec ставит свой экспортёр в памяти).
+process.env['LANGFUSE_TRACING_ENABLED'] ??= 'false';

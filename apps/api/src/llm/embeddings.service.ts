@@ -1,4 +1,5 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { startActiveObservation } from '@langfuse/tracing';
 import OpenAI from 'openai';
 
 /** Одна модель на весь индекс (REMARKROUND.md §10). Размерность зашита в миграции vector(1536). */
@@ -7,8 +8,9 @@ export const EMBEDDING_DIM = 1536;
 const BATCH = 64;
 
 /**
- * Единственное место, где API ходит за эмбеддингами. В фазе 8 каждый вызов
- * оборачивается span'ом Langfuse (модель, projectId, размер батча).
+ * Единственное место, где API ходит за эмбеддингами. Каждый вызов — embedding-span Langfuse
+ * (модель, размер батча, токены); внутри прогона графа он ложится под span прогона, при индексации — под `index_document`.
+ * Без Langfuse `startActiveObservation` работает на noop-tracer'е OpenTelemetry: ни сети, ни накладных расходов.
  */
 @Injectable()
 export class EmbeddingsService {
@@ -24,13 +26,21 @@ export class EmbeddingsService {
     const out: number[][] = [];
     for (let i = 0; i < texts.length; i += BATCH) {
       const batch = texts.slice(i, i + BATCH);
-      const res = await this.openai().embeddings.create({
-        model: this.model,
-        input: batch,
-        dimensions: this.dimensions,
-      });
-      const sorted = [...res.data].sort((a, b) => a.index - b.index);
-      out.push(...sorted.map((d) => d.embedding));
+      const vectors = await startActiveObservation(
+        'embed',
+        async (span) => {
+          span.update({
+            model: this.model,
+            modelParameters: { dimensions: this.dimensions },
+            input: batch.length === 1 ? batch[0] : { texts: batch.length, chars: batch.reduce((n, t) => n + t.length, 0) },
+          });
+          const res = await this.openai().embeddings.create({ model: this.model, input: batch, dimensions: this.dimensions });
+          span.update({ output: { vectors: res.data.length, dimensions: this.dimensions }, usageDetails: { input: res.usage?.prompt_tokens ?? 0, total: res.usage?.total_tokens ?? 0 } });
+          return [...res.data].sort((a, b) => a.index - b.index).map((d) => d.embedding);
+        },
+        { asType: 'embedding' },
+      );
+      out.push(...vectors);
     }
     return out;
   }

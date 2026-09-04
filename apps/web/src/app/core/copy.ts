@@ -71,6 +71,8 @@ export const PHASE_EXTRA = {
   awaitingPmOther: 'Ждём решения руководителя приёмки',
   awaitingBusinessOther: 'Ждём решения заказчика',
   closedAt: (name: string, at: string) => `Закрыто · ${name} · ${at}`,
+  /** Ссылка на трейс прогона (Langfuse) — служебная, только PM. */
+  trace: 'Трейс в Langfuse',
 };
 
 /** Пояснение диффа в мок-ретесте (дизайн, артборд 5). */

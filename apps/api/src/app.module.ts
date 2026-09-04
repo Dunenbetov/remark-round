@@ -7,6 +7,7 @@ import { HealthModule } from './health/health.module';
 import { ImportsModule } from './imports/imports.module';
 import { LlmModule } from './llm/llm.module';
 import { MediaModule } from './media/media.module';
+import { ObservabilityModule } from './observability/observability.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RagModule } from './rag/rag.module';
@@ -17,6 +18,7 @@ import { TenancyModule } from './tenancy/tenancy.module';
 
 @Module({
   imports: [
+    ObservabilityModule,
     PrismaModule,
     AuthModule,
     TenancyModule,

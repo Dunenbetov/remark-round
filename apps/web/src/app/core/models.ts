@@ -164,6 +164,8 @@ export interface Remark {
   /** `running` — фазы идут по WS; `awaiting_human` — прогон ждёт кнопки. */
   runStatus?: 'running' | 'awaiting_human' | 'persisted' | 'cancelled' | 'failed';
   runMode?: 'triage' | 'retest';
+  /** Trace прогона в Langfuse — только когда сервер его настроил; показываем PM. */
+  traceUrl?: string;
 }
 
 export interface ProjectDocument {

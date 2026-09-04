@@ -3,7 +3,9 @@
   "exclude": [
     "node_modules",
     "dist",
+    "dist-evals",
     "test",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "src/evals/**"
   ]
 }

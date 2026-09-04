@@ -55,12 +55,16 @@ export interface DiffInfo {
   regionText: string;
 }
 
+/** ADR 002 п.4: H1 — дифф считает алгоритм, модель поясняет; H0 — модель судит по двум кадрам. Победитель A/B — дефолт (docs/EVALS.md). */
+export type RetestStrategy = 'diff_explain' | 'llm_only';
+
 export const RetestState = Annotation.Root({
   projectId: Annotation<string>,
   userId: Annotation<string>,
   role: Annotation<Role>,
   remarkId: Annotation<string>,
   runId: Annotation<string>,
+  strategy: Annotation<RetestStrategy>({ reducer: last, default: () => 'diff_explain' }),
   facts: Annotation<RetestFacts | null>({ reducer: last, default: () => null }),
   retestSize: Annotation<{ width: number; height: number } | null>({ reducer: last, default: () => null }),
   diff: Annotation<DiffInfo | null>({ reducer: last, default: () => null }),

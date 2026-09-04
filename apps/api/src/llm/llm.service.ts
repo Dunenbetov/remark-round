@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
+import { ObservabilityService } from '../observability/observability.service';
 import { OpenAiTriageLlm } from './openai-triage-llm';
-import type { ClassifyInput, ClassifyResult, DraftInput, LlmCallMeta, LlmUsage, RetestExplainInput, RetestExplainResult, RewriteInput, TriageLlm, VisionInput } from './triage-llm';
+import type { ClassifyInput, ClassifyResult, DraftInput, LlmCallMeta, LlmUsage, RetestExplainInput, RetestExplainResult, RetestJudgeInput, RewriteInput, TriageLlm, VisionInput } from './triage-llm';
 import { RulesTriageLlm } from './triage-llm';
 
 /**
@@ -14,9 +15,10 @@ export class LlmService implements TriageLlm {
   private readonly log = new Logger(LlmService.name);
   private readonly impl: TriageLlm;
 
-  constructor() {
+  constructor(observability: ObservabilityService) {
     const apiKey = process.env['OPENAI_API_KEY'];
-    this.impl = apiKey ? new OpenAiTriageLlm(new OpenAI({ apiKey })) : new RulesTriageLlm();
+    // Каждый вызов OpenAI — generation-span Langfuse с именем ноды (фаза 8); без ключей Langfuse клиент отдаётся как есть.
+    this.impl = apiKey ? new OpenAiTriageLlm(new OpenAI({ apiKey }), undefined, (client, meta) => observability.openai(client, meta)) : new RulesTriageLlm();
     this.log.log(`triage llm: ${this.impl.model}`);
   }
 
@@ -46,6 +48,10 @@ export class LlmService implements TriageLlm {
 
   retestExplain(meta: LlmCallMeta, input: RetestExplainInput): Promise<RetestExplainResult> {
     return this.impl.retestExplain(meta, input);
+  }
+
+  retestJudge(meta: LlmCallMeta, input: RetestJudgeInput): Promise<RetestExplainResult> {
+    return this.impl.retestJudge(meta, input);
   }
 
   takeUsage(runId: string): LlmUsage {

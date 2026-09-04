@@ -28,6 +28,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      langfuse-web:
+        condition: service_started
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://remarkround:remarkround@postgres:5432/remarkround
@@ -35,6 +37,14 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       STORAGE_DIR: /app/apps/api/storage
+      # Langfuse (фаза 8): API шлёт span'ы внутрь сети compose, ссылки для человека — на публичный адрес UI.
+      # Ключи совпадают с LANGFUSE_INIT_* у langfuse-web: проект и ключи создаются при первом старте.
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_URL: ${LANGFUSE_PUBLIC_URL:-http://localhost:3000}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-remarkround-local}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-remarkround-local}
+      LANGFUSE_PROJECT_ID: ${LANGFUSE_PROJECT_ID:-remarkround}
+      LANGFUSE_TRACING_ENVIRONMENT: ${LANGFUSE_TRACING_ENVIRONMENT:-compose}
     volumes:
       # Та же папка, что у seed и локального API: файлы документов и кадров общие (в .gitignore)
       - ./apps/api/storage:/app/apps/api/storage
@@ -194,6 +204,17 @@ services:
       <<: *langfuse-env
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-local-dev}
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
+      # Headless-инициализация (фаза 8): организация, проект, ключи и пользователь UI создаются на первом старте,
+      # чтобы `docker compose up` сразу писал трейсы. Вход в UI: LANGFUSE_INIT_USER_EMAIL / _PASSWORD.
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-remarkround}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-RemarkRound}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_PROJECT_ID:-remarkround}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-RemarkRound}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-remarkround-local}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-remarkround-local}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-dana@remarkround.dev}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-Дана}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-remarkround}
 
 volumes:
   postgres-data:
