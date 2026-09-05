@@ -56,6 +56,8 @@ export interface ClassifyInput extends RemarkFacts {
   humanComment: string | null;
   /** Почему прошлый черновик не прошёл faithfulness — чтобы не повторить. */
   faithfulnessIssue: string | null;
+  /** Guardrail входа: в тексте есть инструкции для модели — модели говорят читать их как содержание. */
+  injectionSuspected?: boolean;
 }
 
 export interface ClassifyResult {

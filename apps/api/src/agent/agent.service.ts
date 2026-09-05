@@ -217,6 +217,7 @@ function summarize(mode: RunTrace['mode'], state: Record<string, unknown>): Reco
     rewriteCount: state['rewriteCount'] ?? 0,
     bindLoops: state['bindLoops'] ?? 0,
     faithfulnessIssue: state['faithfulnessIssue'] ?? null,
+    injectionMatches: state['injectionMatches'] ?? [],
     rationale: state['rationale'] ?? [],
     decision: state['decision'] ?? null,
   };

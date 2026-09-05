@@ -45,6 +45,8 @@ export const TriageState = Annotation.Root({
   faithfulnessOk: Annotation<boolean>({ reducer: last, default: () => false }),
   faithfulnessIssue: Annotation<string | null>({ reducer: last, default: () => null }),
   humanComment: Annotation<string | null>({ reducer: last, default: () => null }),
+  /** Guardrail входа (guardrails.ts): фразы-инструкции из текста замечания / комментария PM, если нашлись. */
+  injectionMatches: Annotation<string[]>({ reducer: last, default: () => [] }),
   decision: Annotation<HumanDecision | null>({ reducer: last, default: () => null }),
 });
 

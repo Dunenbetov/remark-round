@@ -1,5 +1,6 @@
-# RemarkRound — Docker Compose (фаза 0)
-# cp .env.example .env && docker compose up
+# RemarkRound — Docker Compose
+# cp .env.example .env && docker compose up  →  web :4200, api :3001, mcp :3002, Langfuse :3000
+# API сам применяет миграции и кладёт демо-данные (apps/api/docker-entrypoint.sh)
 
 services:
   postgres:
@@ -36,6 +37,12 @@ services:
       WEB_ORIGIN: http://localhost:4200
       JWT_SECRET: ${JWT_SECRET:-change-me}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_MODEL_FAST: ${LLM_MODEL_FAST:-gpt-4.1-mini}
+      LLM_MODEL_STRONG: ${LLM_MODEL_STRONG:-gpt-4.1}
+      # Ветка ретеста: победитель A/B (docs/EVALS.md); llm_only — только для сравнения
+      RETEST_STRATEGY: ${RETEST_STRATEGY:-diff_explain}
+      # Демо-данные при старте (миграции всегда): Дана / Айгерим / Тимур, ТЗ + протокол, раунд 2. SEED_ON_START=false — выключить
+      SEED_ON_START: ${SEED_ON_START:-true}
       STORAGE_DIR: /app/apps/api/storage
       # Langfuse (фаза 8): API шлёт span'ы внутрь сети compose, ссылки для человека — на публичный адрес UI.
       # Ключи совпадают с LANGFUSE_INIT_* у langfuse-web: проект и ключи создаются при первом старте.

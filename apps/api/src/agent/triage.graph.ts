@@ -5,6 +5,7 @@ import type { SearchHit } from '../rag/rag.service';
 import type { TriageFacts } from '../remarks/remarks.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import { checkFaithfulness } from './faithfulness';
+import { detectInjection, injectionNote } from './guardrails';
 import { loadFrame, type GraphDeps } from './graph-deps';
 import { TriageState, type HumanDecision, type TriageStateType as S } from './graph-state';
 import type { Phase } from './run-events';
@@ -46,7 +47,9 @@ export function buildTriageGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
     const facts = await deps.remarks.triageFacts(ctxOf(s), s.remarkId);
     // Продолжение без чекпоинта после «Не та цитата»: исключаем уже показанные чанки.
     const exclude = s.humanComment ? [...new Set([...s.excludeChunkIds, ...facts.citedChunkIds])] : s.excludeChunkIds;
-    return { facts, query: buildQuery(facts, s.humanComment), excludeChunkIds: exclude };
+    // Guardrail входа: находка не останавливает разбор, а помечает его (REMARKROUND.md §12).
+    const injection = detectInjection(facts.description, facts.expected, facts.pageOrScreen, s.humanComment);
+    return { facts, query: buildQuery(facts, s.humanComment), excludeChunkIds: exclude, injectionMatches: injection.matches };
   };
 
   const retrieve = async (s: S) => {
@@ -104,6 +107,7 @@ export function buildTriageGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
       siblings: s.facts!.siblings,
       humanComment: s.humanComment,
       faithfulnessIssue: s.faithfulnessIssue,
+      injectionSuspected: s.injectionMatches.length > 0,
     });
     const allowed = new Set(s.retrievedChunkIds);
     return { proposedClass: res.proposedClass, chunkIds: res.chunkIds.filter((id) => allowed.has(id)), duplicateOfNumber: res.duplicateOfNumber ?? null, reason: res.reason };
@@ -122,6 +126,7 @@ export function buildTriageGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
         siblings: s.facts!.siblings,
         humanComment: s.humanComment,
         faithfulnessIssue: s.faithfulnessIssue,
+        injectionSuspected: s.injectionMatches.length > 0,
         proposedClass: s.proposedClass!,
         chunkIds: s.chunkIds,
         duplicateOfNumber: s.duplicateOfNumber ?? undefined,
@@ -129,7 +134,10 @@ export function buildTriageGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
       },
       (delta) => deps.events.emit(s.remarkId, { type: 'run.token', runId: s.runId, delta }),
     );
-    return { rationale: [head, body] };
+    // Пометку про инструкции в тексте ставит код: PM видит, что модель их читала как содержание.
+    const rationale = s.injectionMatches.length ? [head, body, injectionNote(s.injectionMatches)] : [head, body];
+    if (rationale.length > 2) deps.events.emit(s.remarkId, { type: 'run.token', runId: s.runId, delta: `\n\n${rationale[2]}` });
+    return { rationale };
   };
 
   /** Без LLM: черновик не ссылается на раздел, которого нет среди цитат (REMARKROUND.md §12 guardrail выхода). */
@@ -178,8 +186,10 @@ export function buildTriageGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
   const hitl = (s: S) => {
     const decision = interrupt<HitlRequest, HumanDecision>({ remarkId: s.remarkId, runId: s.runId, proposedClass: s.proposedClass! });
     if (decision.kind === 'reject_binding') {
+      const injection = detectInjection(s.facts?.description, s.facts?.expected, decision.comment);
       return {
         decision,
+        injectionMatches: injection.matches,
         humanComment: decision.comment,
         query: buildQuery(s.facts!, decision.comment),
         excludeChunkIds: [...new Set([...s.excludeChunkIds, ...s.chunkIds])],
