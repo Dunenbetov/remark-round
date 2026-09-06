@@ -177,7 +177,8 @@ export interface Round {
 
 export interface Citation {
   id: string;
-  chunkId?: string;
+  /** null — документ переиндексирован после решения; текст цитаты остался снимком (ADR: evidence-citation-dangling). */
+  chunkId?: string | null;
   source: 'spec' | 'protocol';
   /** «В ТЗ (§2.1):», «Протокол от 12.03:» */
   heading: string;

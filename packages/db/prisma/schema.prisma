@@ -196,6 +196,7 @@ model DocumentChunk {
   /// vector(N) — N = размерность выбранной embedding-модели, одна на индекс
   embedding  Unsupported("vector(1536)")?
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  citations  EvidenceCitation[]
 
   @@index([projectId])
   @@index([documentId])
@@ -262,13 +263,24 @@ model RemarkScreenshot {
   @@index([remarkId])
 }
 
+/// Улика-цитата (аудит: evidence-citation-dangling). Текст цитаты и подпись документа — снимок на момент
+/// предложения модели: переиндексация ТЗ (новые id чанков) не отнимает обоснование у принятых и закрытых
+/// замечаний. chunkId — живая ссылка на чанк, пока он есть (SetNull после reindex); по ней граф исключает
+/// уже отвергнутые цитаты («Не та цитата из ТЗ»).
 model EvidenceCitation {
-  id        String @id @default(uuid())
-  remarkId  String
-  chunkId   String
-  remark    Remark @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+  id            String        @id @default(uuid())
+  remarkId      String
+  chunkId       String?
+  quoteText     String?
+  section       String?
+  documentTitle String?
+  documentKind  DocumentKind?
+  effectiveAt   DateTime?
+  remark        Remark        @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+  chunk         DocumentChunk? @relation(fields: [chunkId], references: [id], onDelete: SetNull)
 
   @@index([remarkId])
+  @@index([chunkId])
 }
 
 model AgentRun {

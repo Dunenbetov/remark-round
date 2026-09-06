@@ -98,7 +98,7 @@ export class AgentService implements OnModuleInit {
         remarkId,
         runId: dto.runId,
         humanComment: dto.comment ?? '',
-        excludeChunkIds: remark.citations.map((c) => c.chunkId),
+        excludeChunkIds: remark.citations.map((c) => c.chunkId).filter((id): id is string => Boolean(id)),
       };
       const decision: HumanDecision = { kind: 'reject_binding', comment: dto.comment ?? '' };
       const done = this.resume(this.triage, remarkId, dto.runId, decision, this.trace(ctx, 'triage', dto.runId, remarkId, true, { verdict: dto.verdict, decision }), fallback);

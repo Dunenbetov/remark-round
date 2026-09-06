@@ -249,12 +249,15 @@ export async function seedRemarks(
 
   const chunks = await prisma.documentChunk.findMany({
     where: { documentId: { in: [ids.specDocumentId, ids.protocolDocumentId] } },
-    select: { id: true, section: true, documentId: true },
+    select: { id: true, section: true, documentId: true, content: true, document: { select: { title: true, kind: true, effectiveAt: true } } },
   });
-  const chunkFor = (label: string): string | undefined =>
+  type SeedChunk = (typeof chunks)[number];
+  const chunkFor = (label: string): SeedChunk | undefined =>
     label === 'protocol'
-      ? (chunks.find((c) => c.documentId === ids.protocolDocumentId && /Решения/.test(c.section ?? '')) ?? chunks.find((c) => c.documentId === ids.protocolDocumentId))?.id
-      : chunks.find((c) => c.documentId === ids.specDocumentId && c.section === label)?.id;
+      ? (chunks.find((c) => c.documentId === ids.protocolDocumentId && /Решения/.test(c.section ?? '')) ?? chunks.find((c) => c.documentId === ids.protocolDocumentId))
+      : chunks.find((c) => c.documentId === ids.specDocumentId && c.section === label);
+  // Цитата — снимок текста и подписи документа, как её пишет applyProposal (аудит: evidence-citation-dangling)
+  const citationOf = (c: SeedChunk) => ({ chunkId: c.id, quoteText: c.content, section: c.section, documentTitle: c.document.title, documentKind: c.document.kind, effectiveAt: c.document.effectiveAt });
 
   const today = new Date();
   const at = (hhmm: string): Date => {
@@ -273,7 +276,7 @@ export async function seedRemarks(
       // Дифф в демо настоящий: pixelmatch по тем же кадрам, а не нарисованная маска.
       if (r.shot && diffPng) screenshots.push({ kind: 'diff', storageKey: await storage.save(ids.projectId, 'diff.png', diffPng), width: 800, height: 400 });
     }
-    const chunkIds = (r.cite ?? []).map(chunkFor).filter((x): x is string => Boolean(x));
+    const cited = (r.cite ?? []).map(chunkFor).filter((x): x is SeedChunk => Boolean(x));
 
     const remark = await prisma.remark.create({
       data: {
@@ -295,7 +298,7 @@ export async function seedRemarks(
         closedAt: r.closedAt ? at(r.closedAt) : null,
         duplicateOfId: r.duplicateOfNumber ? (created.get(r.duplicateOfNumber) ?? null) : null,
         screenshots: { create: screenshots },
-        citations: { create: chunkIds.map((chunkId) => ({ chunkId })) },
+        citations: { create: cited.map(citationOf) },
       },
     });
     created.set(r.number, remark.id);

@@ -127,7 +127,8 @@ export interface ScreenshotView {
 
 export interface CitationView {
   id: string;
-  chunkId: string;
+  /** Живой чанк, пока документ не переиндексирован; после — null, текст цитаты остаётся снимком. */
+  chunkId: string | null;
   source: 'spec' | 'protocol';
   heading: string;
   section: string | null;
@@ -227,13 +228,13 @@ export interface RemarkRow {
   duplicateOfId: string | null;
   round: { number: number };
   screenshots: Array<{ id: string; kind: ScreenshotKind; storageKey: string; width: number | null; height: number | null; createdAt: Date }>;
-  citations: Array<{ id: string; chunkId: string }>;
+  citations: Array<{ id: string; chunkId: string | null; quoteText: string | null; section: string | null; documentTitle: string | null; documentKind: DocumentKind | null; effectiveAt: Date | null }>;
   verdicts: Array<{ code: VerdictCode; userId: string; comment: string | null; createdAt: Date }>;
   advices: Array<{ code: VerdictCode; userId: string; comment: string | null; updatedAt: Date }>;
   runs: Array<{ id: string; createdAt: Date; status: AgentRunStatus; mode: string }>;
 }
 
-/** Чанк цитаты с документом; грузится отдельно (у EvidenceCitation нет FK на чанк). */
+/** Чанк с документом — форма выдачи retrieve; в карточке цитаты теперь снимок (см. RemarkRow.citations). */
 export interface ChunkInfo {
   id: string;
   section: string | null;
@@ -243,7 +244,6 @@ export interface ChunkInfo {
 
 export interface ViewExtra {
   duplicateOfNumber?: number;
-  chunks: Map<string, ChunkInfo>;
   /** userId → имя, для «Автор: Business», «Исправлено: Developer», «PM · 14:02». */
   names: Map<string, string>;
   /** userId → роль в проекте (membership); нет — роль не показываем. */
@@ -298,10 +298,8 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience 
     screenshots: [...r.screenshots]
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((s) => ({ id: s.id, kind: s.kind, url: mediaUrl(r.projectId, s.storageKey), width: s.width, height: s.height })),
-    citations: r.citations.flatMap((c) => {
-      const chunk = extra.chunks.get(c.chunkId);
-      return chunk ? [toCitation(c.id, chunk)] : [];
-    }),
+    // Цитата — снимок на момент предложения (ADR: evidence-citation-dangling); без текста (старые висячие) не показываем
+    citations: r.citations.flatMap((c) => (c.quoteText ? [toCitation(c)] : [])),
     seen: draftAllowed ? (r.visionFacts ?? undefined) : undefined,
     draft,
     draftShort: first ? first.replace(/\.$/, '') : undefined,
@@ -335,22 +333,21 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience 
   };
 }
 
-function toCitation(id: string, chunk: ChunkInfo): CitationView {
-  const doc = chunk.document;
-  const section = chunk.section;
+function toCitation(c: RemarkRow['citations'][number]): CitationView {
+  const section = c.section;
   const sectionNumber = section ? /§\S+/.exec(section)?.[0] : null;
-  const isProtocol = doc.kind === 'protocol' || doc.kind === 'addendum';
-  const date = doc.effectiveAt ? ddmm(doc.effectiveAt) : null;
+  const isProtocol = c.documentKind === 'protocol' || c.documentKind === 'addendum';
+  const date = c.effectiveAt ? ddmm(c.effectiveAt) : null;
   const heading = isProtocol
-    ? `${doc.kind === 'protocol' ? 'Протокол' : 'Доп. соглашение'}${date ? ` от ${date}` : ''}:`
+    ? `${c.documentKind === 'protocol' ? 'Протокол' : 'Доп. соглашение'}${date ? ` от ${date}` : ''}:`
     : `В ТЗ${sectionNumber ? ` (${sectionNumber})` : ''}:`;
   return {
-    id,
-    chunkId: chunk.id,
+    id: c.id,
+    chunkId: c.chunkId,
     source: isProtocol ? 'protocol' : 'spec',
     heading,
     section,
-    text: quote(chunk.content),
+    text: quote(c.quoteText ?? ''),
     soft: isProtocol,
   };
 }

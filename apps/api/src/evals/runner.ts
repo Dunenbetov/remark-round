@@ -227,22 +227,26 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
     // ---------- ретест: A/B на одном коде ----------
     const retestCases = pick<RetestCase>('retest');
     if (retestCases.length) {
+      // Цитата-фикстура — снимок, как у applyProposal: ретест читает текст цитаты из снимка, а не из чанка
       const chunkFor = async (section: string) => {
-        const chunks = await prisma.documentChunk.findMany({ where: { projectId: project.id, documentId: spec.id }, select: { id: true, section: true } });
+        const chunks = await prisma.documentChunk.findMany({
+          where: { projectId: project.id, documentId: spec.id },
+          select: { id: true, section: true, content: true, document: { select: { title: true, kind: true, effectiveAt: true } } },
+        });
         const hit = chunks.find((ch) => sectionMatches(ch.section, section));
         if (!hit) throw new Error(`golden: раздел ${section} не найден среди чанков ТЗ`);
-        return hit.id;
+        return { chunkId: hit.id, quoteText: hit.content, section: hit.section, documentTitle: hit.document.title, documentKind: hit.document.kind, effectiveAt: hit.document.effectiveAt };
       };
       for (const c of retestCases) {
         const round = await newRound();
         const beforeKey = await storage.save(project.id, c.before, readShot(c.before));
-        const chunkId = await chunkFor(c.cite);
+        const citation = await chunkFor(c.cite);
         for (const strategy of strategies) {
           // Дело до ретеста: дефект с цитатой, исправлен разработчиком. Это фикстура состояния, как в seed, а не путь записи графа.
           const created = await remarks.create(ctx('business'), round.id, { ...c.remark, screenshotKey: beforeKey });
           await prisma.remark.update({
             where: { id: created.id },
-            data: { status: 'defect', proposedClass: 'defect_candidate', rationale: 'Похоже, это поломка относительно ТЗ.', citations: { create: [{ chunkId }] } },
+            data: { status: 'defect', proposedClass: 'defect_candidate', rationale: 'Похоже, это поломка относительно ТЗ.', citations: { create: [citation] } },
           });
           await remarks.readyForRetest(ctx('developer'), created.id);
           const afterKey = await storage.save(project.id, c.after, readShot(c.after));
@@ -283,7 +287,7 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
       const crossProject = await http.get(`/api/v1/projects/${foreign.id}/search`).query({ q: c.query }).set({ Authorization: `Bearer ${users.pm.token}` });
       const ownSearch = await http.get(`/api/v1/projects/${project.id}/search`).query({ q: c.query }).set({ Authorization: `Bearer ${users.pm.token}` });
       const citations = await prisma.evidenceCitation.findMany({ where: { remark: { projectId: project.id } }, select: { chunkId: true } });
-      const chunkIds = [...new Set(citations.map((x) => x.chunkId))];
+      const chunkIds = [...new Set(citations.map((x) => x.chunkId).filter((id): id is string => Boolean(id)))];
       const outside = chunkIds.length ? await prisma.documentChunk.count({ where: { id: { in: chunkIds }, projectId: { not: project.id } } }) : 0;
       const ok = foreignChunks === c.gold.chunks && crossProject.status === c.gold.http && hitsOf(ownSearch) > 0 && outside === 0;
       const result: LeakageResult = {
