@@ -13,7 +13,7 @@ const TONE_BY_SIDE: Record<Side, 'accent' | 'wait' | 'work'> = { pm: 'accent', b
 
 /**
  * Регистрация (ADR 005): слева — продукт и три стороны (карточки выбирают «Кто вы»), справа — лист формы.
- * По ссылке приглашения (?invite=) сверху карточка «Вас пригласили…» и e-mail предзаполнен.
+ * По ссылке приглашения (?invite=) сверху карточка «Вас пригласили…»; без ссылки в режиме invite_only — предупреждение (ADR 006).
  * После регистрации: есть проект — в него, нет — страница ожидания.
  */
 @Component({
@@ -67,6 +67,8 @@ const TONE_BY_SIDE: Record<Side, 'accent' | 'wait' | 'work'> = { pm: 'accent', b
             </p>
           } @else if (inviteGone()) {
             <p class="reg__invite reg__invite--gone" role="status">{{ copy.inviteGone }}</p>
+          } @else if (closed()) {
+            <p class="reg__invite reg__invite--gone" role="status">{{ copy.closed }}</p>
           }
           <label class="field">
             <span class="field__label field__label--soft">{{ copy.name }}</span>
@@ -315,6 +317,8 @@ export class RegisterPage {
   protected readonly shake = signal(false);
   protected readonly invite = signal<InvitationPeek | null>(null);
   protected readonly inviteGone = signal(false);
+  /** invite_only без ссылки (ADR 006): форма остаётся (сотрудник с домена компании или администратор), но человека предупреждаем. */
+  protected readonly closed = signal(false);
   private readonly inviteToken = signal<string | null>(null);
   /** «Войти» с приглашением ведёт через /join, чтобы вошедший принял ссылку. */
   protected readonly loginParams = computed(() => (this.inviteToken() ? { next: `/join/${this.inviteToken()}` } : {}));
@@ -328,10 +332,14 @@ export class RegisterPage {
         .invitation(token)
         .then((inv) => {
           this.invite.set(inv);
-          this.email.set(inv.email);
           this.side.set(this.sideOf(inv.role));
         })
         .catch(() => this.inviteGone.set(true));
+    } else {
+      void this.api
+        .authOptions()
+        .then((o) => this.closed.set(o.registration === 'invite_only'))
+        .catch(() => undefined);
     }
     afterNextRender(() => this.host.nativeElement.querySelector<HTMLInputElement>('input[name=name]')?.focus());
   }
@@ -376,7 +384,9 @@ export class RegisterPage {
       await this.router.navigateByUrl(homeUrl(this.session));
     } catch (err) {
       const status = err instanceof HttpErrorResponse ? err.status : 0;
-      this.error.set(status === 409 ? this.copy.taken : status === 422 ? this.copy.invalid : ERROR.request);
+      this.error.set(
+        status === 409 ? this.copy.taken : status === 422 ? this.copy.invalid : status === 403 ? this.copy.closed : status === 404 || status === 410 ? this.copy.inviteGone : ERROR.request,
+      );
       this.shake.set(true);
     } finally {
       this.busy.set(false);

@@ -70,8 +70,12 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  /** Сторона при регистрации (ADR 005): подсказка; право создавать проекты — только pm. Роль в проекте — Membership.role. */
+  /** Сторона при регистрации (ADR 005): подсказка для экранов, прав не даёт. Роль в проекте — Membership.role. */
   preferredRole?: Role | null;
+  /** Право создавать проекты (ADR 006): выдаёт администратор инстанса; у администратора есть всегда. */
+  canCreateProjects: boolean;
+  /** E-mail из ADMIN_EMAILS: видит /admin — люди и проекты инстанса. */
+  isInstanceAdmin: boolean;
 }
 
 export interface Session {
@@ -89,9 +93,13 @@ export interface MeResult {
   memberships: Membership[];
 }
 
+export type RegistrationMode = 'open' | 'invite_only';
+
 export interface AuthOptions {
   /** Карточки демо-персон на входе: только на демо-стенде. */
   demoLogins: boolean;
+  /** invite_only — регистрация только по ссылке приглашения (ADR 006): ссылку «Зарегистрироваться» на входе не показываем. */
+  registration: RegistrationMode;
 }
 
 export interface ProjectSummary {
@@ -114,15 +122,21 @@ export interface InvitationSummary {
   id: string;
   email: string;
   role: Role;
-  token: string;
   createdAt: string;
   expiresAt: string | null;
 }
 
+/** Сырой токен ссылки /join/<token> приходит один раз: при создании и по «Новая ссылка» (ADR 006). */
+export interface InvitationLink {
+  token: string;
+  expiresAt: string;
+}
+
+export type InvitationCreated = InvitationSummary & InvitationLink;
+
 export interface InvitationPeek {
   projectName: string;
   role: Role;
-  email: string;
   inviterName: string;
   expiresAt: string | null;
 }
@@ -132,7 +146,27 @@ export interface MembersView {
   invitations: InvitationSummary[];
 }
 
-export type AddMemberResult = { kind: 'member'; member: MemberSummary } | { kind: 'invitation'; invitation: InvitationSummary };
+export type AddMemberResult = { kind: 'member'; member: MemberSummary } | { kind: 'invitation'; invitation: InvitationCreated };
+
+/** /admin/users (ADR 006): человек поперёк проектов. */
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  preferredRole: Role | null;
+  canCreateProjects: boolean;
+  isInstanceAdmin: boolean;
+  disabledAt: string | null;
+  createdAt: string;
+  memberships: Membership[];
+}
+
+export interface AdminProject {
+  id: string;
+  name: string;
+  createdAt: string;
+  members: number;
+}
 
 export interface Round {
   id: string;

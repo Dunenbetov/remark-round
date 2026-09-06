@@ -24,6 +24,15 @@ const Schema = z
     THROTTLE_LIMIT: z.coerce.number().int().positive().default(1200),
     THROTTLE_AUTH_LIMIT: z.coerce.number().int().positive().default(30),
     SEED_FORCE: z.string().optional(),
+    /**
+     * Кто может зарегистрироваться сам (ADR 006). Без значения: в production — только по ссылке приглашения,
+     * иначе (демо, тесты) — открыто. Администраторы инстанса регистрируются всегда — так появляется первый человек.
+     */
+    REGISTRATION_MODE: z.enum(['open', 'invite_only']).optional(),
+    /** Домены, с которых регистрация разрешена и без приглашения (сотрудники компании): `company.kz,company.ru`. */
+    REGISTRATION_DOMAINS: z.string().optional(),
+    /** Администраторы инстанса по e-mail через запятую: отключают людей, выдают право создавать проекты. */
+    ADMIN_EMAILS: z.string().optional(),
   })
   .superRefine((c, ctx) => {
     if (c.NODE_ENV !== 'production') return;
@@ -36,9 +45,16 @@ const Schema = z
     }
   });
 
+export type RegistrationMode = 'open' | 'invite_only';
+
 export type AppConfig = z.infer<typeof Schema> & {
   readonly isProduction: boolean;
   readonly demoLogins: boolean;
+  readonly registrationMode: RegistrationMode;
+  /** Нормализованные (lower-case) домены без `@`. */
+  readonly registrationDomains: readonly string[];
+  /** Нормализованные (lower-case) e-mail администраторов инстанса. */
+  readonly adminEmails: ReadonlySet<string>;
 };
 
 let cached: AppConfig | null = null;
@@ -58,7 +74,18 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ...c,
     isProduction: c.NODE_ENV === 'production',
     demoLogins: c.DEMO_LOGINS ? c.DEMO_LOGINS === 'true' : c.NODE_ENV !== 'production',
+    registrationMode: c.REGISTRATION_MODE ?? (c.NODE_ENV === 'production' ? 'invite_only' : 'open'),
+    registrationDomains: splitList(c.REGISTRATION_DOMAINS).map((d) => d.replace(/^@/, '')),
+    adminEmails: new Set(splitList(c.ADMIN_EMAILS)),
   };
+}
+
+/** `a@x.kz, B@Y.kz` → ['a@x.kz', 'b@y.kz']: пробелы и регистр не важны, пустые элементы отбрасываются. */
+function splitList(raw: string | undefined): string[] {
+  return (raw ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 export function config(): AppConfig {

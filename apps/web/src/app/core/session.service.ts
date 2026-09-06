@@ -16,8 +16,11 @@ export class SessionService {
   readonly token = computed(() => this._session()?.accessToken ?? null);
   readonly memberships = computed<Membership[]>(() => this._session()?.memberships ?? []);
   readonly isLoggedIn = computed(() => this._session() !== null);
-  /** Сторона при регистрации: подсказка, а pm — ещё и право создавать проекты. */
+  /** Сторона при регистрации: только подсказка для экранов (ADR 006). */
   readonly preferredRole = computed<Role | null>(() => this._session()?.user.preferredRole ?? null);
+  /** Право создавать проекты выдаёт администратор инстанса; у него самого оно есть всегда. */
+  readonly canCreateProjects = computed(() => this._session()?.user.canCreateProjects === true);
+  readonly isInstanceAdmin = computed(() => this._session()?.user.isInstanceAdmin === true);
   private readonly preferred = signal<string | null>(readPreferred());
   /** Текущий проект: выбранный в шапке, иначе первый membership. */
   readonly currentProjectId = computed(() => {

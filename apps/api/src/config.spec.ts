@@ -26,6 +26,18 @@ describe('config', () => {
     expect(parseConfig({ ...base, NODE_ENV: 'production', JWT_SECRET: secret, DEMO_LOGINS: 'true' }).demoLogins).toBe(true);
   });
 
+  it('контур доступа (ADR 006): режим регистрации по NODE_ENV, домены и администраторы нормализуются', () => {
+    const secret = 'a'.repeat(32);
+    expect(parseConfig({ ...base, NODE_ENV: 'development' }).registrationMode).toBe('open');
+    expect(parseConfig({ ...base, NODE_ENV: 'production', JWT_SECRET: secret }).registrationMode).toBe('invite_only');
+    expect(parseConfig({ ...base, NODE_ENV: 'production', JWT_SECRET: secret, REGISTRATION_MODE: 'open' }).registrationMode).toBe('open');
+    expect(() => parseConfig({ ...base, REGISTRATION_MODE: 'closed' })).toThrow(/REGISTRATION_MODE/);
+    const c = parseConfig({ ...base, REGISTRATION_DOMAINS: ' @Company.KZ, partner.ru,, ', ADMIN_EMAILS: 'CTO@Company.kz , it@company.kz' });
+    expect(c.registrationDomains).toEqual(['company.kz', 'partner.ru']);
+    expect([...c.adminEmails]).toEqual(['cto@company.kz', 'it@company.kz']);
+    expect(parseConfig(base).adminEmails.size).toBe(0);
+  });
+
   it('несколько проблем перечисляются разом', () => {
     expect(() => parseConfig({ NODE_ENV: 'development', JWT_SECRET: '' })).toThrow(/DATABASE_URL[\s\S]*JWT_SECRET/);
   });

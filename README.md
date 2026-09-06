@@ -30,7 +30,7 @@ docker compose up
 
 ## Прод
 
-Тот же compose плюс override: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` — Caddy с TLS наружу, `NODE_ENV=production` (API не стартует без настоящего `JWT_SECRET`), без seed и демо-входов, ежедневный `pg_dump` в том, кадры и документы в томе `api-storage`. Пользователи регистрируются сами, руководитель приёмки создаёт проект и приглашает участников ссылкой. Пошагово, бэкап и восстановление — [`docs/PROD.md`](docs/PROD.md). Порты Postgres, ClickHouse, MinIO и Langfuse и в демо опубликованы только на `127.0.0.1`.
+Тот же compose плюс override: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` — Caddy с TLS наружу, `NODE_ENV=production` (API не стартует без настоящего `JWT_SECRET`), без seed и демо-входов, ежедневный `pg_dump` в том, кадры и документы в томе `api-storage`. Регистрация — только по ссылке приглашения (или с домена компании), первым входит администратор из `ADMIN_EMAILS`, он выдаёт руководителю приёмки право создавать проекты, тот приглашает участников ссылкой; отключить уволенного везде — одна кнопка ([ADR 006](docs/adr/006-access-contour.md)). Пошагово, бэкап и восстановление — [`docs/PROD.md`](docs/PROD.md). Порты Postgres, ClickHouse, MinIO и Langfuse и в демо опубликованы только на `127.0.0.1`.
 
 ## Что внутри
 
@@ -127,5 +127,5 @@ docs/             ARCHITECTURE, EVALS, GRAPH, API, WS, STATUS, DEMO, ADR, UI-к�
 | [`docs/GRAPH.md`](docs/GRAPH.md) · [`docs/WS.md`](docs/WS.md) · [`docs/API.md`](docs/API.md) · [`docs/STATUS.md`](docs/STATUS.md) | Контракты |
 | [`docs/ENGINEERING.md`](docs/ENGINEERING.md) | Паттерны Nest, тесты-ворота |
 | [`docs/PHASES.md`](docs/PHASES.md) | Что и когда сделано |
-| [`docs/adr/`](docs/adr/) | Не Jira · pixel-diff · MCP-фасад |
+| [`docs/adr/`](docs/adr/) | Не Jira · pixel-diff · MCP-фасад · совет разработчика · аккаунты · контур доступа |
 | [`docs/ui/`](docs/ui/) | COPY, эталон, антипаттерны |

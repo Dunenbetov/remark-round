@@ -1,7 +1,7 @@
 # RemarkRound — прод на одном сервере (фаза 11, runbook: docs/PROD.md).
 # Запуск: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 # Порты инфраструктуры в базовом файле уже на 127.0.0.1; наружу смотрит только caddy (80/443 → web).
-# Обязательные переменные .env: JWT_SECRET, POSTGRES_PASSWORD, PUBLIC_HOST (без них compose не стартует).
+# Обязательные переменные .env: JWT_SECRET, POSTGRES_PASSWORD, PUBLIC_HOST, ADMIN_EMAILS (без них compose не стартует).
 services:
   postgres:
     restart: always
@@ -16,6 +16,10 @@ services:
       JWT_EXPIRES_SECONDS: ${JWT_EXPIRES_SECONDS:-86400}
       SEED_ON_START: 'false'
       DEMO_LOGINS: 'false'
+      # Контур доступа (ADR 006): без администратора в пустой системе некому зарегистрироваться первым
+      ADMIN_EMAILS: ${ADMIN_EMAILS:?задайте ADMIN_EMAILS в .env — e-mail администраторов инстанса через запятую}
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-invite_only}
+      REGISTRATION_DOMAINS: ${REGISTRATION_DOMAINS:-}
       TRUST_PROXY_HOPS: '2'
       WEB_ORIGIN: https://${PUBLIC_HOST:?задайте PUBLIC_HOST в .env — домен без https://}
       DATABASE_URL: postgresql://remarkround:${POSTGRES_PASSWORD}@postgres:5432/remarkround?connection_limit=10

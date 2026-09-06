@@ -16,5 +16,8 @@ if (!process.env['DATABASE_URL']) {
   }
 }
 process.env['JWT_SECRET'] ??= 'test-secret';
+// Администраторы инстанса для спеков (ADR 006): по одному адресу на спеку — accounts.spec регистрирует первый,
+// admin.spec входит вторым; спеки идут параллельно и не должны трогать одного и того же человека
+process.env['ADMIN_EMAILS'] ??= 'instance-admin@test.dev,instance-admin-2@test.dev';
 // Спеки офлайн: LLM и эмбеддинги подменены, span'ы Langfuse не шлём (observability.spec ставит свой экспортёр в памяти).
 process.env['LANGFUSE_TRACING_ENABLED'] ??= 'false';

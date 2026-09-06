@@ -4,9 +4,12 @@ import { Router } from '@angular/router';
 import { Observable, firstValueFrom } from 'rxjs';
 import type {
   AddMemberResult,
+  AdminProject,
+  AdminUser,
   AuthOptions,
   DocumentKind,
   ImportJob,
+  InvitationLink,
   InvitationPeek,
   MeResult,
   MemberSummary,
@@ -70,7 +73,7 @@ export class ApiService {
     return this.run(this.http.post<Session>(`${API_BASE}/auth/register`, body));
   }
 
-  /** Свежие user + memberships; ожидающие приглашения на e-mail принимаются на сервере. */
+  /** Свежие user + memberships (страница ожидания опрашивает это, пока PM не добавит человека). */
   me(): Promise<MeResult> {
     return this.run(this.http.get<MeResult>(`${API_BASE}/auth/me`));
   }
@@ -114,6 +117,29 @@ export class ApiService {
 
   revokeInvitation(projectId: string, invitationId: string): Promise<void> {
     return this.run(this.http.delete<void>(`${API_BASE}/projects/${projectId}/invitations/${invitationId}`));
+  }
+
+  /** «Новая ссылка»: прежняя перестаёт работать, сырой токен приходит один раз (ADR 006). */
+  invitationLink(projectId: string, invitationId: string): Promise<InvitationLink> {
+    return this.run(this.http.post<InvitationLink>(`${API_BASE}/projects/${projectId}/invitations/${invitationId}/link`, {}));
+  }
+
+  // Администрирование инстанса (ADR 006): только для ADMIN_EMAILS, остальным — 403
+
+  adminUsers(): Promise<AdminUser[]> {
+    return this.run(this.http.get<AdminUser[]>(`${API_BASE}/admin/users`));
+  }
+
+  adminProjects(): Promise<AdminProject[]> {
+    return this.run(this.http.get<AdminProject[]>(`${API_BASE}/admin/projects`));
+  }
+
+  adminUpdateUser(userId: string, body: { canCreateProjects?: boolean; disabled?: boolean }): Promise<AdminUser> {
+    return this.run(this.http.patch<AdminUser>(`${API_BASE}/admin/users/${userId}`, body));
+  }
+
+  adminRevokeSessions(userId: string): Promise<void> {
+    return this.run(this.http.post<void>(`${API_BASE}/admin/users/${userId}/revoke-sessions`, {}));
   }
 
   invitation(token: string): Promise<InvitationPeek> {

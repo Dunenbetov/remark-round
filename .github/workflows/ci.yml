@@ -2,8 +2,8 @@ name: ci
 
 on:
   pull_request:
+  # Любая ветка: фаза не должна копиться неделями без прогона тестов (аудит: uncommitted-phase)
   push:
-    branches: [main]
 
 jobs:
   api:
@@ -57,3 +57,4 @@ jobs:
           JWT_SECRET: 0123456789abcdef0123456789abcdef
           POSTGRES_PASSWORD: ci-only
           PUBLIC_HOST: rr.example.com
+          ADMIN_EMAILS: admin@rr.example.com

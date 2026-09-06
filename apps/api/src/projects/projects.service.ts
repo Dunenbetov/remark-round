@@ -4,6 +4,8 @@ import type { AuthUser } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectContext } from '../tenancy/project-context';
 
+export const NO_CREATE_RIGHT = 'Право создавать проекты выдаёт администратор';
+
 export interface ProjectSummary {
   id: string;
   name: string;
@@ -30,9 +32,9 @@ export class ProjectsService {
     }));
   }
 
-  /** Проект создаёт тот, кто при регистрации выбрал сторону pm (ADR 005); он же становится pm проекта — решает и зовёт людей. */
+  /** Проект создаёт тот, кому администратор инстанса выдал право (ADR 006); он же становится pm проекта — решает и зовёт людей. */
   async create(user: AuthUser, name: string): Promise<ProjectSummary> {
-    if (user.preferredRole !== 'pm') throw new ForbiddenException('Проекты создаёт руководитель приёмки');
+    if (!user.canCreateProjects) throw new ForbiddenException(NO_CREATE_RIGHT);
     const project = await this.prisma.project.create({
       data: { name, memberships: { create: { userId: user.id, role: 'pm' } } },
     });

@@ -251,7 +251,7 @@ export class AppBar {
       );
     }
     items.push({ id: 'projects:all', label: NAV.allProjects, group: memberships.length > 1 ? undefined : NAV.project, separatorBefore: memberships.length > 1 });
-    if (this.session.preferredRole() === 'pm') items.push({ id: 'projects:new', label: NAV.newProject });
+    if (this.session.canCreateProjects()) items.push({ id: 'projects:new', label: NAV.newProject });
     const rounds = this.store.rounds();
     if (this.role() !== 'developer' && this.store.roundNumber()) {
       rounds.forEach((r, i) =>
@@ -290,6 +290,7 @@ export class AppBar {
     const role = this.role();
     const items: MenuItem[] = [{ id: 'profile', label: NAV.profile, separatorBefore: true }];
     if (role === 'business' || role === 'pm') items.push({ id: 'how', label: NAV.howItWorks });
+    if (this.session.isInstanceAdmin()) items.push({ id: 'admin', label: NAV.admin });
     items.push({ id: 'logout', label: NAV.logout, separatorBefore: true });
     return items;
   });
@@ -346,6 +347,10 @@ export class AppBar {
     if (id === 'how') {
       const role = this.role();
       if (role === 'business' || role === 'pm') this.onboarding.open(role);
+      return;
+    }
+    if (id === 'admin') {
+      void this.router.navigateByUrl('/admin');
       return;
     }
     if (id === 'profile') {

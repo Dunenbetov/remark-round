@@ -53,8 +53,8 @@ export async function seed(prisma: PrismaClient, options: { index?: boolean } = 
     // upsert по id: e-mail и имя демо-персон менялись, на существующей БД запись обновляется на месте
     await prisma.user.upsert({
       where: { id: u.id },
-      create: { id: u.id, email: u.email, name: u.name, passwordHash, preferredRole: u.role },
-      update: { email: u.email, name: u.name, passwordHash, preferredRole: u.role },
+      create: { id: u.id, email: u.email, name: u.name, passwordHash, preferredRole: u.role, canCreateProjects: u.role === 'pm' },
+      update: { email: u.email, name: u.name, passwordHash, preferredRole: u.role, canCreateProjects: u.role === 'pm' },
     });
     await prisma.membership.upsert({
       where: { userId_projectId: { userId: u.id, projectId: SEED.projectId } },

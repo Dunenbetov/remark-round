@@ -121,7 +121,11 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
           @if (demo()) {
             <span class="meta login__demo">{{ demoPassword }}</span>
           }
-          <p class="meta login__switch">{{ copy.noAccount }} <a class="link" routerLink="/register" [queryParams]="registerParams()">{{ copy.toRegister }}</a></p>
+          @if (registrationOpen() || registerParams()['invite']) {
+            <p class="meta login__switch">{{ copy.noAccount }} <a class="link" routerLink="/register" [queryParams]="registerParams()">{{ copy.toRegister }}</a></p>
+          } @else {
+            <p class="meta login__switch">{{ copy.inviteOnly }}</p>
+          }
         </form>
       </div>
     </main>
@@ -365,12 +369,17 @@ export class LoginPage {
   protected readonly showPassword = signal(false);
   /** Карточки демо-персон — только на демо-стенде (GET /auth/options); в проде их нет. */
   protected readonly demo = signal(false);
+  /** invite_only (ADR 006): ссылку «Зарегистрироваться» показываем только пришедшим по приглашению. */
+  protected readonly registrationOpen = signal(false);
 
   constructor() {
     if (this.session.isLoggedIn()) void this.router.navigateByUrl(this.afterLogin());
     void this.api
       .authOptions()
-      .then((o) => this.demo.set(o.demoLogins))
+      .then((o) => {
+        this.demo.set(o.demoLogins);
+        this.registrationOpen.set(o.registration === 'open');
+      })
       .catch(() => this.demo.set(false));
     afterNextRender(() => this.host.nativeElement.querySelector<HTMLInputElement>('input[name=email]')?.focus());
   }

@@ -14,8 +14,8 @@ import { Sheet } from '../ui/sheet';
 const POLL_MS = 25_000;
 
 /**
- * Проекты (ADR 005). Без membership — лист ожидания: заказчика и разработчика добавит руководитель приёмки,
- * а сторона pm создаёт проект прямо здесь. С проектами — список «Ваши проекты» и та же форма для pm.
+ * Проекты (ADR 005, ADR 006). Без membership — лист ожидания: участника добавит руководитель приёмки по ссылке,
+ * а тот, кому администратор выдал право, создаёт проект прямо здесь. С проектами — список «Ваши проекты» и та же форма.
  */
 @Component({
   selector: 'rr-projects-page',
@@ -153,7 +153,7 @@ export class ProjectsPage {
   protected readonly roleShort = ROLE_SHORT;
   protected readonly memberships = this.session.memberships;
   protected readonly hasProjects = computed(() => this.memberships().length > 0);
-  protected readonly canCreate = computed(() => this.session.preferredRole() === 'pm');
+  protected readonly canCreate = this.session.canCreateProjects;
   protected readonly email = computed(() => this.session.user()?.email ?? '');
   protected readonly name = signal('');
   protected readonly busy = signal(false);

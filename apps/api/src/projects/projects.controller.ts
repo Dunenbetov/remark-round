@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthService, type AuthUser, type McpTokenResult } from '../auth/auth.service';
-import { InvitationsService } from '../tenancy/invitations.service';
+import { InvitationsService, type InvitationLink } from '../tenancy/invitations.service';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
@@ -83,5 +83,13 @@ export class ProjectController {
   @HttpCode(204)
   revokeInvitation(@Ctx() ctx: ProjectContext, @Param('invitationId') invitationId: string): Promise<void> {
     return this.invitations.revoke(ctx, invitationId);
+  }
+
+  /** Новая ссылка для ожидающего приглашения (ADR 006): сырой токен в БД не хранится, поэтому «скопировать ещё раз» = выпустить заново. */
+  @Post('invitations/:invitationId/link')
+  @Roles('pm', 'admin')
+  @HttpCode(200)
+  regenerateLink(@Ctx() ctx: ProjectContext, @Param('invitationId') invitationId: string): Promise<InvitationLink> {
+    return this.invitations.regenerateLink(ctx, invitationId);
   }
 }

@@ -105,11 +105,17 @@ model User {
   /// null — пользователь без пароля (задел под вход через Google): verifyPassword(null) всегда false
   passwordHash String?
   name         String
-  /// Сторона при регистрации (ADR 005): подсказка для приглашений и право создавать проекты (только pm).
+  /// Сторона при регистрации (ADR 005): подсказка для приглашений и экранов. Права не даёт (ADR 006).
   /// Роль в конкретном проекте — всегда Membership.role.
   preferredRole Role?
   /// Смена пароля: токены с iat раньше этого момента недействительны (выход везде, включая MCP-токены)
   passwordChangedAt DateTime?
+  /// Право создавать проекты (ADR 006): выдаёт администратор инстанса, не сторона при регистрации
+  canCreateProjects Boolean   @default(false)
+  /// Отключён администратором инстанса (ADR 006): вход, токены и сокеты недействительны, membership сохраняется
+  disabledAt   DateTime?
+  /// Версия сессий: токены с другой `tv` недействительны — «завершить все сессии» без смены пароля (ADR 006)
+  tokenVersion Int          @default(0)
   memberships  Membership[]
   verdicts     HumanVerdict[]
   advices      DeveloperAdvice[]
@@ -141,16 +147,18 @@ model Membership {
   @@index([projectId])
 }
 
-/// Приглашение в проект по e-mail (ADR 005). Писем нет: ссылку /join/<token> PM отправляет сам.
-/// Принимается регистрацией или входом с этим e-mail (auto-accept) либо по token уже вошедшим пользователем.
+/// Приглашение в проект (ADR 005, ADR 006). Писем нет: ссылку /join/<token> PM отправляет сам.
+/// Принимается только по ссылке: регистрацией с inviteToken или вошедшим пользователем. Совпадение e-mail
+/// без ссылки ничего не даёт — иначе место в проекте забирал бы тот, кто первым зарегистрировал этот адрес.
 model Invitation {
   id               String    @id @default(uuid())
   projectId        String
   /// Нормализованный lower-case e-mail
   email            String
   role             Role
-  /// randomBytes(24).toString('base64url') — bearer-способность: у кого ссылка, тот и входит с этой ролью
-  token            String    @unique
+  /// sha256(token) в hex (ADR 006): сырой токен randomBytes(24).base64url отдаётся один раз при создании
+  /// и по кнопке «Новая ссылка»; у кого ссылка, тот и входит с этой ролью — поэтому в БД хранится только хэш
+  tokenHash        String    @unique
   invitedById      String
   createdAt        DateTime  @default(now())
   expiresAt        DateTime?

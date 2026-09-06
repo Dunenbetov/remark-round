@@ -3,7 +3,7 @@
 База: `/api/v1`. Auth: `Authorization: Bearer <jwt>`.  
 `projectId` берётся из URL или из membership выбранного проекта. **Нельзя** доверять `projectId` в теле, если он не совпал с membership.
 
-Ошибки: `401` нет токена, `403` нет членства / роли, `404` чужой id выглядит как 404 (не светить чужое), `409` нелегальный переход статуса, `422` шаблон журнала / валидация.
+Ошибки: `401` нет токена или он отозван (смена пароля, отключение, «завершить сессии»), `403` нет членства / роли / права, `404` чужой id выглядит как 404 (не светить чужое), `409` нелегальный переход статуса, `422` шаблон журнала / валидация.
 
 `cannot_tell` — **200** с телом вердикта, не 500.
 
@@ -11,23 +11,28 @@
 
 | Метод | Путь | Роли | Смысл |
 |---|---|---|---|
-| POST | `/auth/login` | — | JWT + `user` (с `preferredRole`) + `memberships`; приглашения на этот e-mail принимаются при входе. Лимит `THROTTLE_AUTH_LIMIT`/мин с IP |
-| POST | `/auth/register` | — | Регистрация открыта (ADR 005): `{ name, email, password ≥ 8, preferredRole: business \| pm \| developer, inviteToken? }` → 201, ответ как у входа; дубликат e-mail — 409 |
-| GET | `/auth/me` | any | Свежие `{ user, memberships }` без перелогина; принимает ожидающие приглашения на e-mail — страница ожидания опрашивает это |
+| POST | `/auth/login` | — | JWT + `user` (`preferredRole`, `canCreateProjects`, `isInstanceAdmin`) + `memberships`. Отключённый администратором — 403. Лимит `THROTTLE_AUTH_LIMIT`/мин с IP |
+| POST | `/auth/register` | — | `{ name, email, password ≥ 8, preferredRole: business \| pm \| developer, inviteToken? }` → 201, ответ как у входа; дубликат e-mail — 409. Режим (ADR 006): `open` — всем; `invite_only` (в production по умолчанию) — только с живым `inviteToken` (мёртвая ссылка — 404, аккаунт не создаётся), с домена из `REGISTRATION_DOMAINS` или e-mail из `ADMIN_EMAILS`; иначе 403. Приглашение принимается только по ссылке |
+| GET | `/auth/me` | any | Свежие `{ user, memberships }` без перелогина — страница ожидания опрашивает это |
 | PATCH | `/auth/profile` | any | `{ name?, preferredRole? }` |
 | POST | `/auth/password` | any | `{ current, next ≥ 8 }` → `{ accessToken }`; неверный текущий — 422; все прежние токены (и MCP) недействительны |
-| GET | `/auth/options` | — | `{ demoLogins }` — показывать ли карточки демо-персон на входе (в production выключены) |
+| GET | `/auth/options` | — | `{ demoLogins, registration: open \| invite_only }` — карточки демо-персон на входе (в production выключены) и режим регистрации |
 | GET | `/projects` | any | Список membership |
-| POST | `/projects` | сторона pm | Создать: только `preferredRole = pm` (иначе 403); создатель становится `pm` проекта |
+| POST | `/projects` | `canCreateProjects` | Создать: только с правом от администратора инстанса (иначе 403); создатель становится `pm` проекта |
 | GET | `/projects/:projectId` | member | Карточка |
-| GET | `/projects/:projectId/members` | pm, admin | `{ members[], invitations[] }` — участники и ещё не зарегистрированные приглашённые (с `token` для ссылки `/join/<token>`) |
-| POST | `/projects/:projectId/members` | pm, admin | `{ email, role }`: зарегистрированный → `{ kind: 'member', member }` сразу (повтор меняет роль); незнакомый e-mail → `{ kind: 'invitation', invitation }` |
-| PATCH | `/projects/:projectId/members/:userId` | pm, admin | `{ role }`; единственный pm не понижается — 409 |
+| GET | `/projects/:projectId/members` | pm, admin | `{ members[], invitations[] }` — участники и ожидающие приглашения (без токена: в БД только хэш) |
+| POST | `/projects/:projectId/members` | pm, admin | `{ email, role }`: зарегистрированный → `{ kind: 'member', member }` сразу (повтор меняет роль, ожидающая ссылка снимается); незнакомый e-mail → `{ kind: 'invitation', invitation }` с сырым `token` для `/join/<token>` — показывается один раз |
+| PATCH | `/projects/:projectId/members/:userId` | pm, admin | `{ role }`; единственный pm не понижается — 409; сокеты человека выкидываются из комнат проекта (роль на join закеширована) |
 | DELETE | `/projects/:projectId/members/:userId` | pm, admin | 204; единственный pm — 409; сокеты удалённого выкидываются из комнат проекта |
 | DELETE | `/projects/:projectId/invitations/:invitationId` | pm, admin | Отозвать ссылку |
-| GET | `/invitations/:token` | — | Что за приглашение: `{ projectName, role, email, inviterName, expiresAt }`; принятое — 410, неизвестное или истёкшее (30 дней) — 404 |
+| POST | `/projects/:projectId/invitations/:invitationId/link` | pm, admin | «Новая ссылка»: `{ token, expiresAt }` один раз; прежняя перестаёт работать, срок продлевается (7 дней) |
+| GET | `/invitations/:token` | — | Что за приглашение: `{ projectName, role, inviterName, expiresAt }` (e-mail приглашённого не показывается); принятое — 410, неизвестное или истёкшее (7 дней) — 404 |
 | POST | `/invitations/:token/accept` | any | Принять по ссылке вошедшим пользователем (e-mail может отличаться) → `{ user, memberships }` |
-| POST | `/projects/:projectId/mcp-token` | member | Токен для MCP-фасада (`apps/mcp`): JWT с `projectId` из membership, срок `MCP_TOKEN_EXPIRES_SECONDS` (30 дней). С ним существует только `/projects/:projectId/*` этого проекта: другой проект, `/projects`, `/auth/*`, `/invitations/*` — 404, даже при membership. Смена пароля отзывает и его |
+| POST | `/projects/:projectId/mcp-token` | member | Токен для MCP-фасада (`apps/mcp`): JWT с `projectId` из membership, срок `MCP_TOKEN_EXPIRES_SECONDS` (30 дней). С ним существует только `/projects/:projectId/*` этого проекта: другой проект, `/projects`, `/auth/*`, `/invitations/*`, `/admin/*` — 404, даже при membership. Смена пароля, отключение и «завершить сессии» отзывают и его |
+| GET | `/admin/users` | администратор инстанса | Люди поперёк проектов: `{ id, email, name, preferredRole, canCreateProjects, isInstanceAdmin, disabledAt, createdAt, memberships[] }`. Остальным — 403 (проектная роль `admin` — тоже) |
+| GET | `/admin/projects` | администратор инстанса | `{ id, name, createdAt, members }` по всем проектам |
+| PATCH | `/admin/users/:userId` | администратор инстанса | `{ canCreateProjects?, disabled? }`; отключение — вход 403, все токены и сокеты недействительны сразу; себя — 409 |
+| POST | `/admin/users/:userId/revoke-sessions` | администратор инстанса | 204: все токены человека (и MCP) — 401, он входит заново |
 | GET/POST | `/projects/:projectId/documents` | admin, pm | Пакет документов |
 | GET | `/projects/:projectId/documents/:id` | member | Мета + статус индекса |
 | POST | `/projects/:projectId/documents/:id/reindex` | admin, pm | |

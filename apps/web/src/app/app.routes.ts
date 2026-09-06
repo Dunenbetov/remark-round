@@ -1,8 +1,9 @@
 import { inject } from '@angular/core';
 import { Routes } from '@angular/router';
-import { authGuard, homeUrl, projectGuard, roleGuard } from './core/guards';
-import { DOCUMENTS, EMPTY, IMPORT, JOIN, LOGIN, NAV, NEW_REMARK, PROFILE, PROJECTS, REGISTER, TEAM } from './core/copy';
+import { authGuard, homeUrl, instanceAdminGuard, projectGuard, roleGuard } from './core/guards';
+import { ADMIN, DOCUMENTS, EMPTY, IMPORT, JOIN, LOGIN, NAV, NEW_REMARK, PROFILE, PROJECTS, REGISTER, TEAM } from './core/copy';
 import { SessionService } from './core/session.service';
+import { AdminPage } from './pages/admin-page';
 import { DevQueuePage } from './pages/dev-queue-page';
 import { DocumentsPage } from './pages/documents-page';
 import { ImportPage } from './pages/import-page';
@@ -26,6 +27,8 @@ export const routes: Routes = [
   // Без проекта — ожидание или создание; с проектами — список
   { path: 'projects', component: ProjectsPage, title: PROJECTS.title, canActivate: [authGuard] },
   { path: 'profile', component: ProfilePage, title: PROFILE.title, canActivate: [authGuard] },
+  // Администрирование инстанса (ADR 006): люди и проекты поперёк тенантов
+  { path: 'admin', component: AdminPage, title: ADMIN.title, canActivate: [instanceAdminGuard] },
   { path: '', pathMatch: 'full', redirectTo: () => homeUrl(inject(SessionService)) },
   {
     path: 'p/:projectId',

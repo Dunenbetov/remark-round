@@ -23,6 +23,13 @@ export const projectGuard: CanActivateFn = async (route) => {
   return session.isMember(projectId) ? true : router.createUrlTree(['/no-access']);
 };
 
+/** /admin — только администратор инстанса (ADMIN_EMAILS, ADR 006); сервер проверит ещё раз. */
+export const instanceAdminGuard: CanActivateFn = () => {
+  const session = inject(SessionService);
+  if (!session.isLoggedIn()) return inject(Router).createUrlTree(['/login']);
+  return session.isInstanceAdmin() ? true : inject(Router).createUrlTree(['/no-access']);
+};
+
 export function roleGuard(...roles: Role[]): CanActivateFn {
   return (route) => {
     const session = inject(SessionService);

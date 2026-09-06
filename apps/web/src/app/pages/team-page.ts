@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { HttpErrorResponse } from '@angular/common/http';
 import { ApiService } from '../core/api.service';
 import { COMMON, ERROR, ROLE_SIDE, ROLE_SHORT, SIDES, TEAM } from '../core/copy';
-import type { InvitationSummary, MemberSummary, Role, Side } from '../core/models';
+import type { InvitationLink, InvitationSummary, MemberSummary, Role, Side } from '../core/models';
 import { PendingActionService } from '../core/pending-action.service';
 import { SessionService } from '../core/session.service';
 import { AppBar } from '../ui/app-bar';
@@ -13,9 +13,10 @@ import { SegmentItem, Segmented } from '../ui/segmented';
 import { Skeleton } from '../ui/skeleton';
 
 /**
- * Участники проекта (ADR 005): руководитель приёмки добавляет по e-mail — зарегистрированный входит сразу,
- * незнакомый получает ссылку-приглашение, которую PM копирует и шлёт сам (писем нет). Роль — на проект,
- * меняется здесь же; «Убрать из проекта» — через 5-секундную отмену, как любое необратимое действие.
+ * Участники проекта (ADR 005, ADR 006): руководитель приёмки добавляет по e-mail — зарегистрированный входит сразу,
+ * незнакомый получает ссылку-приглашение, которую PM копирует и шлёт сам (писем нет). Токен ссылки сервер отдаёт
+ * один раз; «Новая ссылка» выпускает заново. Роль — на проект, меняется здесь же; «Убрать из проекта» — через
+ * 5-секундную отмену, как любое необратимое действие.
  */
 @Component({
   selector: 'rr-team-page',
@@ -114,11 +115,16 @@ import { Skeleton } from '../ui/skeleton';
                       <span class="meta">{{ roleSide[sideOf(inv.role)] }}@if (inv.expiresAt) { · {{ copy.expires(date(inv.expiresAt)) }}}</span>
                     </span>
                     <span class="inv__actions">
-                      <button type="button" class="btn btn--secondary btn--sm" (click)="copyLink(inv)">{{ copiedId() === inv.id ? copy.copied : copy.copyLink }}</button>
+                      @if (links()[inv.id]; as fresh) {
+                        <button type="button" class="btn btn--secondary btn--sm" (click)="copyLink(inv.id, fresh)">{{ copiedId() === inv.id ? copy.copied : copy.copyLink }}</button>
+                      } @else {
+                        <button type="button" class="btn btn--secondary btn--sm" [disabled]="linking() === inv.id" (click)="newLink(inv)">{{ copy.newLink }}</button>
+                      }
                       <button type="button" class="btn btn--danger-text btn--sm" (click)="revoke(inv)">{{ copy.revoke }}</button>
                     </span>
-                    @if (fallbackId() === inv.id) {
-                      <input class="input inv__url" type="text" readonly [value]="link(inv)" (focus)="selectAll($event)" />
+                    @if (links()[inv.id]; as fresh) {
+                      <span class="meta inv__ready" role="status">{{ copy.linkReady }}</span>
+                      <input class="input inv__url" type="text" readonly [value]="link(fresh)" (focus)="selectAll($event)" />
                     }
                   </li>
                 }
@@ -223,8 +229,14 @@ import { Skeleton } from '../ui/skeleton';
       display: inline-flex;
       gap: var(--sp-2);
     }
+    .inv__ready,
     .inv__url {
       grid-column: 1 / -1;
+    }
+    .inv__ready {
+      margin: 0;
+      color: var(--rr-accent-2-text);
+      font-weight: var(--fw-semibold);
     }
     @media (max-width: 900px) {
       .add__row {
@@ -260,7 +272,9 @@ export class TeamPage {
   protected readonly addError = signal<string | null>(null);
   protected readonly addNote = signal<string | null>(null);
   protected readonly copiedId = signal<string | null>(null);
-  protected readonly fallbackId = signal<string | null>(null);
+  /** Сырые токены, полученные в этой сессии страницы (создание или «Новая ссылка»): сервер их больше не отдаст. */
+  protected readonly links = signal<Record<string, InvitationLink>>({});
+  protected readonly linking = signal<string | null>(null);
   /** Строка, ждущая отмены: скрыта, пока идёт отсчёт; отмена возвращает её. */
   private readonly hiddenUserId = signal<string | null>(null);
   protected readonly meId = computed(() => this.session.user()?.id ?? '');
@@ -328,6 +342,7 @@ export class TeamPage {
     try {
       const result = await this.api.addMember(this.projectId(), { email: this.email().trim(), role: this.side() });
       this.addNote.set(result.kind === 'member' ? this.copy.addedMember(result.member.name) : this.copy.addedInvitation(result.invitation.email));
+      if (result.kind === 'invitation') this.remember(result.invitation.id, result.invitation);
       this.email.set('');
       await this.load();
     } catch (err) {
@@ -380,19 +395,37 @@ export class TeamPage {
     }
   }
 
-  protected link(inv: InvitationSummary): string {
-    return `${location.origin}/join/${inv.token}`;
+  protected link(fresh: InvitationLink): string {
+    return `${location.origin}/join/${fresh.token}`;
   }
 
-  protected async copyLink(inv: InvitationSummary): Promise<void> {
+  /** Сервер отдаёт токен один раз (ADR 006): держим его в памяти страницы и показываем текстом — буфер обмена может быть недоступен. */
+  private remember(id: string, fresh: InvitationLink): void {
+    this.links.update((all) => ({ ...all, [id]: { token: fresh.token, expiresAt: fresh.expiresAt } }));
+  }
+
+  protected async newLink(inv: InvitationSummary): Promise<void> {
+    if (this.linking()) return;
+    this.linking.set(inv.id);
+    this.error.set(null);
     try {
-      await navigator.clipboard.writeText(this.link(inv));
-      this.copiedId.set(inv.id);
-      this.fallbackId.set(null);
-      setTimeout(() => this.copiedId.update((id) => (id === inv.id ? null : id)), 2000);
+      const fresh = await this.api.invitationLink(this.projectId(), inv.id);
+      this.remember(inv.id, fresh);
+      this.invitations.update((list) => list.map((x) => (x.id === inv.id ? { ...x, expiresAt: fresh.expiresAt } : x)));
+    } catch (err) {
+      this.error.set(this.message(err));
+    } finally {
+      this.linking.set(null);
+    }
+  }
+
+  protected async copyLink(id: string, fresh: InvitationLink): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(this.link(fresh));
+      this.copiedId.set(id);
+      setTimeout(() => this.copiedId.update((current) => (current === id ? null : current)), 2000);
     } catch {
-      // Буфер недоступен (http без TLS, старый браузер): показываем ссылку текстом
-      this.fallbackId.set(inv.id);
+      // Буфер недоступен (http без TLS, старый браузер): ссылка и так показана текстом под строкой
     }
   }
 

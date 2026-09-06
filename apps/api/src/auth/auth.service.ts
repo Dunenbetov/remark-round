@@ -1,7 +1,7 @@
-import { ConflictException, Injectable, NotFoundException, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Role, User } from '@remarkround/db';
-import { config } from '../config';
+import { config, type RegistrationMode } from '../config';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvitationsService, normalizeEmail } from '../tenancy/invitations.service';
 import { TenancyService } from '../tenancy/tenancy.service';
@@ -20,14 +20,20 @@ export interface JwtPayload {
   projectId?: string;
   /** Момент выпуска в миллисекундах (iat у JWT — секунды, этого мало): токены старше passwordChangedAt недействительны. */
   ts?: number;
+  /** Версия сессий (ADR 006): не совпала с User.tokenVersion — токен отозван администратором или «выйти везде». */
+  tv?: number;
 }
 
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
-  /** Сторона при регистрации (ADR 005): подсказка, право создавать проекты — только pm. */
+  /** Сторона при регистрации (ADR 005): подсказка для экранов, прав не даёт. */
   preferredRole: Role | null;
+  /** Право создавать проекты (ADR 006): выдаёт администратор инстанса; у администратора есть всегда. */
+  canCreateProjects: boolean;
+  /** E-mail в ADMIN_EMAILS: администрирование инстанса — люди, проекты, отключение, отзыв сессий. */
+  isInstanceAdmin: boolean;
   /** Проект, к которому привязан токен; остальные проекты для такого токена не существуют (404). */
   scopedProjectId?: string;
 }
@@ -61,7 +67,12 @@ export interface McpTokenResult {
 export interface AuthOptions {
   /** Карточки демо-персон на входе (DEMO_LOGINS); в production выключены. */
   demoLogins: boolean;
+  /** open — регистрация всем; invite_only — только по ссылке приглашения (и администраторам инстанса). */
+  registration: RegistrationMode;
 }
+
+export const ACCOUNT_DISABLED = 'Учётная запись отключена — обратитесь к администратору';
+export const REGISTRATION_CLOSED = 'Регистрация только по ссылке приглашения';
 
 const MCP_TOKEN_SECONDS = config().MCP_TOKEN_EXPIRES_SECONDS;
 
@@ -80,17 +91,21 @@ export class AuthService {
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
       throw new UnauthorizedException();
     }
-    // Приглашения, отправленные на этот e-mail, пока человека не было — принимаются при входе
-    await this.invitations.acceptPendingByEmail(user.id, user.email);
+    // Пароль верный, но человека отключили: сказать прямо — это не «неверный пароль»
+    if (user.disabledAt) throw new ForbiddenException(ACCOUNT_DISABLED);
     return this.session(user);
   }
 
   /**
-   * Регистрация (ADR 005): открыта всем; без проекта человек видит экран ожидания.
-   * Приглашение по ссылке (inviteToken) и приглашения на этот e-mail принимаются сразу.
+   * Регистрация (ADR 006). Кто может: все (REGISTRATION_MODE=open), пришедший по живой ссылке приглашения,
+   * e-mail с домена из REGISTRATION_DOMAINS, администратор инстанса (первый человек в пустой системе).
+   * Приглашение принимается только по ссылке: совпадение e-mail без неё ничего не даёт.
    */
   async register(dto: RegisterDto): Promise<LoginResult> {
     const email = normalizeEmail(dto.email);
+    // Ссылка проверяется до создания пользователя: по мёртвой ссылке в закрытом режиме аккаунт не появится
+    if (dto.inviteToken) await this.invitations.assertUsable(dto.inviteToken).catch((e: unknown) => this.rejectInvite(e));
+    if (!dto.inviteToken && !this.selfRegistrationAllowed(email)) throw new ForbiddenException(REGISTRATION_CLOSED);
     let user: User;
     try {
       user = await this.prisma.user.create({
@@ -101,11 +116,7 @@ export class AuthService {
       if ((e as { code?: string }).code === 'P2002') throw new ConflictException('Этот e-mail уже зарегистрирован');
       throw e;
     }
-    if (dto.inviteToken) {
-      // Ссылка могла истечь или быть отозвана: регистрация всё равно состоялась, человек увидит экран ожидания
-      await this.invitations.acceptByToken(user.id, dto.inviteToken).catch(() => undefined);
-    }
-    await this.invitations.acceptPendingByEmail(user.id, user.email);
+    if (dto.inviteToken) await this.invitations.acceptByToken(user.id, dto.inviteToken);
     return this.session(user);
   }
 
@@ -113,7 +124,6 @@ export class AuthService {
   async me(userId: string): Promise<MeResult> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException();
-    await this.invitations.acceptPendingByEmail(user.id, user.email);
     return { user: toAuthUser(user), memberships: await this.membershipsOf(user.id) };
   }
 
@@ -142,7 +152,8 @@ export class AuthService {
   }
 
   options(): AuthOptions {
-    return { demoLogins: config().demoLogins };
+    const cfg = config();
+    return { demoLogins: cfg.demoLogins, registration: cfg.registrationMode };
   }
 
   /**
@@ -155,7 +166,7 @@ export class AuthService {
       include: { project: true, user: true },
     });
     if (!membership) throw new NotFoundException();
-    const payload: JwtPayload = { sub: membership.userId, email: membership.user.email, projectId, ts: Date.now() };
+    const payload: JwtPayload = { sub: membership.userId, email: membership.user.email, projectId, ts: Date.now(), tv: membership.user.tokenVersion };
     const token = await this.jwt.signAsync(payload, { expiresIn: MCP_TOKEN_SECONDS });
     return {
       token,
@@ -166,6 +177,10 @@ export class AuthService {
     };
   }
 
+  /**
+   * Единственная проверка токена для REST, WS и MCP. Недействителен, если: подпись/срок не прошли; пользователя нет
+   * или он отключён; версия сессий `tv` не совпала (отзыв администратором); выпущен до смены пароля.
+   */
   async userFromToken(token: string): Promise<AuthUser> {
     let payload: JwtPayload;
     try {
@@ -174,7 +189,9 @@ export class AuthService {
       throw new UnauthorizedException();
     }
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-    if (!user) throw new UnauthorizedException();
+    if (!user || user.disabledAt) throw new UnauthorizedException();
+    // Токен без tv (выпущен до ADR 006) считается версии 0
+    if ((payload.tv ?? 0) !== user.tokenVersion) throw new UnauthorizedException();
     // Токен без ts (выпущен до фазы 11) после смены пароля тоже недействителен
     if (user.passwordChangedAt && (payload.ts === undefined || payload.ts < user.passwordChangedAt.getTime())) {
       throw new UnauthorizedException();
@@ -182,12 +199,26 @@ export class AuthService {
     return { ...toAuthUser(user), scopedProjectId: payload.projectId };
   }
 
+  private selfRegistrationAllowed(email: string): boolean {
+    const cfg = config();
+    if (cfg.adminEmails.has(email)) return true;
+    if (cfg.registrationMode === 'open') return true;
+    const domain = email.slice(email.lastIndexOf('@') + 1);
+    return cfg.registrationDomains.includes(domain);
+  }
+
+  /** Мёртвая ссылка при регистрации: 404/410 как у GET /invitations/:token, чтобы фронт показал то же сообщение. */
+  private rejectInvite(e: unknown): never {
+    if (e instanceof NotFoundException) throw new NotFoundException('Ссылка приглашения не действует');
+    throw e;
+  }
+
   private async session(user: User): Promise<LoginResult> {
     return { accessToken: await this.sign(user), user: toAuthUser(user), memberships: await this.membershipsOf(user.id) };
   }
 
   private sign(user: User): Promise<string> {
-    const payload: JwtPayload = { sub: user.id, email: user.email, ts: Date.now() };
+    const payload: JwtPayload = { sub: user.id, email: user.email, ts: Date.now(), tv: user.tokenVersion };
     return this.jwt.signAsync(payload);
   }
 
@@ -197,6 +228,18 @@ export class AuthService {
   }
 }
 
-function toAuthUser(user: User): AuthUser {
-  return { id: user.id, email: user.email, name: user.name, preferredRole: user.preferredRole };
+export function isInstanceAdmin(email: string): boolean {
+  return config().adminEmails.has(normalizeEmail(email));
+}
+
+export function toAuthUser(user: User): AuthUser {
+  const admin = isInstanceAdmin(user.email);
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    preferredRole: user.preferredRole,
+    canCreateProjects: user.canCreateProjects || admin,
+    isInstanceAdmin: admin,
+  };
 }

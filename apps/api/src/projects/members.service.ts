@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Membership, Role, User } from '@remarkround/db';
 import { PrismaService } from '../prisma/prisma.service';
-import { InvitationsService, normalizeEmail, type InvitationSummary } from '../tenancy/invitations.service';
+import { InvitationsService, normalizeEmail, type InvitationCreated, type InvitationSummary } from '../tenancy/invitations.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import { TenancyService } from '../tenancy/tenancy.service';
 
@@ -19,7 +19,8 @@ export interface MembersView {
   invitations: InvitationSummary[];
 }
 
-export type AddMemberResult = { kind: 'member'; member: MemberSummary } | { kind: 'invitation'; invitation: InvitationSummary };
+/** Приглашение отдаёт сырой `token` один раз (ADR 006): дальше только «Новая ссылка». */
+export type AddMemberResult = { kind: 'member'; member: MemberSummary } | { kind: 'invitation'; invitation: InvitationCreated };
 
 export const LAST_PM = 'Единственный руководитель приёмки — сначала назначьте другого';
 
@@ -44,18 +45,23 @@ export class MembersService {
     return { members: rows.map((m) => toSummary(m.user, m)), invitations: await this.invitations.listPending(ctx.projectId) };
   }
 
-  /** Зарегистрированный — участник сразу (повтор меняет роль); незнакомый e-mail — приглашение со ссылкой. */
+  /** Зарегистрированный — участник сразу (повтор меняет роль); незнакомый e-mail — приглашение со ссылкой (token — один раз). */
   async add(ctx: ProjectContext, email: string, role: Role): Promise<AddMemberResult> {
     const normalized = normalizeEmail(email);
     const user = await this.prisma.user.findUnique({ where: { email: normalized } });
     if (!user) return { kind: 'invitation', invitation: await this.invitations.create(ctx, normalized, role) };
     const existing = await this.prisma.membership.findUnique({ where: { userId_projectId: { userId: user.id, projectId: ctx.projectId } } });
     if (existing?.role === 'pm' && role !== 'pm') await this.assertNotLastPm(ctx.projectId, user.id);
-    const membership = await this.prisma.membership.upsert({
-      where: { userId_projectId: { userId: user.id, projectId: ctx.projectId } },
-      create: { userId: user.id, projectId: ctx.projectId, role, invitedById: ctx.userId },
-      update: { role },
-    });
+    const [membership] = await this.prisma.$transaction([
+      this.prisma.membership.upsert({
+        where: { userId_projectId: { userId: user.id, projectId: ctx.projectId } },
+        create: { userId: user.id, projectId: ctx.projectId, role, invitedById: ctx.userId },
+        update: { role },
+      }),
+      // Человек зарегистрировался без ссылки, пока приглашение ждало: PM добавил его напрямую, ссылка больше не нужна
+      this.prisma.invitation.deleteMany({ where: { projectId: ctx.projectId, email: normalized, acceptedAt: null } }),
+    ]);
+    if (existing && existing.role !== role) this.tenancy.revoke(user.id, ctx.projectId);
     return { kind: 'member', member: toSummary(user, membership) };
   }
 
@@ -67,6 +73,8 @@ export class MembersService {
     if (!membership) throw new NotFoundException();
     if (membership.role === 'pm' && role !== 'pm') await this.assertNotLastPm(ctx.projectId, userId);
     const updated = await this.prisma.membership.update({ where: { id: membership.id }, data: { role }, include: { user: true } });
+    // WS кэширует роль на join: без отзыва бывший pm продолжил бы решать в открытых комнатах
+    if (membership.role !== role) this.tenancy.revoke(userId, ctx.projectId);
     return toSummary(updated.user, updated);
   }
 
