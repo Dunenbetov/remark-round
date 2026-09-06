@@ -13,7 +13,7 @@ const REMARK_INCLUDE = {
   citations: { select: { id: true, chunkId: true, quoteText: true, section: true, documentTitle: true, documentKind: true, effectiveAt: true } },
   verdicts: { select: { code: true, userId: true, comment: true, createdAt: true } },
   advices: { select: { code: true, userId: true, comment: true, updatedAt: true } },
-  runs: { select: { id: true, createdAt: true, status: true, mode: true } },
+  runs: { select: { id: true, createdAt: true, status: true, mode: true, failureMessage: true } },
 } satisfies Prisma.RemarkInclude;
 
 /** Разработчик видит только принятые поломки и то, что сам отдал на ретест. */
@@ -292,13 +292,13 @@ export class RemarksService {
     return this.get(ctx, remarkId);
   }
 
-  /** Прогон упал: run = failed, замечание возвращается туда, откуда можно «Запустить снова». */
-  async failRun(runId: string): Promise<RemarkStatus | null> {
+  /** Прогон упал: run = failed с причиной, замечание возвращается туда, откуда можно «Запустить снова». */
+  async failRun(runId: string, failure?: { code: string; message: string }): Promise<RemarkStatus | null> {
     const run = await this.prisma.agentRun.findUnique({ where: { id: runId }, include: { remark: { select: { id: true, status: true } } } });
     if (!run || run.status !== 'running') return run?.remark.status ?? null;
     const next: RemarkStatus = run.mode === 'triage' && run.remark.status === 'triaging' ? 'imported' : run.remark.status;
     await this.prisma.$transaction([
-      this.prisma.agentRun.update({ where: { id: runId }, data: { status: 'failed' } }),
+      this.prisma.agentRun.update({ where: { id: runId }, data: { status: 'failed', failureCode: failure?.code ?? null, failureMessage: failure?.message ?? null } }),
       ...(next !== run.remark.status ? [this.prisma.remark.update({ where: { id: run.remark.id }, data: { status: next } })] : []),
     ]);
     return next;
@@ -307,7 +307,7 @@ export class RemarksService {
   /** Прогоны, которые остались `running` после падения процесса: чекпоинт есть, исполнителя нет. */
   async failStaleRuns(olderThanMs: number): Promise<number> {
     const stale = await this.prisma.agentRun.findMany({ where: { status: 'running', createdAt: { lt: new Date(Date.now() - olderThanMs) } }, select: { id: true } });
-    for (const run of stale) await this.failRun(run.id);
+    for (const run of stale) await this.failRun(run.id, { code: 'process_restart', message: 'Прогон прервался при перезапуске сервера — запустите снова' });
     return stale.length;
   }
 

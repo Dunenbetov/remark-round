@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Role, User } from '@remarkround/db';
 import { isInstanceAdmin } from '../auth/auth.service';
+import { securityEvent } from '../observability/security-log';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenancyService } from '../tenancy/tenancy.service';
 import type { AdminUpdateUserDto } from './dto/update-user.dto';
@@ -70,15 +71,17 @@ export class AdminService {
       },
     });
     if (disabling) this.tenancy.revoke(userId);
+    securityEvent('admin.user.update', { by: actorId, userId, canCreateProjects: dto.canCreateProjects, disabled: dto.disabled });
     return { ...toView(updated), memberships: [] };
   }
 
   /** «Завершить все сессии»: старые токены (включая MCP на 30 дней) — 401, человек входит заново. */
-  async revokeSessions(userId: string): Promise<void> {
+  async revokeSessions(actorId: string, userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException();
     await this.prisma.user.update({ where: { id: userId }, data: { tokenVersion: { increment: 1 } } });
     this.tenancy.revoke(userId);
+    securityEvent('admin.user.revoke_sessions', { by: actorId, userId });
   }
 }
 

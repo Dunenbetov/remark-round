@@ -197,6 +197,8 @@ export interface RemarkView {
   /** Состояние текущего прогона: `running` — фазы идут по WS, `awaiting_human` — ждёт кнопки. */
   runStatus?: AgentRunStatus;
   runMode?: 'triage' | 'retest';
+  /** Почему последний прогон failed — по-русски, для карточки («модель перегружена», «ключ не принят»). */
+  runFailure?: string;
   /** Trace этого прогона в Langfuse (фаза 8): есть только когда Langfuse настроен. */
   traceUrl?: string;
   createdAt: string;
@@ -231,7 +233,7 @@ export interface RemarkRow {
   citations: Array<{ id: string; chunkId: string | null; quoteText: string | null; section: string | null; documentTitle: string | null; documentKind: DocumentKind | null; effectiveAt: Date | null }>;
   verdicts: Array<{ code: VerdictCode; userId: string; comment: string | null; createdAt: Date }>;
   advices: Array<{ code: VerdictCode; userId: string; comment: string | null; updatedAt: Date }>;
-  runs: Array<{ id: string; createdAt: Date; status: AgentRunStatus; mode: string }>;
+  runs: Array<{ id: string; createdAt: Date; status: AgentRunStatus; mode: string; failureMessage?: string | null }>;
 }
 
 /** Чанк с документом — форма выдачи retrieve; в карточке цитаты теперь снимок (см. RemarkRow.citations). */
@@ -328,6 +330,7 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience 
     runId: run?.id,
     runStatus: run?.status,
     runMode: run ? (run.mode === 'retest' ? 'retest' : 'triage') : undefined,
+    runFailure: run?.status === 'failed' ? (run.failureMessage ?? undefined) : undefined,
     traceUrl: run && !customer ? extra.traceUrl?.(run.id) : undefined,
     createdAt: r.createdAt.toISOString(),
   };

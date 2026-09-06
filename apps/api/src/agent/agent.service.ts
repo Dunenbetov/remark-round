@@ -183,10 +183,12 @@ export class AgentService implements OnModuleInit {
       });
     } catch (e) {
       if (ac.signal.aborted) return;
-      const message = (e as Error).message ?? String(e);
-      this.log.error(`run ${runId} failed: ${message}`);
-      await this.remarks.failRun(runId).catch(() => null);
-      this.events.emit(remarkId, { type: 'run.failed', runId, message: 'Не получилось разобрать. Можно запустить снова' });
+      // Причина сбоя — со стеком в лог и человеческим текстом на карточку (аудит: no-error-tracking)
+      const failure = classifyRunError(e);
+      const err = e as Error;
+      this.log.error({ msg: `run ${runId} failed: ${failure.code}`, runId, remarkId, projectId: trace.projectId, failure: failure.code, err: { name: err?.name, message: err?.message, stack: err?.stack } });
+      await this.remarks.failRun(runId, failure).catch(() => null);
+      this.events.emit(remarkId, { type: 'run.failed', runId, message: failure.message });
     } finally {
       this.running.delete(runId);
       releaseGlobal();
@@ -218,6 +220,24 @@ export class AgentService implements OnModuleInit {
     }
     this.events.emit(remarkId, { type: 'run.persisted', runId, remarkStatus });
   }
+}
+
+/**
+ * Класс ошибки прогона: код для логов и статистики, текст для карточки. Ошибки OpenAI SDK несут status и name
+ * (APIConnectionTimeoutError, RateLimitError, AuthenticationError…); всё остальное — unknown с тем же честным текстом.
+ */
+export function classifyRunError(e: unknown): { code: string; message: string } {
+  const err = e as { name?: string; status?: number; code?: string; message?: string } | null;
+  const name = err?.name ?? '';
+  const status = typeof err?.status === 'number' ? err.status : 0;
+  const text = err?.message ?? '';
+  if (name === 'APIConnectionTimeoutError' || err?.code === 'ETIMEDOUT' || /timed out/i.test(text)) return { code: 'llm_timeout', message: 'Модель не ответила вовремя — запустите снова' };
+  if (status === 429 || name === 'RateLimitError') return { code: 'llm_rate_limit', message: 'Модель перегружена (лимит запросов) — подождите минуту и запустите снова' };
+  if (status === 401 || status === 403 || name === 'AuthenticationError' || name === 'PermissionDeniedError') return { code: 'llm_auth', message: 'Ключ модели не принят — сообщите администратору' };
+  if (status === 400 || status === 404 || status === 422 || name === 'BadRequestError' || name === 'NotFoundError') return { code: 'llm_bad_request', message: 'Модель отклонила запрос — сообщите администратору' };
+  if (status >= 500 || name === 'APIConnectionError' || name === 'InternalServerError') return { code: 'llm_unavailable', message: 'Сервис модели недоступен — повторите позже' };
+  if (err?.code === 'ENOENT' || /^storage:/.test(text)) return { code: 'storage', message: 'Файл кадра или документа не найден — прикрепите заново' };
+  return { code: 'unknown', message: 'Не получилось разобрать. Можно запустить снова' };
 }
 
 /** Итог прогона для корня trace: без кадров, без токенов черновика — только то, что решает человек. */

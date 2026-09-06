@@ -3,7 +3,9 @@
 База: `/api/v1`. Auth: `Authorization: Bearer <jwt>`.  
 `projectId` берётся из URL или из membership выбранного проекта. **Нельзя** доверять `projectId` в теле, если он не совпал с membership.
 
-Ошибки: `401` нет токена или он отозван (смена пароля, отключение, «завершить сессии»), `403` нет членства / роли / права, `404` чужой id выглядит как 404 (не светить чужое), `409` нелегальный переход статуса, `422` шаблон журнала / валидация.
+Ошибки: `401` нет токена или он отозван (смена пароля, отключение, «завершить сессии»), `403` нет членства / роли / права, `404` чужой id выглядит как 404 (не светить чужое), `409` нелегальный переход статуса или карточка изменилась параллельно (перечитать), `422` шаблон журнала / валидация / файл не того типа.
+
+Тело любой ошибки одно: `{ statusCode, code, message, requestId }` — `code` для программ (`unauthorized`, `forbidden`, `not_found`, `conflict`, `unprocessable`, `too_many_requests`, `internal`…), `message` для людей (строка или список от валидации), `requestId` — тот же, что в заголовке `X-Request-Id` ответа и в строке лога API. Прокси может прислать свой `X-Request-Id` (8–64 символов `[\w.-]`), иначе сервер сгенерирует. Внутренняя ошибка — `500 internal` без подробностей наружу, стек — в логе по `requestId`.
 
 `cannot_tell` — **200** с телом вердикта, не 500.
 
@@ -39,7 +41,7 @@
 | GET/POST | `/projects/:projectId/rounds` | member POST: pm/business | Раунды |
 | GET | `/projects/:projectId/rounds/:roundId/remarks` | по роли фильтр | Список. Developer — только defect+ |
 | POST | `/projects/:projectId/rounds/:roundId/remarks` | business, pm | Ручное замечание + upload screenshot |
-| GET | `/projects/:projectId/remarks/:remarkId` | member + ACL очереди | Карточка. Developer — defect+ и `awaiting_pm` (чтобы посоветовать); в ответе `advice[]` — советы разработчиков. Заказчику (business) карточка собирается без `advice`, `verdict.comment`, `traceUrl`, `proposedClass`, а `draft`/`seen` — только после вердикта (ADR 007); то же для списков |
+| GET | `/projects/:projectId/remarks/:remarkId` | member + ACL очереди | Карточка; `runFailure` — причина последнего сбоя прогона по-русски (модель перегружена, ключ не принят, файл не найден…). Developer — defect+ и `awaiting_pm` (чтобы посоветовать); в ответе `advice[]` — советы разработчиков. Заказчику (business) карточка собирается без `advice`, `verdict.comment`, `traceUrl`, `proposedClass`, а `draft`/`seen` — только после вердикта (ADR 007); то же для списков |
 | GET | `/projects/:projectId/advisory-queue` | developer | Что сейчас на приёмке у PM (`awaiting_pm`) — можно посоветовать; не очередь работы |
 | PUT | `/projects/:projectId/remarks/:id/advice` | developer | `{ code, comment? }` — совет PM (`code` — те же пять кнопок, без `duplicate`; ≤ 500 символов). Один на человека: повтор меняет. Только для `awaiting_pm`, иначе 409. Статус не меняет; в комнату уходит `remark.advice` |
 | DELETE | `/projects/:projectId/remarks/:id/advice` | developer | Снять свой совет; тоже `remark.advice` |

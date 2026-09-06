@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Membership, Role, User } from '@remarkround/db';
+import { securityEvent } from '../observability/security-log';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvitationsService, normalizeEmail, type InvitationCreated, type InvitationSummary } from '../tenancy/invitations.service';
 import type { ProjectContext } from '../tenancy/project-context';
@@ -62,6 +63,7 @@ export class MembersService {
       this.prisma.invitation.deleteMany({ where: { projectId: ctx.projectId, email: normalized, acceptedAt: null } }),
     ]);
     if (existing && existing.role !== role) this.tenancy.revoke(user.id, ctx.projectId);
+    securityEvent(existing ? 'member.role' : 'member.add', { projectId: ctx.projectId, by: ctx.userId, userId: user.id, role, from: existing?.role });
     return { kind: 'member', member: toSummary(user, membership) };
   }
 
@@ -75,6 +77,7 @@ export class MembersService {
     const updated = await this.prisma.membership.update({ where: { id: membership.id }, data: { role }, include: { user: true } });
     // WS кэширует роль на join: без отзыва бывший pm продолжил бы решать в открытых комнатах
     if (membership.role !== role) this.tenancy.revoke(userId, ctx.projectId);
+    securityEvent('member.role', { projectId: ctx.projectId, by: ctx.userId, userId, role, from: membership.role });
     return toSummary(updated.user, updated);
   }
 
@@ -91,6 +94,7 @@ export class MembersService {
       this.prisma.invitation.deleteMany({ where: { projectId: ctx.projectId, email: membership.user.email } }),
     ]);
     this.tenancy.revoke(userId, ctx.projectId);
+    securityEvent('member.remove', { projectId: ctx.projectId, by: ctx.userId, userId, role: membership.role });
   }
 
   /** В проекте всегда остаётся хотя бы один pm: иначе некому решать и некому звать людей. */

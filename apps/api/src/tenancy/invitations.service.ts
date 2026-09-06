@@ -1,6 +1,7 @@
 import { GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Invitation, Role } from '@remarkround/db';
 import { createHash, randomBytes } from 'node:crypto';
+import { securityEvent } from '../observability/security-log';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectContext } from './project-context';
 
@@ -56,6 +57,7 @@ export class InvitationsService {
       : await this.prisma.invitation.create({
           data: { projectId: ctx.projectId, email: normalized, role, tokenHash: hashToken(token), invitedById: ctx.userId, expiresAt },
         });
+    securityEvent('invitation.create', { projectId: ctx.projectId, by: ctx.userId, email: normalized, role, invitationId: row.id });
     return { ...summary(row), token, expiresAt: expiresAt.toISOString() };
   }
 
@@ -66,6 +68,7 @@ export class InvitationsService {
     const token = newToken();
     const expiresAt = expiry();
     await this.prisma.invitation.update({ where: { id: row.id }, data: { tokenHash: hashToken(token), expiresAt, invitedById: ctx.userId } });
+    securityEvent('invitation.link', { projectId: ctx.projectId, by: ctx.userId, invitationId: row.id });
     return { token, expiresAt: expiresAt.toISOString() };
   }
 
@@ -79,6 +82,7 @@ export class InvitationsService {
     const row = await this.prisma.invitation.findFirst({ where: { id: invitationId, projectId: ctx.projectId } });
     if (!row) throw new NotFoundException();
     await this.prisma.invitation.delete({ where: { id: row.id } });
+    securityEvent('invitation.revoke', { projectId: ctx.projectId, by: ctx.userId, invitationId: row.id, email: row.email });
   }
 
   /** По ссылке до входа. Принятое — 410 (ссылка уже сработала), неизвестное или истёкшее — 404. */
@@ -105,6 +109,7 @@ export class InvitationsService {
   async acceptByToken(userId: string, token: string): Promise<{ projectId: string; role: Role }> {
     const row = await this.usable(token);
     await this.accept(row, userId);
+    securityEvent('invitation.accept', { projectId: row.projectId, userId, role: row.role, invitationId: row.id, invitedEmail: row.email });
     return { projectId: row.projectId, role: row.role };
   }
 

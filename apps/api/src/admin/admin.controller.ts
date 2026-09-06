@@ -28,7 +28,7 @@ export class AdminController {
 
   @Post('users/:userId/revoke-sessions')
   @HttpCode(204)
-  revokeSessions(@Param('userId') userId: string): Promise<void> {
-    return this.admin.revokeSessions(userId);
+  revokeSessions(@CurrentUser() actor: AuthUser, @Param('userId') userId: string): Promise<void> {
+    return this.admin.revokeSessions(actor.id, userId);
   }
 }

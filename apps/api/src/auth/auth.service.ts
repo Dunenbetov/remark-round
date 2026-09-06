@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { Role, User } from '@remarkround/db';
 import { config, type RegistrationMode } from '../config';
 import { PrismaService } from '../prisma/prisma.service';
+import { securityEvent } from '../observability/security-log';
 import { InvitationsService, normalizeEmail } from '../tenancy/invitations.service';
 import { TenancyService } from '../tenancy/tenancy.service';
 import type { ChangePasswordDto } from './dto/change-password.dto';
@@ -89,10 +90,15 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email: normalizeEmail(email) } });
     // Одинаковый ответ для «нет пользователя» и «не тот пароль»: не светим e-mail.
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      securityEvent('login.fail', { email: normalizeEmail(email), known: Boolean(user) });
       throw new UnauthorizedException();
     }
     // Пароль верный, но человека отключили: сказать прямо — это не «неверный пароль»
-    if (user.disabledAt) throw new ForbiddenException(ACCOUNT_DISABLED);
+    if (user.disabledAt) {
+      securityEvent('login.disabled', { userId: user.id, email: user.email });
+      throw new ForbiddenException(ACCOUNT_DISABLED);
+    }
+    securityEvent('login.ok', { userId: user.id, email: user.email });
     return this.session(user);
   }
 
@@ -117,6 +123,7 @@ export class AuthService {
       throw e;
     }
     if (dto.inviteToken) await this.invitations.acceptByToken(user.id, dto.inviteToken);
+    securityEvent('register', { userId: user.id, email, preferredRole: dto.preferredRole, viaInvite: Boolean(dto.inviteToken), mode: config().registrationMode });
     return this.session(user);
   }
 
@@ -148,6 +155,7 @@ export class AuthService {
       data: { passwordHash: await hashPassword(dto.next), passwordChangedAt: new Date() },
     });
     this.tenancy.revoke(userId);
+    securityEvent('password.change', { userId });
     return { accessToken: await this.sign(updated) };
   }
 
@@ -168,6 +176,7 @@ export class AuthService {
     if (!membership) throw new NotFoundException();
     const payload: JwtPayload = { sub: membership.userId, email: membership.user.email, projectId, ts: Date.now(), tv: membership.user.tokenVersion };
     const token = await this.jwt.signAsync(payload, { expiresIn: MCP_TOKEN_SECONDS });
+    securityEvent('mcp_token.issue', { userId, projectId, role: membership.role, expiresInSeconds: MCP_TOKEN_SECONDS });
     return {
       token,
       projectId,
