@@ -21,9 +21,10 @@ export const SEED = {
   otherProjectId: '22222222-2222-4222-8222-222222222222',
   password: 'remarkround',
   users: [
-    { id: 'a1111111-1111-4111-8111-111111111111', email: 'dana@remarkround.dev', name: 'Дана', role: 'pm' as Role },
-    { id: 'a2222222-2222-4222-8222-222222222222', email: 'aigerim@remarkround.dev', name: 'Айгерим', role: 'business' as Role },
-    { id: 'a3333333-3333-4333-8333-333333333333', email: 'timur@remarkround.dev', name: 'Тимур', role: 'developer' as Role },
+    // Демо-персоны названы ролями — на защите сразу видно, кто есть кто. Реальные люди регистрируются под своими именами.
+    { id: 'a1111111-1111-4111-8111-111111111111', email: 'pm@remarkround.dev', name: 'PM', role: 'pm' as Role },
+    { id: 'a2222222-2222-4222-8222-222222222222', email: 'business@remarkround.dev', name: 'Business', role: 'business' as Role },
+    { id: 'a3333333-3333-4333-8333-333333333333', email: 'developer@remarkround.dev', name: 'Developer', role: 'developer' as Role },
   ],
   otherUser: { id: 'b1111111-1111-4111-8111-111111111111', email: 'other@other-tenant.dev', name: 'Чужой', role: 'admin' as Role },
   documents: [
@@ -49,10 +50,11 @@ export async function seed(prisma: PrismaClient, options: { index?: boolean } = 
   });
 
   for (const u of SEED.users) {
+    // upsert по id: e-mail и имя демо-персон менялись, на существующей БД запись обновляется на месте
     await prisma.user.upsert({
-      where: { email: u.email },
+      where: { id: u.id },
       create: { id: u.id, email: u.email, name: u.name, passwordHash },
-      update: { name: u.name, passwordHash },
+      update: { email: u.email, name: u.name, passwordHash },
     });
     await prisma.membership.upsert({
       where: { userId_projectId: { userId: u.id, projectId: SEED.projectId } },

@@ -23,7 +23,10 @@
 | GET/POST | `/projects/:projectId/rounds` | member POST: pm/business | Раунды |
 | GET | `/projects/:projectId/rounds/:roundId/remarks` | по роли фильтр | Список. Developer — только defect+ |
 | POST | `/projects/:projectId/rounds/:roundId/remarks` | business, pm | Ручное замечание + upload screenshot |
-| GET | `/projects/:projectId/remarks/:remarkId` | member + ACL очереди | Карточка |
+| GET | `/projects/:projectId/remarks/:remarkId` | member + ACL очереди | Карточка. Developer — defect+ и `awaiting_pm` (чтобы посоветовать); в ответе `advice[]` — советы разработчиков |
+| GET | `/projects/:projectId/advisory-queue` | developer | Что сейчас на приёмке у PM (`awaiting_pm`) — можно посоветовать; не очередь работы |
+| PUT | `/projects/:projectId/remarks/:id/advice` | developer | `{ code, comment? }` — совет PM (`code` — те же пять кнопок, без `duplicate`; ≤ 500 символов). Один на человека: повтор меняет. Только для `awaiting_pm`, иначе 409. Статус не меняет; в комнату уходит `remark.advice` |
+| DELETE | `/projects/:projectId/remarks/:id/advice` | developer | Снять свой совет; тоже `remark.advice` |
 | POST | `/projects/:projectId/imports` | business, pm | Журнал по шаблону: multipart `file` (.xlsx или .csv) + `roundId`. Чужая шапка → 422 |
 | GET | `/projects/:projectId/imports/:jobId` | member | Строки: `parsed` vs `needs_human_parse`, номер и статус замечания по каждой |
 | GET | `/projects/:projectId/imports/template.xlsx` | member | «Скачать шаблон журнала» (есть и `template.csv`) |
@@ -44,7 +47,7 @@
 
 Загрузка файлов: `multipart/form-data`, поле `file`. Скрины — отдельным upload, id кладётся в remark.
 
-Импорт журнала: `POST /projects/:projectId/imports` принимает только официальный шаблон (колонки `external_id, page_or_screen, description, expected, severity, screenshot` — `apps/api/src/imports/journal-template.ts`; порядок любой, регистр не важен, CSV с `,` или `;`, UTF-8 или windows-1251). Другая шапка — 422 с перечнем недостающих и лишних колонок, ни одной строки не создаётся. Каждая строка становится замечанием: с описанием — `imported` и разбор в фоне (статус виден в `GET .../imports/:jobId` и в журнале), без описания — `needs_human_parse` с причиной в `reason`; ячейки хранятся как есть в `ImportRow.rawJson`. Картинка в ячейке xlsx становится кадром замечания; ссылка в колонке `screenshot` CSV не загружается — кадр прикрепляют на карточке. Ответ 201 — `ImportJobView` (`apps/api/src/imports/import.dto.ts`).
+Импорт журнала: `POST /projects/:projectId/imports` принимает только официальный шаблон (шапка по-русски: `№ · Где · Что не так · Как должно быть · Важность · Скрин`; внутренние ключи `external_id, page_or_screen, description, expected, severity, screenshot` — `apps/api/src/imports/journal-template.ts`; прежняя английская шапка тоже принимается; порядок любой, регистр, «ё» и пробелы не важны, CSV с `,` или `;`, UTF-8 (с BOM или без) или windows-1251). `GET .../imports/template.xlsx|csv` отдают шаблон с русской шапкой (csv — BOM + `;`, чтобы Excel открыл по колонкам). Другая шапка — 422 с перечнем недостающих и лишних колонок, ни одной строки не создаётся. Каждая строка становится замечанием: с описанием — `imported` и разбор в фоне (статус виден в `GET .../imports/:jobId` и в журнале), без описания — `needs_human_parse` с причиной в `reason`; ячейки хранятся как есть в `ImportRow.rawJson`. Картинка в ячейке xlsx становится кадром замечания; ссылка в колонке `screenshot` CSV не загружается — кадр прикрепляют на карточке. Ответ 201 — `ImportJobView` (`apps/api/src/imports/import.dto.ts`).
 
 Документы: `POST /projects/:projectId/documents` — поля `file` (PDF, DOCX, Markdown, текст, до 20 МБ), `kind` (`spec | protocol | addendum | journal_source`), необязательный `effectiveAt` (ISO-дата). Ответ 201 со статусом `uploaded`; индексация идёт в фоне: `parsed` → `indexed` | `failed`, статус и число чанков видны в `GET .../documents`.
 
@@ -63,7 +66,7 @@
 
 ## Тело замечания
 
-`POST /projects/:projectId/rounds/:roundId/remarks` — JSON `{ "description", "pageOrScreen"?, "expected"?, "screenshotKey"? }`. Сервер создаёт замечание и запускает граф разбора; ответ приходит сразу — статус `triaging`, `runId`, `runStatus: running`. Фазы прогона (`retrieving` → `vision` → `binding` → `drafting` → `awaiting_pm`) идут в комнату WS (`docs/WS.md`); когда прогон дошёл до interrupt, `GET .../remarks/:id` отдаёт `awaiting_pm` с `proposedClass`, `draft[]`, `citations[]`, `seen` (факты кадра) и тем же `runId`. Форма ответа — `apps/api/src/remarks/remark.dto.ts` (`RemarkView`), она же модель `Remark` на фронте. Если настроен Langfuse (фаза 8), карточка несёт `traceUrl` — ссылку на trace текущего прогона (`AgentRun`); фронт показывает её PM в подвале карточки. Те же правила у `fix-row`, `screenshot`, `triage`: они отвечают `triaging`.
+`POST /projects/:projectId/rounds/:roundId/remarks` — JSON `{ "description", "pageOrScreen"?, "expected"?, "screenshotKey"? }`. Сервер создаёт замечание и запускает граф разбора; ответ приходит сразу — статус `triaging`, `runId`, `runStatus: running`. Фазы прогона (`retrieving` → `vision` → `binding` → `drafting` → `awaiting_pm`) идут в комнату WS (`docs/WS.md`); когда прогон дошёл до interrupt, `GET .../remarks/:id` отдаёт `awaiting_pm` с `proposedClass`, `draft[]`, `citations[]`, `seen` (факты кадра) и тем же `runId`. Форма ответа — `apps/api/src/remarks/remark.dto.ts` (`RemarkView`), она же модель `Remark` на фронте. Если настроен Langfuse (фаза 8), карточка несёт `traceUrl` — ссылку на trace текущего прогона (`AgentRun`); фронт показывает её PM в подвале карточки. `advice[]` — советы разработчиков (`AdviceView`: `code`, `userId`, `userName`, `role`, `at`, `comment?`); рядом с именами людей карточка отдаёт и роль в проекте (`authorRole`, `fixedByRole`, `closedByRole`, `verdict.userRole`) — людей на одной стороне может быть несколько. Те же правила у `fix-row`, `screenshot`, `triage`: они отвечают `triaging`.
 
 ## Чего нет в API
 

@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse, HttpInterceptorFn, HttpParams } from '@a
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, firstValueFrom } from 'rxjs';
-import type { DocumentKind, ImportJob, Remark, Round, Session, VerdictCode } from './models';
+import type { DocumentKind, ImportJob, Remark, Round, SearchHit, Session, VerdictCode } from './models';
 import { SessionService } from './session.service';
 
 export const API_BASE = '/api/v1';
@@ -60,6 +60,19 @@ export class ApiService {
 
   devQueue(projectId: string): Promise<Remark[]> {
     return this.run(this.http.get<Remark[]>(`${API_BASE}/projects/${projectId}/dev-queue`));
+  }
+
+  /** Разработчику: что сейчас на приёмке у PM (awaiting_pm) — можно посоветовать решение. */
+  advisoryQueue(projectId: string): Promise<Remark[]> {
+    return this.run(this.http.get<Remark[]>(`${API_BASE}/projects/${projectId}/advisory-queue`));
+  }
+
+  advise(projectId: string, remarkId: string, body: { code: VerdictCode; comment?: string }): Promise<Remark> {
+    return this.run(this.http.put<Remark>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}/advice`, body));
+  }
+
+  retractAdvice(projectId: string, remarkId: string): Promise<Remark> {
+    return this.run(this.http.delete<Remark>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}/advice`));
   }
 
   createRemark(projectId: string, roundId: string, body: { description: string; pageOrScreen?: string; expected?: string; screenshotKey?: string }): Promise<Remark> {
@@ -129,9 +142,9 @@ export class ApiService {
     return this.run(this.http.post<Remark>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}/fix-row`, body));
   }
 
-  search(projectId: string, q: string, k = 5): Promise<{ query: string; hits: unknown[] }> {
+  search(projectId: string, q: string, k = 5): Promise<{ query: string; hits: SearchHit[] }> {
     const params = new HttpParams().set('q', q).set('k', String(k));
-    return this.run(this.http.get<{ query: string; hits: unknown[] }>(`${API_BASE}/projects/${projectId}/search`, { params }));
+    return this.run(this.http.get<{ query: string; hits: SearchHit[] }>(`${API_BASE}/projects/${projectId}/search`, { params }));
   }
 
   private async run<T>(req: Observable<T>): Promise<T> {

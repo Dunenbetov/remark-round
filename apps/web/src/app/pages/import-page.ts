@@ -1,11 +1,14 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { ImportJob, ImportRow } from '../core/models';
-import { EMPTY, IMPORT, ROLE_TITLE, ROUND, STATUS_LABEL, STATUS_TONE } from '../core/copy';
+import { IMPORT, ROLE_TITLE, ROUND, STATUS_LABEL, STATUS_TONE } from '../core/copy';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { AppBar } from '../ui/app-bar';
+import { DropZone } from '../ui/drop-zone';
 import { ErrorBanner } from '../ui/error-banner';
+import { GroupHeader } from '../ui/group-header';
+import { Icon } from '../ui/icons';
 import { PageHeader } from '../ui/page-header';
 import { StatusPill } from '../ui/status-pill';
 
@@ -15,217 +18,385 @@ const POLL_MS = 2000;
 /**
  * Импорт журнала (бизнес): только наш шаблон. Файл уходит в POST /imports, строки без описания
  * становятся замечаниями «Допишите строку журнала» — человек дописывает их здесь, парсер ничего не выдумывает.
+ *
+ * До загрузки — колонки 5/7: дропзона слева, «Что в шаблоне» и «Как это работает» справа.
+ * После загрузки дропзона сжимается в полосу, результат ложится на всю ширину двумя группами:
+ * «Допишите» (поля ввода) и «Разобраны» (ссылки на карточки). Липкий подвал — «Сохранить строки».
  */
 @Component({
   selector: 'rr-import-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, AppBar, PageHeader, ErrorBanner, StatusPill],
+  imports: [RouterLink, AppBar, PageHeader, DropZone, ErrorBanner, GroupHeader, Icon, StatusPill],
   template: `
     <div class="page">
       <rr-app-bar />
       <main id="main" class="page__body page__body--loose">
-        <rr-page-header [title]="roleTitle()" [subtitle]="subtitle()" />
-        <div class="grid">
-          <section class="col">
-            <h2 class="col-title">{{ copy.title }}</h2>
-            <label
-              class="drop"
-              for="import-file"
-              [class.drop--over]="over()"
-              [class.drop--busy]="uploading()"
-              (dragenter)="onDragOver($event)"
-              (dragover)="onDragOver($event)"
-              (dragleave)="over.set(false)"
-              (drop)="onDrop($event)"
-            >
-              <span class="drop__title">{{ uploading() ? copy.uploading : over() ? copy.dropOver : copy.drop }}</span>
-              <span class="meta">{{ copy.dropHint }}</span>
-              <input #file id="import-file" type="file" class="visually-hidden" accept=".xlsx,.csv" [disabled]="uploading()" (change)="onPick($event)" />
-            </label>
-            <div class="actions">
-              <a class="btn btn--secondary" href="template.xlsx" download="journal-template.xlsx">{{ copy.template }}</a>
-              <button type="button" class="btn btn--primary" [class.btn--busy]="uploading()" [disabled]="uploading()" (click)="file.click()">{{ copy.upload }}</button>
-            </div>
+        <rr-page-header size="lg" [eyebrow]="eyebrow()" [title]="copy.title" [subtitle]="copy.subtitle(roundNo())" />
+
+        @if (job(); as j) {
+          <!-- После загрузки: полоса вместо зоны + результат на всю ширину -->
+          <div class="after fade-in">
+            <rr-drop-zone
+              size="band"
+              icon="upload"
+              accept=".xlsx,.csv"
+              [title]="j.fileName + ' · ' + summary()"
+              [busy]="uploading()"
+              [buttonLabel]="copy.uploadOther"
+              (file)="upload($event)"
+            />
             @if (store.error(); as err) {
               <rr-error-banner [message]="err" [retryable]="false" />
             }
-          </section>
-          @if (job(); as j) {
-            <section class="col">
-              <h2 class="col-title">{{ copy.after(j.fileName) }}</h2>
-              <div class="paper list">
-                <div class="list__head">
-                  <div class="list__summary">{{ summary() }}</div>
-                  @if (badCount() > 0) {
-                    <div class="meta">{{ unparsed }}</div>
+
+            <section class="paper result">
+              <h2 class="result__title">{{ summary() }}</h2>
+
+              @if (fixRows().length) {
+                <rr-group-header [title]="copy.groups.fix" [count]="fixRows().length" tone="wait" [sticky]="false" />
+                <div class="rows" role="list">
+                  @for (row of fixRows(); track row.rowNumber; let i = $index) {
+                    <div class="row row--fix rise" role="listitem" [style.--i]="i" [attr.data-status]="row.status">
+                      <span class="row__n n-serif">{{ row.externalId || row.rowNumber }}</span>
+                      <div class="row__body">
+                        <input
+                          class="input input--danger row__input"
+                          [placeholder]="copy.rowPlaceholder"
+                          [attr.aria-label]="copy.rowPlaceholder"
+                          [value]="draftFor(row.rowNumber)"
+                          [disabled]="saving()"
+                          (input)="setDraft(row.rowNumber, $event)"
+                          (keydown.enter)="focusNextEmpty($event)"
+                        />
+                        @if (row.reason) {
+                          <span class="meta">{{ copy.rowReason(row.rowNumber, row.reason) }}</span>
+                        }
+                      </div>
+                      <rr-status-pill class="row__pill" [label]="pillLabel(row)" [toneOverride]="pillTone(row)" [dot]="true" />
+                    </div>
                   }
                 </div>
-                <table class="tbl rows">
-                  <caption class="visually-hidden">{{ copy.after(j.fileName) }}</caption>
-                  <colgroup>
-                    <col class="rows__c-n" />
-                    <col />
-                    <col class="rows__c-status" />
-                  </colgroup>
-                  <tbody>
-                    @for (row of j.rows; track row.rowNumber) {
-                      <tr class="rows__row" [attr.data-status]="row.status">
-                        <td class="num rows__n">{{ row.externalId || row.rowNumber }}</td>
-                        <td>
-                          @if (row.status === 'needs_human_parse' && row.remarkStatus === 'needs_human_parse') {
-                            <div class="rows__fix">
-                              <input
-                                class="input input--danger rows__input"
-                                [placeholder]="copy.rowPlaceholder"
-                                [attr.aria-label]="copy.rowPlaceholder"
-                                [value]="draftFor(row.rowNumber)"
-                                [disabled]="saving()"
-                                (input)="setDraft(row.rowNumber, $event)"
-                              />
-                              @if (row.reason) {
-                                <span class="meta">{{ copy.rowReason(row.rowNumber, row.reason) }}</span>
-                              }
-                            </div>
-                          } @else {
-                            <span class="rows__text">
-                              <span>{{ row.text }}</span>
-                              @if (row.remarkNumber) {
-                                <a class="meta link" [routerLink]="cardLink(row)">{{ copy.rowLink(row.rowNumber, row.remarkNumber) }}</a>
-                              }
-                              @if (row.screenshotRef && !row.hasScreenshot) {
-                                <span class="meta">{{ copy.linkNotFetched }}</span>
-                              }
-                            </span>
+              }
+
+              @if (parsedRows().length) {
+                <rr-group-header [title]="copy.groups.parsed" [count]="parsedRows().length" tone="ok" [sticky]="false" />
+                <div class="rows" role="list">
+                  @for (row of parsedRows(); track row.rowNumber; let i = $index) {
+                    <div class="row rise" role="listitem" [style.--i]="i" [attr.data-status]="row.status">
+                      <span class="row__n n-serif">{{ row.externalId || row.rowNumber }}</span>
+                      <div class="row__body">
+                        <span class="row__text">{{ row.text }}</span>
+                        <span class="row__meta">
+                          @if (row.remarkNumber) {
+                            <a class="link" [routerLink]="cardLink(row)">{{ copy.rowLink(row.rowNumber, row.remarkNumber) }}</a>
                           }
-                        </td>
-                        <td>
-                          <rr-status-pill [label]="pillLabel(row)" [toneOverride]="pillTone(row)" [dot]="true" [pulse]="row.remarkStatus === 'triaging'" />
-                        </td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-                @if (badCount() > 0) {
-                  <div class="list__foot">
-                    <button type="button" class="btn btn--primary" [class.btn--busy]="saving()" [disabled]="saving() || !hasDrafts()" (click)="save()">{{ copy.save }}</button>
-                  </div>
-                }
-              </div>
+                          @if (row.screenshotRef && !row.hasScreenshot) {
+                            <span class="meta">{{ copy.linkNotFetched }}</span>
+                          }
+                        </span>
+                      </div>
+                      <rr-status-pill class="row__pill" [label]="pillLabel(row)" [toneOverride]="pillTone(row)" [dot]="true" [pulse]="row.remarkStatus === 'triaging'" />
+                    </div>
+                  }
+                </div>
+              }
+
+              @if (badCount() > 0) {
+                <div class="foot glass">
+                  <button type="button" class="btn btn--primary" [class.btn--busy]="saving()" [disabled]="saving() || !hasDrafts()" (click)="save()">{{ copy.save }}</button>
+                </div>
+              } @else {
+                <div class="done">
+                  <span class="done__text"><span class="dot dot--ok" aria-hidden="true"></span>{{ copy.allParsed(total()) }}</span>
+                  <a class="btn btn--primary" [routerLink]="journalLink()">{{ copy.toJournal }}</a>
+                </div>
+              }
             </section>
-          }
-        </div>
+          </div>
+        } @else {
+          <!-- До загрузки: зона 5 / шаблон и шаги 7 -->
+          <div class="grid">
+            <div class="col col--drop">
+              <rr-drop-zone
+                class="drop"
+                size="tall"
+                icon="upload"
+                accept=".xlsx,.csv"
+                [title]="copy.drop"
+                [hint]="copy.dropHint"
+                [busy]="uploading()"
+                [buttonLabel]="copy.upload"
+                (file)="upload($event)"
+              />
+              @if (store.error(); as err) {
+                <rr-error-banner [message]="err" [retryable]="false" />
+              }
+            </div>
+
+            <div class="col">
+              <section class="paper tpl">
+                <div class="eyebrow tpl__eyebrow">{{ copy.templateTitle }}</div>
+                <div class="tbl-wrap">
+                  <table class="tbl tpl__tbl">
+                    <caption class="visually-hidden">{{ copy.templateTitle }}</caption>
+                    <thead>
+                      <tr>
+                        @for (c of copy.templateColumns; track c) {
+                          <th scope="col">{{ c }}</th>
+                        }
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (line of copy.templateExample; track $index) {
+                        <tr>
+                          @for (cell of line; track $index) {
+                            @if (cell) {
+                              <td>{{ cell }}</td>
+                            } @else {
+                              <td class="tpl__empty">—</td>
+                            }
+                          }
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+                <div class="tpl__foot">
+                  <span class="meta">{{ copy.templateEmptyNote }}</span>
+                  <span class="tpl__links">
+                    <a class="btn btn--text" href="template.xlsx" download="journal-template.xlsx"><rr-icon name="upload" [size]="14" />{{ copy.template }} · xlsx</a>
+                    <a class="btn btn--text" href="template.csv" download="journal-template.csv">csv</a>
+                  </span>
+                </div>
+              </section>
+
+              <section class="sunken how">
+                <div class="eyebrow">{{ copy.howTitle }}</div>
+                <ol class="steps">
+                  @for (s of copy.steps(roundNo()); track $index; let i = $index) {
+                    <li class="steps__item rise" [style.--i]="i">
+                      <span class="steps__n num" aria-hidden="true">{{ i + 1 }}</span>
+                      <span>{{ s }}</span>
+                    </li>
+                  }
+                </ol>
+              </section>
+            </div>
+          </div>
+        }
       </main>
     </div>
   `,
   styles: `
+    /* ---------- до загрузки ---------- */
     .grid {
       display: grid;
-      grid-template-columns: 420px 1fr;
-      gap: var(--sp-7);
+      grid-template-columns: minmax(320px, 5fr) minmax(0, 7fr);
+      gap: var(--sp-6);
       align-items: start;
     }
     .col {
       display: flex;
       flex-direction: column;
-      gap: var(--sp-3);
+      gap: var(--sp-4);
       min-width: 0;
     }
-    .col-title {
-      margin: 0;
-    }
+    /* дропзона выше стандартной tall (220) — на этой странице она главный объект; grid растягивает label на весь хост */
     .drop {
-      height: 220px;
-      border: 1px dashed var(--rr-line-strong);
-      border-radius: var(--rr-r-lg);
-      background: var(--rr-surface-2);
+      display: grid;
+      min-height: 320px;
+    }
+    .tpl {
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      text-align: center;
-      padding: var(--sp-6);
-      cursor: pointer;
-      transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+      gap: var(--sp-3);
+      padding: var(--sp-5);
     }
-    .drop:hover {
-      border-color: var(--rr-ink-3);
+    .tpl__eyebrow {
+      margin-bottom: -4px;
     }
-    .drop--over,
-    .drop:has(:focus-visible) {
-      border-color: var(--rr-accent-text);
-      border-style: solid;
-      background: var(--rr-accent-soft);
+    /* компактная таблица шаблона: th 36, td 40, 13px */
+    .tpl__tbl th {
+      height: 36px;
+      padding: 0 var(--sp-3);
     }
-    .drop--busy {
-      cursor: progress;
-      color: var(--rr-ink-2);
-    }
-    .drop:has(:focus-visible) {
-      outline: 2px solid var(--rr-focus);
-      outline-offset: 2px;
-    }
-    .drop__title {
-      font-weight: var(--fw-medium);
-    }
-    .actions {
-      display: flex;
-      gap: var(--sp-2);
-      flex-wrap: wrap;
-    }
-    .list {
-      overflow: hidden;
-    }
-    .list__head {
-      padding: var(--sp-4) var(--sp-5);
-      border-bottom: 1px solid var(--rr-line);
-    }
-    .list__summary {
-      font-size: var(--fs-16);
-      line-height: var(--lh-16);
-      font-weight: var(--fw-semibold);
-    }
-    .rows__c-n {
-      width: 88px;
-    }
-    .rows__c-status {
-      width: 230px;
-    }
-    .rows__row {
-      min-height: 52px;
-    }
-    .rows__row td {
-      padding-top: 6px;
-      padding-bottom: 6px;
-      vertical-align: middle;
-    }
-    .rows__n {
-      color: var(--rr-ink-2);
+    .tpl__tbl td {
+      height: 40px;
+      padding: 0 var(--sp-3);
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
       white-space: nowrap;
     }
-    .rows__text,
-    .rows__fix {
+    .tpl__tbl :is(th, td):first-child {
+      padding-left: var(--sp-2);
+    }
+    .tpl__empty {
+      color: var(--rr-ink-3);
+    }
+    .tpl__foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-4);
+      flex-wrap: wrap;
+    }
+    .tpl__links {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-3);
+    }
+    .tpl__links .btn--text {
+      gap: 6px;
+    }
+    .how {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-3);
+      padding: var(--sp-5);
+    }
+    .steps {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+    .steps__item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-3);
+      color: var(--rr-ink-2);
+    }
+    .steps__n {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: var(--rr-r-pill);
+      background: var(--rr-accent-soft);
+      color: var(--rr-accent-text);
+      font-size: var(--fs-12);
+      line-height: var(--lh-12);
+      font-weight: var(--fw-semibold);
+      margin-top: 1px;
+    }
+
+    /* ---------- после загрузки ---------- */
+    .after {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-4);
+    }
+    /* без overflow:hidden — иначе липкий подвал прилипает к бумаге, а не к окну */
+    .result {
+      position: relative;
+    }
+    .result__title {
+      margin: 0;
+      padding: var(--sp-5) var(--sp-5) var(--sp-4);
+      font-size: var(--fs-22);
+      line-height: var(--lh-22);
+      font-weight: var(--fw-semibold);
+      letter-spacing: -0.01em;
+    }
+    .rows {
+      display: flex;
+      flex-direction: column;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: var(--sp-4);
+      min-height: 56px;
+      padding: var(--sp-2) var(--sp-5);
+      border-bottom: 1px solid var(--rr-line);
+      transition: background-color var(--dur-fast) var(--ease);
+    }
+    .row:hover {
+      background: var(--rr-surface-2);
+    }
+    .row__n {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .row__body {
       display: flex;
       flex-direction: column;
       gap: 2px;
+      min-width: 0;
     }
-    .rows__input {
+    .row__input {
       height: 36px;
     }
-    .list__foot {
-      padding: var(--sp-4) var(--sp-5);
+    .row__text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .row__meta {
+      display: flex;
+      gap: var(--sp-3);
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+    .row__pill {
+      flex: none;
+    }
+    .foot {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
       display: flex;
       justify-content: flex-end;
+      padding: var(--sp-3) var(--sp-5);
+      border-radius: 0 0 var(--rr-r-lg) var(--rr-r-lg);
       border-top: 1px solid var(--rr-line);
+      border-left: 0;
+      border-right: 0;
+      border-bottom: 0;
+      box-shadow: 0 -8px 24px -16px var(--rr-scrim);
     }
-    @media (max-width: 960px) {
+    .done {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-4);
+      flex-wrap: wrap;
+      padding: var(--sp-4) var(--sp-5);
+    }
+    .done__text {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+      color: var(--rr-ok-ink);
+      font-weight: var(--fw-semibold);
+    }
+
+    /* ---------- узкий экран ---------- */
+    @media (max-width: 900px) {
       .grid {
         grid-template-columns: 1fr;
       }
-    }
-    @media (max-width: 720px) {
-      .rows__c-status {
-        width: 140px;
+      .drop {
+        min-height: 240px;
+      }
+      .row {
+        grid-template-columns: 56px minmax(0, 1fr);
+        row-gap: var(--sp-2);
+      }
+      .row__pill {
+        grid-column: 2;
+      }
+      .row__text {
+        white-space: normal;
+      }
+      .foot {
+        bottom: calc(var(--rr-tabbar-h) + env(safe-area-inset-bottom));
       }
     }
   `,
@@ -239,28 +410,31 @@ export class ImportPage {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly copy = IMPORT;
-  protected readonly unparsed = EMPTY.importUnparsed;
   protected readonly job = signal<ImportJob | null>(null);
-  protected readonly over = signal(false);
   protected readonly uploading = signal(false);
   protected readonly saving = signal(false);
   protected readonly drafts = signal<Record<number, string>>({});
 
   private poll: ReturnType<typeof setInterval> | null = null;
 
-  protected readonly roleTitle = computed(() => {
+  /** Номер раунда: из стора, пока не подгрузился — из маршрута. */
+  protected readonly roundNo = computed(() => this.store.roundNumber() ?? Number(this.round()));
+  /** «ВЫ ПРИНИМАЕТЕ РАБОТУ · КЛИЕНТСКИЙ КАБИНЕТ · РАУНД 2». */
+  protected readonly eyebrow = computed(() => {
     const role = this.session.roleIn(this.projectId());
-    return role ? ROLE_TITLE[role] : '';
+    return [role ? ROLE_TITLE[role] : null, this.store.projectName(), ROUND.label(this.roundNo())].filter(Boolean).join(' · ');
   });
-  protected readonly subtitle = computed(() => {
-    const n = this.store.roundNumber();
-    return [this.store.projectName(), n ? ROUND.label(n) : null].filter(Boolean).join(' · ') || null;
-  });
+
+  protected readonly total = computed(() => this.job()?.rows.length ?? 0);
   /** Строки, которые всё ещё ждут человека (после «Сохранить строки» они уходят в разбор). */
-  protected readonly badCount = computed(() => this.job()?.rows.filter((r) => r.remarkStatus === 'needs_human_parse').length ?? 0);
+  protected readonly fixRows = computed<ImportRow[]>(() => this.job()?.rows.filter((r) => r.remarkStatus === 'needs_human_parse') ?? []);
+  protected readonly parsedRows = computed<ImportRow[]>(() => this.job()?.rows.filter((r) => r.remarkStatus !== 'needs_human_parse') ?? []);
+  protected readonly badCount = computed(() => this.fixRows().length);
+  /** «Разобрали 10 из 12. Две строки нужно дописать.» — когда дописывать нечего, короче: «Разобрали 12 из 12». */
   protected readonly summary = computed(() => {
-    const total = this.job()?.rows.length ?? 0;
-    return IMPORT.summary(total - this.badCount(), total, this.badCount());
+    const total = this.total();
+    const bad = this.badCount();
+    return bad > 0 ? IMPORT.summary(total - bad, total, bad) : IMPORT.allParsed(total);
   });
   protected readonly hasDrafts = computed(() => Object.values(this.drafts()).some((t) => t.trim()));
 
@@ -269,26 +443,8 @@ export class ImportPage {
     this.destroyRef.onDestroy(() => this.pollWhileTriaging(false));
   }
 
-  protected onPick(e: Event): void {
-    const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (file) void this.upload(file);
-  }
-
-  protected onDragOver(e: DragEvent): void {
-    e.preventDefault();
-    if (!this.uploading()) this.over.set(true);
-  }
-
-  protected onDrop(e: DragEvent): void {
-    e.preventDefault();
-    this.over.set(false);
-    const file = e.dataTransfer?.files?.[0];
-    if (file && !this.uploading()) void this.upload(file);
-  }
-
-  private async upload(file: File): Promise<void> {
+  protected async upload(file: File): Promise<void> {
+    if (this.uploading()) return;
     this.uploading.set(true);
     this.drafts.set({});
     try {
@@ -327,6 +483,23 @@ export class ImportPage {
     this.drafts.update((d) => ({ ...d, [rowNumber]: value }));
   }
 
+  /** Enter в поле строки — фокус на следующее пустое поле (по кругу); пустых нет — остаёмся. */
+  protected focusNextEmpty(e: Event): void {
+    e.preventDefault();
+    const current = e.target as HTMLInputElement;
+    const root = current.closest('.result');
+    if (!root) return;
+    const inputs = Array.from(root.querySelectorAll<HTMLInputElement>('.row__input'));
+    const from = inputs.indexOf(current);
+    for (let step = 1; step <= inputs.length; step++) {
+      const next = inputs[(from + step) % inputs.length]!;
+      if (next !== current && !next.value.trim()) {
+        next.focus();
+        return;
+      }
+    }
+  }
+
   protected pillLabel(row: ImportRow): string {
     return row.remarkStatus ? STATUS_LABEL[row.remarkStatus] : IMPORT.received;
   }
@@ -337,6 +510,10 @@ export class ImportPage {
 
   protected cardLink(row: ImportRow): unknown[] {
     return ['/p', this.projectId(), 'r', this.store.roundNumber() ?? this.round(), 'remarks', row.remarkId];
+  }
+
+  protected journalLink(): unknown[] {
+    return ['/p', this.projectId(), 'r', this.store.roundNumber() ?? this.round()];
   }
 
   /** Дописанные строки уходят в разбор через fix-row; остальные ждут дальше. */

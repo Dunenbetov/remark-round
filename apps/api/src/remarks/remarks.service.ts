@@ -4,18 +4,21 @@ import type { LlmUsage } from '../llm/triage-llm';
 import { ObservabilityService } from '../observability/observability.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectContext } from '../tenancy/project-context';
-import { ChunkInfo, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, quote, toRemarkView } from './remark.dto';
+import { AdviceDto, ChunkInfo, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, quote, toRemarkView } from './remark.dto';
 
 const REMARK_INCLUDE = {
   round: { select: { number: true } },
   screenshots: true,
   citations: { select: { id: true, chunkId: true } },
   verdicts: { select: { code: true, userId: true, comment: true, createdAt: true } },
+  advices: { select: { code: true, userId: true, comment: true, updatedAt: true } },
   runs: { select: { id: true, createdAt: true, status: true, mode: true } },
 } satisfies Prisma.RemarkInclude;
 
 /** Разработчик видит только принятые поломки и то, что сам отдал на ретест. */
 const DEVELOPER_STATUSES: RemarkStatus[] = ['defect', 'ready_for_retest'];
+/** …плюс то, что сейчас у PM: прочитать карточку и посоветовать решение можно, в журнал и очередь оно не попадает. */
+const DEVELOPER_READ_STATUSES: RemarkStatus[] = [...DEVELOPER_STATUSES, 'awaiting_pm'];
 
 /** Снимок замечания для графа триажа: ноды читают через сервис, не через Prisma. */
 export interface TriageFacts {
@@ -96,9 +99,20 @@ export class RemarksService {
     return this.views(rows);
   }
 
+  /** Разработчику: что сейчас на приёмке у PM — можно посоветовать решение. Не очередь работы (docs/STATUS.md). */
+  async advisoryQueue(ctx: ProjectContext): Promise<RemarkView[]> {
+    if (ctx.role !== 'developer') throw new ForbiddenException();
+    const rows = await this.prisma.remark.findMany({
+      where: { projectId: ctx.projectId, status: 'awaiting_pm' },
+      include: REMARK_INCLUDE,
+      orderBy: { number: 'asc' },
+    });
+    return this.views(rows);
+  }
+
   async get(ctx: ProjectContext, remarkId: string): Promise<RemarkView> {
     const row = await this.load(ctx, remarkId);
-    if (ctx.role === 'developer' && !DEVELOPER_STATUSES.includes(row.status)) throw new NotFoundException();
+    if (ctx.role === 'developer' && !DEVELOPER_READ_STATUSES.includes(row.status)) throw new NotFoundException();
     return (await this.views([row]))[0]!;
   }
 
@@ -365,6 +379,32 @@ export class RemarksService {
     return this.get(ctx, remarkId);
   }
 
+  // ---------- совет разработчика ----------
+
+  /**
+   * Совет по замечанию в awaiting_pm: не вердикт — статус и прогон не трогает, PM видит его рядом с вариантом.
+   * Один совет на человека: повтор меняет код и комментарий. Решённое замечание советов не принимает (409).
+   */
+  async advise(ctx: ProjectContext, remarkId: string, dto: AdviceDto): Promise<RemarkView> {
+    if (ctx.role !== 'developer') throw new ForbiddenException();
+    const row = await this.load(ctx, remarkId);
+    this.assertTransition(row.status, ['awaiting_pm'], 'advice');
+    const comment = dto.comment?.trim() || null;
+    await this.prisma.developerAdvice.upsert({
+      where: { remarkId_userId: { remarkId, userId: ctx.userId } },
+      create: { remarkId, userId: ctx.userId, code: dto.code, comment },
+      update: { code: dto.code, comment },
+    });
+    return this.get(ctx, remarkId);
+  }
+
+  async retractAdvice(ctx: ProjectContext, remarkId: string): Promise<RemarkView> {
+    if (ctx.role !== 'developer') throw new ForbiddenException();
+    await this.load(ctx, remarkId);
+    await this.prisma.developerAdvice.deleteMany({ where: { remarkId, userId: ctx.userId } });
+    return this.get(ctx, remarkId);
+  }
+
   // ---------- ретест ----------
 
   /** Новый кадр от бизнеса: старый ретест и дифф снимаются, стартует AgentRun mode=retest. Статус — до диффа. */
@@ -465,12 +505,17 @@ export class RemarksService {
       : [];
     const chunks = new Map<string, ChunkInfo>(chunkRows.map((c) => [c.id, c]));
 
-    const userIds = [...new Set(rows.flatMap((r) => [r.authorId, r.fixedByUserId, r.closedByUserId, ...r.verdicts.map((v) => v.userId)]).filter((x): x is string => Boolean(x)))];
+    const userIds = [
+      ...new Set(rows.flatMap((r) => [r.authorId, r.fixedByUserId, r.closedByUserId, ...r.verdicts.map((v) => v.userId), ...r.advices.map((a) => a.userId)]).filter((x): x is string => Boolean(x))),
+    ];
     const users = userIds.length ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
     const names = new Map(users.map((u) => [u.id, u.name]));
+    // Роль в проекте — рядом с именем: людей на стороне может быть несколько. Все строки — одного проекта (tenancy).
+    const memberships = userIds.length ? await this.prisma.membership.findMany({ where: { projectId: rows[0]!.projectId, userId: { in: userIds } }, select: { userId: true, role: true } }) : [];
+    const roles = new Map(memberships.map((m) => [m.userId, m.role]));
 
     const traceUrl = (runId: string) => this.observability.traceUrl(runId);
-    return rows.map((r) => toRemarkView(r, { duplicateOfNumber: r.duplicateOfId ? numberById.get(r.duplicateOfId) : undefined, chunks, names, traceUrl }));
+    return rows.map((r) => toRemarkView(r, { duplicateOfNumber: r.duplicateOfId ? numberById.get(r.duplicateOfId) : undefined, chunks, names, roles, traceUrl }));
   }
 }
 

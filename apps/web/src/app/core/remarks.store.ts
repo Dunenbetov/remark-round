@@ -1,16 +1,9 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import type { DocumentKind, ImportJob, NewRemarkDto, ProjectDocument, Remark, Round, VerdictCode } from './models';
+import type { Advice, DocumentKind, ImportJob, NewRemarkDto, ProjectDocument, Remark, Round, VerdictCode } from './models';
 import { ApiDocument, ApiService } from './api.service';
-import { ERROR } from './copy';
+import { DOCUMENTS, ERROR } from './copy';
 import { SessionService } from './session.service';
 import { WsService } from './ws.service';
-
-const DOC_LABEL: Record<DocumentKind, string> = {
-  spec: 'ТЗ',
-  protocol: 'Протокол',
-  addendum: 'Доп. соглашение',
-  journal_source: 'Журнал',
-};
 
 /**
  * Состояние проекта на фронте: раунд, замечания, документы, очередь разработчика.
@@ -27,6 +20,8 @@ export class RemarksStore {
   readonly rounds = signal<Round[]>([]);
   readonly remarks = signal<Remark[]>([]);
   readonly devQueue = signal<Remark[]>([]);
+  /** Разработчику: замечания на приёмке у PM (awaiting_pm) — можно посоветовать. */
+  readonly advisoryQueue = signal<Remark[]>([]);
   readonly documents = signal<ProjectDocument[]>([]);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
@@ -39,7 +34,7 @@ export class RemarksStore {
   readonly hasSpec = computed(() => this.documents().some((d) => d.kind === 'spec'));
 
   byId(id: string): Remark | undefined {
-    return this.remarks().find((r) => r.id === id) ?? this.devQueue().find((r) => r.id === id);
+    return this.remarks().find((r) => r.id === id) ?? this.devQueue().find((r) => r.id === id) ?? this.advisoryQueue().find((r) => r.id === id);
   }
 
   // ---------- загрузка ----------
@@ -73,6 +68,12 @@ export class RemarksStore {
     this.projectId.set(projectId);
     const queue = await this.guard(() => this.api.devQueue(projectId));
     if (queue) this.devQueue.set(queue);
+  }
+
+  async loadAdvisoryQueue(projectId: string): Promise<void> {
+    this.projectId.set(projectId);
+    const queue = await this.guard(() => this.api.advisoryQueue(projectId));
+    if (queue) this.advisoryQueue.set(queue);
   }
 
   async loadDocuments(projectId: string): Promise<void> {
@@ -168,6 +169,24 @@ export class RemarksStore {
     this.patch(remarkId, { duplicateLinked: true });
   }
 
+  /** Совет разработчика — сразу, без отсчёта: его можно изменить или снять. */
+  async advise(remarkId: string, code: VerdictCode, comment?: string): Promise<void> {
+    const remark = this.byId(remarkId);
+    if (!remark) return;
+    await this.mutate(() => this.api.advise(remark.projectId, remarkId, { code, comment: comment || undefined }));
+  }
+
+  async retractAdvice(remarkId: string): Promise<void> {
+    const remark = this.byId(remarkId);
+    if (!remark) return;
+    await this.mutate(() => this.api.retractAdvice(remark.projectId, remarkId));
+  }
+
+  /** Событие remark.advice из комнаты: обновить советы без перечитывания карточки. */
+  applyAdvice(remarkId: string, advice: Advice[]): void {
+    this.patch(remarkId, { advice });
+  }
+
   async readyForRetest(remarkId: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark) return;
@@ -232,11 +251,18 @@ export class RemarksStore {
       if (list.some((r) => r.id === remark.id)) return visible ? patchList(list) : list.filter((r) => r.id !== remark.id);
       return list;
     });
+    this.advisoryQueue.update((list) => {
+      if (list.some((r) => r.id === remark.id)) return remark.status === 'awaiting_pm' ? patchList(list) : list.filter((r) => r.id !== remark.id);
+      return list;
+    });
     if (!this.byId(remark.id)) this.remarks.update((list) => [remark, ...list]);
   }
 
   private patch(remarkId: string, patch: Partial<Remark>): void {
-    this.remarks.update((list) => list.map((r) => (r.id === remarkId ? { ...r, ...patch } : r)));
+    const apply = (list: Remark[]): Remark[] => list.map((r) => (r.id === remarkId ? { ...r, ...patch } : r));
+    this.remarks.update(apply);
+    this.devQueue.update(apply);
+    this.advisoryQueue.update(apply);
   }
 
   private async guard<T>(fn: () => Promise<T>): Promise<T | null> {
@@ -259,7 +285,7 @@ function toDocument(d: ApiDocument): ProjectDocument {
   return {
     id: d.id,
     kind: d.kind,
-    label: DOC_LABEL[d.kind],
+    label: DOCUMENTS.kinds[d.kind],
     fileName: d.title,
     date: `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}`,
     pages: null,

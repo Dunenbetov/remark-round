@@ -106,6 +106,7 @@ model User {
   name         String
   memberships  Membership[]
   verdicts     HumanVerdict[]
+  advices      DeveloperAdvice[]
   createdAt    DateTime     @default(now())
 }
 
@@ -200,6 +201,7 @@ model Remark {
   citations      EvidenceCitation[]
   runs           AgentRun[]
   verdicts       HumanVerdict[]
+  advices        DeveloperAdvice[]
   createdAt      DateTime      @default(now())
 
   @@index([projectId, status])
@@ -271,6 +273,22 @@ model HumanVerdict {
   createdAt DateTime    @default(now())
 
   @@unique([runId, idempotencyKey])
+}
+
+/// Совет разработчика по замечанию в awaiting_pm: не вердикт — статус не меняет, граф не трогает.
+/// Один на человека и замечание; можно изменить или снять. PM видит его рядом с вариантом решения.
+model DeveloperAdvice {
+  id        String      @id @default(uuid())
+  remarkId  String
+  userId    String
+  code      VerdictCode
+  comment   String?
+  remark    Remark      @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id])
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([remarkId, userId])
 }
 
 /// Загрузка журнала по официальному шаблону (REMARKROUND.md §14). projectId дублирует round.projectId

@@ -1,0 +1,209 @@
+/* RemarkRound — движение. Принципы: движение — ответ на действие человека или событие сервера;
+   вход 200ms ease-out, выход 140ms ease-in, перестановка 260ms; подчёркнутые — страница 280, тема 600, штамп 340 spring.
+   Лестница появления: 30ms × индекс (--i), не больше восьми. Никакой печати по буквам и таймеров «для красоты». */
+
+/* ---------- ключевые кадры ---------- */
+@keyframes rr-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes rr-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes rr-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+@keyframes rr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes rr-undo {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+/* штамп «ложится»: чуть больше и сильнее наклонён → на место */
+@keyframes rr-stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.2) rotate(-7deg);
+  }
+  to {
+    opacity: 0.92;
+    transform: scale(1) rotate(-2deg);
+  }
+}
+/* рамка и маска диффа «дышат» один раз при первом показе */
+@keyframes rr-diff-attn {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+/* точка статуса «pop» при смене */
+@keyframes rr-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+/* меню и поповеры — из якоря */
+@keyframes rr-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* ошибка формы — лист вздрагивает */
+@keyframes rr-shake {
+  0%,
+  100% {
+    transform: none;
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+/* галочка пройденного шага прорисовывается */
+@keyframes rr-draw {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+/* схема пути замечания (rr-process-strip): одно зарегистрированное число --rr-p едет 0→5 с остановками на узлах;
+   узлы, связки, токен и подписи считаются от него в компоненте. Цикл — --rr-strip-cycle (12 с). */
+@property --rr-p {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@keyframes rr-strip-progress {
+  0%,
+  12.5% {
+    --rr-p: 0;
+  }
+  16.67%,
+  29.17% {
+    --rr-p: 1;
+  }
+  33.33%,
+  45.83% {
+    --rr-p: 2;
+  }
+  50%,
+  62.5% {
+    --rr-p: 3;
+  }
+  66.67%,
+  79.17% {
+    --rr-p: 4;
+  }
+  83.33%,
+  100% {
+    --rr-p: 5;
+  }
+}
+
+/* ---------- утилиты появления ---------- */
+.rise {
+  animation: rr-rise var(--dur) var(--rr-ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 8) * 30ms);
+}
+.fade-in {
+  animation: rr-fade-in var(--dur) var(--rr-ease-out) both;
+}
+.fade {
+  transition: opacity var(--dur) var(--ease);
+}
+
+/* ---------- View Transitions ----------
+   Навигация роутера: html[data-vt='nav'] (data-nav='forward'|'back'); тема: html[data-vt='theme'] — старый кадр
+   лежит целиком, новый вырезается кругом от тумблера (сама анимация — WAAPI из theme.service.ts, литералами).
+   Правила строго с областью действия, чтобы правила темы не срабатывали на переходах страниц. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--rr-dur-page);
+  animation-timing-function: var(--rr-ease-out);
+}
+/* plus-lighter из UA-стилей сбрасываем: иначе внутри круга две темы складываются в «выбеленный» кадр */
+html[data-vt='theme']::view-transition-old(root),
+html[data-vt='theme']::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html[data-vt='theme']::view-transition-old(root) {
+  z-index: 0;
+}
+html[data-vt='theme']::view-transition-new(root) {
+  z-index: 1;
+}
+/* серифный номер перетекает из строки журнала в шапку карточки; маркеры рельса и тайлов скользят */
+::view-transition-group(remark-n),
+::view-transition-group(rail-marker),
+::view-transition-group(tile-marker) {
+  animation-duration: 240ms;
+  animation-timing-function: var(--rr-ease-out);
+}
+::view-transition-old(remark-n),
+::view-transition-new(remark-n) {
+  height: 100%;
+  object-fit: none;
+}
+
+/* ---------- reduced motion: всё мгновенно, стекло без размытия, VT выключены ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

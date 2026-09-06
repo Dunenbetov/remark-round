@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { JOURNAL_COLUMNS, JournalColumn } from './journal-template';
+import { HEADER_ALIASES, JOURNAL_COLUMNS, JOURNAL_HEADERS, JournalColumn } from './journal-template';
 
 export type JournalCells = Record<JournalColumn, string>;
 
@@ -184,22 +184,43 @@ function pngSize(buffer: Buffer): { width: number; height: number } | null {
 
 // ---------- общее ----------
 
-/**
- * Шапка должна содержать ровно колонки шаблона (регистр и пробелы не важны, порядок любой).
- * Возвращает индекс каждой колонки в строке файла.
- */
-function matchHeader(header: string[]): Map<JournalColumn, number> {
-  const normalized = header.map((h) => h.replace(/^﻿/, '').trim().toLowerCase().replace(/\s+/g, '_'));
-  const known = new Set<string>(JOURNAL_COLUMNS);
-  const missing = JOURNAL_COLUMNS.filter((c) => !normalized.includes(c));
-  const extra = normalized.filter((h) => h && !known.has(h));
-  if (missing.length || extra.length) throw new JournalTemplateError(templateMessage(missing, extra));
-  return new Map(JOURNAL_COLUMNS.map((c) => [c, normalized.indexOf(c)]));
+/** Имя колонки для сравнения: без BOM, регистра, «ё» и лишних пробелов. */
+function normalizeHeader(h: string): string {
+  return h.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
 }
 
-function templateMessage(missing: string[], extra: string[]): string {
-  const parts = [`Это не наш шаблон: ожидаются колонки ${JOURNAL_COLUMNS.join(', ')}.`];
-  if (missing.length) parts.push(`Нет колонок: ${missing.join(', ')}.`);
+/** «что не так» → description, «external_id» / «external id» → external_id. */
+const ALIAS_INDEX = new Map<string, JournalColumn>();
+for (const column of JOURNAL_COLUMNS) {
+  for (const alias of HEADER_ALIASES[column]) {
+    const n = normalizeHeader(alias);
+    ALIAS_INDEX.set(n, column);
+    ALIAS_INDEX.set(n.replace(/_/g, ' '), column);
+  }
+}
+
+/**
+ * Шапка должна содержать ровно колонки шаблона — русские имена или прежние английские (регистр, «ё» и пробелы
+ * не важны, порядок любой). Возвращает индекс каждой колонки в строке файла.
+ */
+function matchHeader(header: string[]): Map<JournalColumn, number> {
+  const found = new Map<JournalColumn, number>();
+  const extra: string[] = [];
+  header.forEach((raw, i) => {
+    const n = normalizeHeader(raw);
+    if (!n) return;
+    const column = ALIAS_INDEX.get(n);
+    if (column && !found.has(column)) found.set(column, i);
+    else extra.push(raw.trim());
+  });
+  const missing = JOURNAL_COLUMNS.filter((c) => !found.has(c));
+  if (missing.length || extra.length) throw new JournalTemplateError(templateMessage(missing, extra));
+  return found;
+}
+
+function templateMessage(missing: JournalColumn[], extra: string[]): string {
+  const parts = [`Это не наш шаблон: ожидаются колонки ${JOURNAL_COLUMNS.map((c) => JOURNAL_HEADERS[c]).join(', ')}.`];
+  if (missing.length) parts.push(`Нет колонок: ${missing.map((c) => JOURNAL_HEADERS[c]).join(', ')}.`);
   if (extra.length) parts.push(`Лишние колонки: ${extra.join(', ')}.`);
   parts.push('Скачайте шаблон журнала и заполните его.');
   return parts.join(' ');

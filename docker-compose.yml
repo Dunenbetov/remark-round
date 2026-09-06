@@ -41,7 +41,7 @@ services:
       LLM_MODEL_STRONG: ${LLM_MODEL_STRONG:-gpt-4.1}
       # Ветка ретеста: победитель A/B (docs/EVALS.md); llm_only — только для сравнения
       RETEST_STRATEGY: ${RETEST_STRATEGY:-diff_explain}
-      # Демо-данные при старте (миграции всегда): Дана / Айгерим / Тимур, ТЗ + протокол, раунд 2. SEED_ON_START=false — выключить
+      # Демо-данные при старте (миграции всегда): PM / Business / Developer, ТЗ + протокол, раунд 2. SEED_ON_START=false — выключить
       SEED_ON_START: ${SEED_ON_START:-true}
       STORAGE_DIR: /app/apps/api/storage
       # Langfuse (фаза 8): API шлёт span'ы внутрь сети compose, ссылки для человека — на публичный адрес UI.
@@ -219,8 +219,8 @@ services:
       LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-RemarkRound}
       LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-remarkround-local}
       LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-remarkround-local}
-      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-dana@remarkround.dev}
-      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-Дана}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-pm@remarkround.dev}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-PM}
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-remarkround}
 
 volumes:

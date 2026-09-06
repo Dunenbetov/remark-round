@@ -98,6 +98,7 @@ export async function createHarness(): Promise<Harness> {
     },
     cleanup: async () => {
       const remarkIds = (await prisma.remark.findMany({ where: { projectId: project.id }, select: { id: true } })).map((r) => r.id);
+      await prisma.developerAdvice.deleteMany({ where: { remarkId: { in: remarkIds } } });
       await prisma.humanVerdict.deleteMany({ where: { remarkId: { in: remarkIds } } });
       await prisma.agentRun.deleteMany({ where: { projectId: project.id } });
       await prisma.remark.deleteMany({ where: { projectId: project.id } });

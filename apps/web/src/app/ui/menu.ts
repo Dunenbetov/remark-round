@@ -4,9 +4,12 @@ export interface MenuItem {
   id: string;
   label: string;
   hint?: string;
-  /** Есть значение → пункт-переключатель (menuitemradio) с галочкой. */
+  /** Есть значение → пункт-переключатель (menuitemradio, или menuitemcheckbox при kind 'check') с галочкой. */
   selected?: boolean;
+  kind?: 'radio' | 'check';
   separatorBefore?: boolean;
+  /** Подпись группы над пунктом (eyebrow), например «Проект» / «Раунд». */
+  group?: string;
 }
 
 export interface MenuHead {
@@ -54,11 +57,14 @@ export interface MenuHead {
           @if (it.separatorBefore) {
             <div class="menu__sep" role="separator"></div>
           }
+          @if (it.group) {
+            <div class="eyebrow menu__group" role="presentation">{{ it.group }}</div>
+          }
           <button
             type="button"
             class="menu__item"
             [class.menu__item--on]="it.selected"
-            [attr.role]="it.selected === undefined ? 'menuitem' : 'menuitemradio'"
+            [attr.role]="it.selected === undefined ? 'menuitem' : it.kind === 'check' ? 'menuitemcheckbox' : 'menuitemradio'"
             [attr.aria-checked]="it.selected === undefined ? null : it.selected"
             tabindex="-1"
             (click)="choose(it.id)"
@@ -97,24 +103,19 @@ export interface MenuHead {
       border: 1px solid var(--rr-line);
       border-radius: var(--rr-r-xl);
       box-shadow: var(--rr-shadow-2);
-      animation: rr-menu-in var(--dur-fast) var(--ease);
+      transform-origin: top right;
+      animation: rr-menu-in 140ms var(--rr-ease-out);
     }
     .menu--start {
       left: 0;
       right: auto;
-    }
-    @keyframes rr-menu-in {
-      from {
-        opacity: 0;
-        transform: translateY(-4px);
-      }
-      to {
-        opacity: 1;
-        transform: none;
-      }
+      transform-origin: top left;
     }
     .menu__head {
       padding: 8px 10px 10px;
+    }
+    .menu__group {
+      padding: 8px 10px 4px;
     }
     .menu__title {
       font-weight: var(--fw-semibold);

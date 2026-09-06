@@ -8,10 +8,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHarness, Harness } from '../../test/harness';
 import type { ImportJobView } from './import.dto';
-import { JOURNAL_COLUMNS, newJournalWorkbook } from './journal-template';
+import { JOURNAL_COLUMNS, JOURNAL_HEADER_LINE, TEMPLATE_CSV, newJournalWorkbook } from './journal-template';
 
 const SAMPLE_CSV = readFileSync(resolve(__dirname, '../../../../fixtures/journal/sample-round.csv'));
 const SAMPLE_XLSX = readFileSync(resolve(__dirname, '../../../../fixtures/journal/sample-round.xlsx'));
+const SAMPLE_RU_CSV = readFileSync(resolve(__dirname, '../../../../fixtures/journal/sample-round.ru.csv'));
 const PNG = readFileSync(resolve(__dirname, '../../../../fixtures/screenshots/before-save-gray.png'));
 
 describe('import: официальный шаблон журнала', () => {
@@ -99,7 +100,8 @@ describe('import: официальный шаблон журнала', () => {
     const foreign = Buffer.from('№;Описание;Кто нашёл;Приоритет\n1;Кнопка серая;Айгерим;высокий\n', 'utf8');
     const res = await upload('business', foreign, 'chuzhoy.csv').expect(422);
     expect(res.body.message).toMatch(/не наш шаблон/);
-    expect(res.body.message).toMatch(/external_id/);
+    expect(res.body.message).toMatch(/Что не так/); // колонки в ошибке — русские, как в шаблоне
+    expect(res.body.message).not.toMatch(/external_id/);
     expect(await h.prisma.remark.count({ where: { projectId: h.projectId } })).toBe(before);
     expect(await h.prisma.importJob.count({ where: { projectId: h.projectId } })).toBe(2);
   });
@@ -148,10 +150,31 @@ describe('import: официальный шаблон журнала', () => {
     await upload('business', SAMPLE_CSV, 'sample-round.csv', h.projectId, randomUUID()).expect(404);
   });
 
-  it('шаблон скачивается: xlsx с нашей шапкой, csv с той же строкой колонок', async () => {
+  it('русская шапка шаблона разбирается: sample-round.ru.csv — те же 10 строк; регистр, пробелы и «ё» не важны', async () => {
+    const res = await upload('business', SAMPLE_RU_CSV, 'журнал.csv').expect(201);
+    const job = res.body as ImportJobView;
+    expect(job.rows.map((r) => r.externalId)).toEqual(['J-01', 'J-02', 'J-03', 'J-04', 'J-05', 'J-06', 'J-07', 'J-08', 'J-09', 'J-10']);
+    expect(job.parsed).toBe(9);
+    expect(job.rows.find((r) => r.externalId === 'J-04')!.status).toBe('needs_human_parse');
+    await settled(job.id);
+
+    const sloppy = Buffer.from('\uFEFF№;где;ЧТО НЕ ТАК;Как  должно быть;важность;скрин\nR-1;Профиль;Кнопка серая;Синяя;высокая;\n', 'utf8');
+    const res2 = await upload('business', sloppy, 'sloppy.csv').expect(201);
+    const row = (res2.body as ImportJobView).rows[0]!;
+    expect(row.status).toBe('parsed');
+    expect(row.cells.description).toBe('Кнопка серая');
+    expect(row.cells.expected).toBe('Синяя');
+    await settled((res2.body as ImportJobView).id);
+  });
+
+  it('шаблон скачивается: xlsx с русской шапкой, csv — BOM + та же строка колонок через «;»', async () => {
     const xlsx = await h.http.get(`/api/v1/projects/${h.projectId}/imports/template.xlsx`).set(h.auth('business')).expect(200);
     expect(xlsx.headers['content-disposition']).toMatch(/journal-template\.xlsx/);
     const csv = await h.http.get(`/api/v1/projects/${h.projectId}/imports/template.csv`).set(h.auth('business')).expect(200);
-    expect(csv.text.trim()).toBe(JOURNAL_COLUMNS.join(','));
+    expect(csv.text).toBe(TEMPLATE_CSV);
+    expect(csv.text).toBe(`\uFEFF${JOURNAL_HEADER_LINE}\n`);
+    expect(JOURNAL_HEADER_LINE).toBe('№;Где;Что не так;Как должно быть;Важность;Скрин');
+    // публичный файл фронта — тот же шаблон
+    expect(readFileSync(resolve(__dirname, '../../../../apps/web/public/template.csv'), 'utf8')).toBe(TEMPLATE_CSV);
   });
 });

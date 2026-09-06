@@ -21,10 +21,10 @@ docker compose up
 
 | Сервис | URL | Вход |
 |---|---|---|
-| Web (Angular) | http://localhost:4200 | dana@remarkround.dev (PM), aigerim@ (бизнес), timur@ (разработчик), пароль `remarkround` |
+| Web (Angular) | http://localhost:4200 | pm@remarkround.dev (PM), business@ (заказчик), developer@ (разработчик), пароль `remarkround` — демо-персоны названы ролями |
 | API | http://localhost:3001/api/v1/health | JWT, `docs/API.md` |
 | MCP (Streamable HTTP) | http://localhost:3002/mcp | токен из `POST /api/v1/projects/:id/mcp-token` |
-| Langfuse | http://localhost:3000 | dana@remarkround.dev / `remarkround` |
+| Langfuse | http://localhost:3000 | pm@remarkround.dev / `remarkround` |
 
 Контейнер API сам применяет миграции и кладёт демо-данные (проект «Клиентский кабинет», ТЗ + протокол, раунд 2 с 13 замечаниями и кадрами). Если на машине уже занят порт 5432, поставьте `POSTGRES_PORT=5434` и тот же порт в `DATABASE_URL`. Сюжет демо на 10 минут — [`docs/DEMO.md`](docs/DEMO.md).
 
@@ -33,7 +33,11 @@ docker compose up
 | | |
 |---|---|
 | ![Журнал раунда](docs/screenshots/journal.png) | ![Ретест: было, стало, дифф](docs/screenshots/retest.png) |
-| Журнал: «Вы решаете, работа ли это». Черновик модели — одной строкой, статус — словами из `docs/ui/COPY.md` | Ретест: pixel-diff третьим кадром, модель поясняет, закрывает бизнес |
+| Журнал: «Вы решаете, работа ли это». Пять тайлов-фильтров = сводка раунда, «Начать разбор» открывает очередь; «Итог» — словами из `docs/ui/COPY.md` | Ретест: дифф открыт по умолчанию, модель поясняет, закрывает бизнес одной клавишей |
+| ![Очередь разработчика](docs/screenshots/dev-queue.png) | ![Документы и поиск по ТЗ](docs/screenshots/documents.png) |
+| Разработчик видит только принятые поломки: «Что требует ТЗ», «Что сделать», одна кнопка «Готово» | Документы: карточки с числом фрагментов и «Проверить, что найдётся» — та же цитата, что потом видит PM |
+
+Карточка живёт рядом с рельсом очереди «i из N»: клавиши 1–5 — решение, `Esc` — отменить в течение 5 секунд, `→` — следующее. Тёмная тема — кнопкой солнце/луна ([скрин](docs/screenshots/remark-card-dark.png)); вход — [карточки ролей](docs/screenshots/login.png).
 
 1. **Документы и замечания изолированы по проекту.** Фильтр `projectId` стоит в SQL retrieve и в каждом сервисе; чужой проект — 404 даже для MCP-токена. Промпт не является ACL.
 2. **Граф LangGraph.js** (`apps/api/src/agent`): retrieve → факты кадра → привязка к пункту с переписыванием запроса ≤ 2 → класс → черновик → ворота faithfulness ≤ 2 → interrupt PM. «Не та цитата из ТЗ» продолжает тот же прогон из чекпоинта в Postgres. Ретест: pixel-diff → пояснение → interrupt бизнеса.

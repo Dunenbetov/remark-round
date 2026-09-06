@@ -1,0 +1,120 @@
+# Хендофф: редизайн UI «Инбокс приёмки» (5–6 сентября 2026)
+
+Временный документ для передачи работы другому агенту. После коммита и защиты его можно удалить — канон живёт в [`VISUAL.md`](VISUAL.md), [`COPY.md`](COPY.md), [`ANTI.md`](ANTI.md).
+
+## Статус
+
+- Ветка `feat/web-mock-frontend`, последний коммит `c387e5a` (фаза 10). **Весь редизайн не закоммичен**: 37 изменённых файлов + 27 новых, ~4100 строк. Коммитит автор сам.
+- Полная спецификация редизайна: `~/.claude/plans/dapper-yawning-kay.md` (утверждена пользователем). Там ASCII-раскладки каждой страницы, палитра с контрастами, список из 29 анимаций, план по PR-шагам и риски. **Читать её перед любой правкой UI.**
+- Логика не тронута: `remarks.store.ts`, `api.service.ts`, `ws.service.ts`, `triage.service.ts`, `pending-action.service.ts`, `guards.ts`, `app.routes.ts` — прежние (кроме двух точечных правок, см. ниже). Менялись шаблоны, стили, токены, компоненты и UI-состояние.
+
+## Идея в пяти строках
+
+1. **Очередь как сущность.** Журнал = пять тайлов-фильтров (сводка раунда) + «Начать разбор»; карточка живёт рядом с рельсом «i из N»; решение клавишами 1–5; после коммита «Следующее → № N» в фокусе.
+2. **Тёплый стол, углублённый.** Бумага отделена от фона, пять слоёв поверхностей, медь — второй акцент «ждёт человека», сериф — «голос документов» (цитаты, «№ 12»), штамп решения.
+3. **Движение — ответ на действие или событие сервера.** View Transitions между страницами, круговое перекрашивание темы от кнопки солнце/луна, лента фаз по реальным WS-событиям. Никаких таймеров «для красоты».
+4. **Упрощение.** 6 чипов → 5 тайлов, 5 колонок → 4, 5 равных кнопок → 3 группы с одной primary, одна контекст-пилюля, один h1 на страницу.
+5. **Пустота заполняется данными, которые уже есть в API** (описание заказчика, число фрагментов документа, колонки шаблона), а не виджетами.
+
+## Инварианты — не ломать
+
+| Правило | Где живёт |
+|---|---|
+| Решения уходят через 5 с с «Отменить»; сервис не менять | `core/pending-action.service.ts` (не тронут) |
+| Пока идёт отсчёт (`actions.pendingFor(remarkId)`), навигация по очереди заблокирована: `locked()` гасит →/←/J/K, кнопки `rr-card-nav` и рельс | `pages/remark-card-page.ts` → `locked`, `go()` |
+| Уход со страницы коммитит решение немедленно (`flush` на `NavigationStart`) — поэтому кнопка «Следующее» внутри отсчёта подписана «Решение уйдёт сразу» | `ui/decision-panel.ts` → блок `pend` |
+| Закон меди: медь только маркеры, рамка диффа, крупное число тайла, полоска отсчёта, солнце, аватар business. Никогда — фон кнопки/пилюли/чипа | комментарий в `styles/tokens.css` |
+| Цвета и размеры — только токены, хексов в компонентах нет | `styles/tokens.css` |
+| Брейкпоинты только **1280** (рельс) и **900** (мобильный). Старых 720/960/1100 больше нет | все компоненты |
+| Один h1 на страницу; `rr-page-header size="lg"` = 32px, `"md"` = 22px | `ui/page-header.ts` |
+| Кнопки разработчика: только «Готово, можно смотреть снова». Кнопки «Закрыть» у него нет | `pages/dev-queue-page.ts`, `remark-card-page.ts` |
+| Score/«уверенность» модели на экран не выводится | `ui/doc-search.ts` |
+| Строки — из `core/copy.ts`, новые добавлять точечным Edit внутрь нужного объекта | `core/copy.ts` (495 строк) |
+
+## Карта файлов
+
+**Новые сервисы (`apps/web/src/app/core/`)**
+
+| Файл | Публичный API |
+|---|---|
+| `journal-filter.ts` | `filterRemarks(list, chip, role)` — вынесен из `journal-page.ts`, чтобы им пользовались и шапка, и карточка. `journal-page.ts` его ре-экспортирует для совместимости |
+| `queue.service.ts` | `snapshot()`, `has()`, `set(ids, label, backLink)`, `clear()`, `position(id, ids?) → {index,total,prevId,nextId}`. Снимок в памяти + `sessionStorage['rr.queue']` |
+| `shortcuts.service.ts` | `pressed: Signal<KeyCode\|null>`, `bind(map) → unbind`, `isEditableTarget(el)`. Стек карт, активна верхняя; гард на поля/`[role=slider]`/`[data-rr-keys]`/оверлеи/модификаторы/`repeat` |
+| `ui-state.service.ts` | `journalFilter`, `setJournalFilter`, `collapsedGroups`, `toggleGroup`, `isGroupCollapsed`, `lastRemarkId`, `hintSeen`, `dismissHint`. sessionStorage + localStorage для подсказок |
+| `view-transitions.ts` | `vtActive`, `canViewTransition()`, `runViewTransition(kind, update, onReady?)`, `onViewTransitionCreated(info)`. Ставит `html[data-vt='nav'\|'theme']`, `data-nav`; круг темы — WAAPI из `theme.service.ts` |
+
+**Новые компоненты (`apps/web/src/app/ui/`)**
+
+`icons.ts` (24 инлайн-иконки + `rr-icon`), `brand-mark.ts`, `theme-toggle.ts`, `segmented.ts`, `hint-line.ts`, `round-tiles.ts`, `group-header.ts`, `queue-rail.ts`, `card-nav.ts`, `card-header.ts`, `stamp.ts`, `run-steps.ts`, `compare-stage.ts`, `drop-zone.ts`, `doc-card.ts`, `doc-search.ts`. Плюс `styles/motion.css`.
+
+**Изменённые точечно (логика)**
+
+- `core/theme.service.ts` — добавлены `isDark` и `toggle(origin?)`; `set()` прежний. Тема применяется синхронно внутри VT-колбэка (иначе в zoneless снимок «new» был бы без темы).
+- `core/models.ts` — `SearchHit`, `Remark.createdAt?`.
+- `core/api.service.ts` — только дженерик: `search()` возвращает `hits: SearchHit[]` вместо `unknown[]`.
+- `core/remarks.store.ts` — приватный `DOC_LABEL` заменён на `DOCUMENTS.kinds` из copy.
+- `app.config.ts` — `withViewTransitions({ skipInitialTransition: true, onViewTransitionCreated })`.
+- `apps/web/angular.json` — порог предупреждения бандла 500 → **700 kB** (прод сейчас 612 kB raw / 141 kB gzip, лимит ошибки 1 MB не тронут).
+- `apps/api/src/evals/make-screenshots.ts` — 10 кадров вместо 4: добавлены login (гость), documents, import, new-remark, dev-card и тёмная карточка; подсказки первого захода гасятся, `sessionStorage.rr.queue` чистится.
+
+**Ключевые контракты компонентов**
+
+- `rr-decision-panel`: inputs `mode` (`disabled|pm-full|pm-two|attach|retest|retest-wait|record`), `busy`, `record: DecisionRecord` (появились `stamp?`, `tone?`, `comment?`, `sub?`), `pending`, `remarkId` (сброс комментария/выбора/интервала при смене карточки), `next: {n,title}`, `queueEmpty`, `keysHint`; outputs прежние + `goNext`, `toJournal`. Методы для клавиш: `pickByKey(n)`, `openComment()`.
+- `rr-queue-rail`: `label`, `items: RailItem[]`, `activeId`, `locked`; output `pick(id)`.
+- `rr-drop-zone`: `title`, `hint`, `accept`, `busy`, `size ('band'|'tall'|'wide')`, `paste`, `icon`, `buttonLabel`; output `file(File)`. Ctrl+V слушает document и игнорирует события с фокусом в полях.
+- `rr-compare-stage`: `frames: StageFrame[]`, `busy`, `hint`; output `open(index)`. Дифф выбран по умолчанию, рамка медью, «дышит» один раз.
+
+## Как запускать и проверять
+
+```bash
+docker compose up -d          # api :3001, web :4200 (nginx с прод-сборкой)
+```
+
+- **После правок UI docker-образ web надо пересобрать**: `docker compose up -d --build web`. Иначе на 4200 висит старая сборка.
+- Дев-сервер и docker-web конфликтуют за 4200. Для дев-режима: остановить контейнер web либо поднимать превью на другом порту (`.claude/launch.json`, `autoPort`). Node 24: `source ~/.nvm/nvm.sh && nvm use 24`.
+- Вход без формы: положить в `localStorage` ключи `rr.session` (`{accessToken,user,memberships}` из `POST /api/v1/auth/login`) и `rr.project`. Демо-пароль `remarkround`, пользователи `pm@` (PM), `business@` (Business), `developer@` (Developer) `@remarkround.dev` — имена совпадают с ролями.
+- **id замечаний меняются после каждого пересева** (`SEED_ON_START` в entrypoint). Брать их из `GET /projects/:id/rounds` → `/rounds/:roundId/remarks`, а не из старых ссылок.
+- Скриншоты: `cd apps/api && WEB_URL=http://localhost:4200 API_URL=http://localhost:3001/api/v1 node_modules/.bin/tsx src/evals/make-screenshots.ts` (на macOS нет `timeout`, не оборачивать им).
+- Презентация: `cd docs/presentation && chrome --headless=new --no-pdf-header-footer --print-to-pdf=…/RemarkRound.pdf file://…/RemarkRound.html` → 15 страниц.
+
+## Гочи, на которые уже наступали
+
+1. **Браузерная панель часто `document.hidden`** → таймеры дросселятся, CSS-анимации на паузе. Чернильная карточка отсчёта на скриншоте может выглядеть прозрачной, хотя в DOM она есть. Проверять такие вещи запросами к DOM (`document.querySelector('rr-decision-panel.panel--ink')`), а не глазами по скриншоту.
+2. **Синтетические нажатия клавиш из браузерных инструментов приходят с пустым `e.code`.** В `shortcuts.service.ts` добавлен фолбэк `codeFromKey(e.key)` — не удалять, иначе автоматическая проверка клавиш перестанет работать (у живого пользователя `e.code` есть всегда).
+3. `@if`/`@for` удаляют узел мгновенно — анимации ухода делаются локальным сигналом `leaving` + `setTimeout` (так сделано в `undo-bar.ts` и `card-header.ts` для presence). Перестановки строк (импорт, очередь) сознательно оставлены enter-only.
+4. Две View Transition одновременно невозможны — общий флаг `vtActive`; правила темы строго под `html[data-vt='theme']`, иначе сработают на переходах роутера. Круг wipe ставится WAAPI литералами (`ThemeService` → `wipe()`): custom-properties до `::view-transition-new(root)` доходят не везде — с ними круг стартовал «сверху посередине». В панели предпросмотра `document.hidden === true` и VT абортится — проверять только в настоящем окне.
+5. `view-transition-name` ставится на серифный номер (`span`), не на `<tr>` — строка таблицы захватывается ненадёжно.
+
+## Честные отклонения и долги
+
+- **`pages/remark-card-page.ts` — 1264 строки** (было 915, план требовал ≤700 после выноса компонентов). Шапка, улики, навигация и сцена вынесены, но страница выросла за счёт режимов и клавиатуры. Если её снова придётся править — сначала вынести блок «Со слов заказчика» и режимы `retest-wait`/`refuse` в `ui/evidence.ts` (компонент запланирован, но не создан: его роль сейчас исполняет разметка внутри страницы).
+- **Режим «Сравнить» (слайдер Было/Стало) не сделан** — условный блок PR7, в `ui/compare-stage.ts` стоит `TODO` со ссылкой на план. Дифф по умолчанию закрывает демо-потребность.
+- **Фронтовых тестов нет** (их не было и раньше) — вся проверка ручная через браузер.
+- `docs/ui/reference.html` и `wireframes.html` устарели: они описывают доредизайновый UI. В `VISUAL.md` про это сказано, файлы оставлены как история.
+- `RETEST_EXPLANATION` и `NAV.switchUser` в copy.ts — прежние неиспользуемые ключи (`switchUser` теперь используется на «Нет доступа»).
+
+## Доработки после хендоффа (6 сентября 2026)
+
+Десять замечаний автора по редизайну; план — `~/.claude/plans/docs-ui-redesign-handoff-md-expressive-sonnet.md`. Всё не закоммичено.
+
+| № | Что сделано | Где |
+|---|---|---|
+| 1 | Демо-персоны названы ролями: **PM / Business / Developer**, e-mail `pm@ / business@ / developer@remarkround.dev` (сид upsert по `id`, переименование проходит на живой БД). Подписи нейтральные: «Автор: …», «Исправлено: …»; рядом с именем — роль в проекте («Business (заказчик)») через `authorRole / fixedByRole / closedByRole / verdict.userRole` и `ROLE_SHORT` | `apps/api/src/seed.ts`, `remark.dto.ts`, `remarks.service.ts` (`views()` батчит membership), `core/copy.ts`, `remark-card-page.ts` (`person()`), `make-screenshots.ts`, README/DEMO/compose/.env.example/.cursor |
+| 2 | Тайл «Ждут вас»: кнопка «Начать разбор» в потоке справа от числа (grid-области), подстрока не перекрывается; зона клика фильтра — весь тайл через `::after` | `ui/round-tiles.ts` |
+| 3 | Очередь разработчика: каждая группа — одна бумага с заголовком (как в журнале), без sticky внутри `overflow:hidden` (это и была «пустая полоса»), строки 104px без дыры под миниатюру, компактная кнопка; клавиши ↓/↑ (J/K), Enter, 1 | `pages/dev-queue-page.ts` |
+| 4 | Wipe темы: круг задаётся литералами через WAAPI на `::view-transition-new(root)` (custom-properties до псевдоэлемента доходят не везде — круг стартовал из фолбэка «сверху посередине»), `mix-blend-mode: normal`, 600 ms; фолбэк — одноразовый `<style>` с теми же литералами | `core/theme.service.ts` (`wipe()`), `core/view-transitions.ts` (`onReady`), `styles/motion.css`, `tokens.css` |
+| 5 | Тумблер день/ночь по референсу автора: небо/солнце/облака ↔ ночь/луна/звёзды, три кольца свечения, `role="switch"`; палитра `--rr-tt-*` — задокументированное исключение из закона меди | `ui/theme-toggle.ts`, `tokens.css` |
+| 6 | Шаблон журнала по-русски: `№;Где;Что не так;Как должно быть;Важность;Скрин` (BOM + «;») в xlsx/csv и на странице импорта; парсер принимает русскую и прежнюю английскую шапку (`HEADER_ALIASES`), ошибка называет русские колонки; генератор пишет и csv, и `sample-round.ru.csv` | `apps/api/src/imports/{journal-template,journal-parser,make-journal-fixtures}.ts`, `fixtures/journal/*`, `apps/web/public/template.*`, spec |
+| 7 | Онбординг для бизнеса и PM: схема пути замечания `rr-process-strip` (loop — зацикленная анимация от одного зарегистрированного числа `--rr-p`, static — «где сейчас это замечание» на карточке), полоса «Как идёт замечание» в журнале (сворачивается, `rr.ui.band.process`), тур `rr-onboarding-tour` из 5 шагов по роли (авто один раз, `rr.hint.tour.<role>`; «По шагам» и пункт меню «Как это работает») | `ui/process-strip.ts`, `ui/onboarding-tour.ts`, `core/onboarding.service.ts`, `core/ui-state.service.ts`, `copy.ts` (`PROCESS`, `TOUR`), `journal-page.ts`, `remark-card-page.ts`, `app.ts`, `motion.css` (`@property --rr-p`) |
+| 8 | Из меню аватара убран пункт темы; вместо него «Как это работает» (business/pm) и «Выйти» | `ui/app-bar.ts` |
+| 9 | Лента фаз не вылезает на «Ваше решение»: `container-type` + `min-width:0`, в узкой колонке подпись только у текущего шага | `ui/run-steps.ts`, `remark-card-page.ts` (`.col { overflow-wrap }`) |
+| 10 | Совет разработчика: таблица `DeveloperAdvice` (миграция `20260906120000_developer_advice`), `GET advisory-queue`, `PUT/DELETE remarks/:id/advice` (только developer, только `awaiting_pm`, статус не меняет), WS `remark.advice`; у разработчика группа «Сейчас у руководителя приёмки» и режим панели `dev-advice` (1–5, C, «Изменить/Убрать», без отсчёта); у PM бейдж «Developer советует» у варианта + строка с комментарием, приходит по WS без перезагрузки; после вердикта у разработчика «Совет совпал ✓ / Ваш совет был: …». Сид: советы у №12 и №13. Спеки `advice.developer-cannot-decide.spec.ts`, `ws.advice.spec.ts`; ADR 004 | `packages/db/prisma`, `apps/api/src/remarks/*`, `agent/run-events.ts`, `seed-remarks.ts`, `test/harness.ts`; `core/{models,ws.service,api.service,remarks.store}.ts`, `ui/decision-panel.ts`, `pages/{remark-card-page,dev-queue-page}.ts`; `docs/{STATUS,API,WS,ARCHITECTURE}.md`, `docs/ui/COPY.md`, `docs/adr/004-developer-advice.md` |
+
+Новые гочи: пайп валидации отвечает **422**, не 400 (`main.ts`); в исходнике парсера BOM стоял литералом, не `\uFEFF`; после пересева id замечаний меняются — ссылки брать из API; dev-прокси `ng serve` не поднимает websocket-транспорт (socket.io уходит в polling — события всё равно доходят), docker-web через nginx — websocket.
+
+## Что осталось до защиты
+
+1. Закоммитить и запушить (редизайн + доработки 6 сентября: ~70 файлов).
+2. Прогнать `docs/DEMO.md` двумя окнами на внешнем мониторе/проекторе: журнал → «Начать разбор» → клавиша 1 → Esc → снова 1 → «Следующее» → ретест с диффом → очередь разработчика.
+3. Сверить контраст на реальном проекторе за неделю до защиты; если медь и кармин сливаются — сдвинуть `--rr-danger` к `#8e241c` (в плане это записано).
+4. Опционально: публичный URL, «после защиты» — слайдер сравнения, FLIP-перестановки, панорамирование в просмотрщике, свёрнутый рельс на 1100–1280.

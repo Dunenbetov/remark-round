@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { AgentService } from '../agent/agent.service';
+import { RunEvents } from '../agent/run-events';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
-import { CancelRunDto, CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ScreenshotDto, VerdictDto } from './remark.dto';
+import { AdviceDto, CancelRunDto, CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ScreenshotDto, VerdictDto } from './remark.dto';
 import { RemarksService } from './remarks.service';
 
 /**
@@ -16,6 +17,7 @@ export class RemarksController {
   constructor(
     private readonly remarks: RemarksService,
     private readonly agent: AgentService,
+    private readonly events: RunEvents,
   ) {}
 
   @Get('rounds/:roundId/remarks')
@@ -37,9 +39,35 @@ export class RemarksController {
     return this.remarks.devQueue(ctx);
   }
 
+  /** Разработчику: что сейчас на приёмке у PM — можно посоветовать решение (не очередь работы). */
+  @Get('advisory-queue')
+  @Roles('developer')
+  advisoryQueue(@Ctx() ctx: ProjectContext): Promise<RemarkView[]> {
+    return this.remarks.advisoryQueue(ctx);
+  }
+
   @Get('remarks/:remarkId')
   get(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string): Promise<RemarkView> {
     return this.remarks.get(ctx, remarkId);
+  }
+
+  /** Совет разработчика по awaiting_pm: не вердикт, статус не меняет; PM в комнате видит его сразу (remark.advice). */
+  @Put('remarks/:remarkId/advice')
+  @Roles('developer')
+  @HttpCode(200)
+  async advise(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: AdviceDto): Promise<RemarkView> {
+    const view = await this.remarks.advise(ctx, remarkId, dto);
+    this.events.emit(remarkId, { type: 'remark.advice', remarkId, advice: view.advice });
+    return view;
+  }
+
+  @Delete('remarks/:remarkId/advice')
+  @Roles('developer')
+  @HttpCode(200)
+  async retractAdvice(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string): Promise<RemarkView> {
+    const view = await this.remarks.retractAdvice(ctx, remarkId);
+    this.events.emit(remarkId, { type: 'remark.advice', remarkId, advice: view.advice });
+    return view;
   }
 
   /** «Допишите строку журнала»: needs_human_parse → imported → разбор. */

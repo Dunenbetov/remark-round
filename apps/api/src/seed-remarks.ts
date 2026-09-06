@@ -31,6 +31,8 @@ interface SeedRemark {
   retest?: { outcome: RetestOutcome; explanation: string };
   closedAt?: string;
   duplicateOfNumber?: number;
+  /** Совет разработчика (Developer) по замечанию, которое ждёт PM. */
+  advice?: { code: VerdictCode; comment?: string };
 }
 
 const DEFECT_RATIONALE = (section: string, requirement: string, seen: string): string[] => [
@@ -50,6 +52,7 @@ export const SEED_REMARKS: SeedRemark[] = [
     visionFacts: 'кнопка «Сохранить» серая, поля заполнены.',
     cite: ['§2.1 Primary', 'protocol'],
     shot: 'gray',
+    advice: { code: 'defect', comment: 'В ТЗ §2.1 однозначно, чиню за час' },
   },
   {
     number: 13,
@@ -60,6 +63,7 @@ export const SEED_REMARKS: SeedRemark[] = [
     proposedClass: 'change_request_candidate',
     rationale: ['Похоже, это новое желание.', 'ТЗ (§6) прямо относит тёмную тему к тому, чего в проекте нет. Это не поломка, а новое желание — решите, брать ли его в работу отдельно.'],
     cite: ['§6 Чего в ТЗ нет (дыры)'],
+    advice: { code: 'change_request', comment: 'Тёмной темы в ТЗ нет — это отдельная задача на пару дней' },
   },
   {
     number: 14,
@@ -235,9 +239,10 @@ export async function seedRemarks(
     update: {},
   });
 
-  // Чистим раунд: вердикты и прогоны не каскадятся.
+  // Чистим раунд: вердикты и прогоны не каскадятся (советы каскадятся, но снимаем явно).
   const old = await prisma.remark.findMany({ where: { roundId: ROUND_ID }, select: { id: true } });
   const oldIds = old.map((r) => r.id);
+  await prisma.developerAdvice.deleteMany({ where: { remarkId: { in: oldIds } } });
   await prisma.humanVerdict.deleteMany({ where: { remarkId: { in: oldIds } } });
   await prisma.agentRun.deleteMany({ where: { remarkId: { in: oldIds } } });
   await prisma.remark.deleteMany({ where: { id: { in: oldIds } } });
@@ -294,6 +299,9 @@ export async function seedRemarks(
       },
     });
     created.set(r.number, remark.id);
+    if (r.advice) {
+      await prisma.developerAdvice.create({ data: { remarkId: remark.id, userId: ids.developerId, code: r.advice.code, comment: r.advice.comment ?? null } });
+    }
 
     const run = await prisma.agentRun.create({
       data: { remarkId: remark.id, projectId: ids.projectId, mode: 'triage', status: r.verdict ? 'persisted' : 'awaiting_human', model: 'seed' },

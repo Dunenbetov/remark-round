@@ -1,24 +1,76 @@
 import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { ApiService } from '../core/api.service';
-import { APP_NAME, LOGIN, LOGIN_EXTRA, TAGLINE } from '../core/copy';
+import { APP_NAME, LOGIN, LOGIN_EXTRA, ROLE_TITLE } from '../core/copy';
 import { homeUrl } from '../core/guards';
+import type { Role } from '../core/models';
 import { SessionService } from '../core/session.service';
+import { BrandMark } from '../ui/brand-mark';
 
-const DEMO_EMAILS = ['dana@remarkround.dev', 'aigerim@remarkround.dev', 'timur@remarkround.dev'];
+const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', admin: 'accent', business: 'wait', developer: 'work' };
 
-/** Вход: слово RemarkRound, одна строка, e-mail и пароль, «Войти». Без иллюстраций и маркетинга. */
+/**
+ * Вход: слева — продукт и три роли демо за три секунды (лид + карточки ролей), справа — лист формы.
+ * Карточка роли заполняет e-mail и пароль (демо-стенд), фокус уходит на «Войти».
+ */
 @Component({
   selector: 'rr-login-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [BrandMark],
   template: `
     <main id="main" class="login">
-      <form class="login__box" (submit)="submit($event)" novalidate>
-        <div class="login__brand">
-          <h1 class="serif login__name">{{ appName }}</h1>
-          <p class="login__tagline">{{ tagline }}</p>
-        </div>
-        <div class="login__fields">
+      <svg class="login__ring" width="560" height="560" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.12" stroke-linecap="round" aria-hidden="true">
+        <path d="M14.8 3.5A9 9 0 1 0 20.5 9.2" />
+      </svg>
+      <div class="login__in">
+        <section class="login__intro">
+          <div class="login__brand rise" style="--i: 0">
+            <rr-brand-mark [size]="40" />
+            <h1 class="serif login__name">{{ appName }}</h1>
+          </div>
+          <p class="login__lead rise" style="--i: 1">
+            @for (line of copy.lead; track line) {
+              <span class="login__lead-line">{{ line }}</span>
+            }
+          </p>
+          <div class="login__roles rise" style="--i: 2">
+            <div class="eyebrow">{{ copy.tryAs }}</div>
+            @for (r of copy.roles; track r.email; let i = $index) {
+              <button
+                type="button"
+                class="role paper paper--lift"
+                [class.role--on]="email() === r.email"
+                [attr.aria-pressed]="email() === r.email"
+                [style.--role-tone]="ring(r.role)"
+                (click)="pick(r.email)"
+              >
+                <span class="avatar" [class]="'avatar avatar--' + tone(r.role)">{{ r.name.charAt(0) }}</span>
+                <span class="role__text">
+                  <span class="role__name">{{ r.name }}</span>
+                  <span class="role__title">{{ roleTitle[r.role] }}</span>
+                  <span class="role__does">{{ r.does }}</span>
+                </span>
+                <span class="role__mail meta">{{ r.email }}</span>
+                <span class="role__check" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3 3 7-7" /></svg>
+                </span>
+              </button>
+            }
+          </div>
+          <ol class="login__steps rise" style="--i: 3" aria-label="Как это работает">
+            @for (s of copy.steps; track s; let last = $last) {
+              <li class="login__step">
+                <span class="pill pill--muted">{{ s }}</span>
+                @if (!last) {
+                  <span class="login__arrow" aria-hidden="true">→</span>
+                }
+              </li>
+            }
+          </ol>
+        </section>
+
+        <form class="paper login__box rise" style="--i: 1" [class.is-shake]="shake()" (animationend)="shake.set(false)" (submit)="submit($event)" novalidate>
+          <h2 class="login__title">{{ copy.pageTitle }}</h2>
           <label class="field">
             <span class="field__label field__label--soft">{{ copy.email }}</span>
             <input
@@ -62,55 +114,163 @@ const DEMO_EMAILS = ['dana@remarkround.dev', 'aigerim@remarkround.dev', 'timur@r
           @if (error()) {
             <div class="login__error" role="alert">{{ copy.unknown }}</div>
           }
-          <button type="submit" class="btn btn--primary login__submit" [class.btn--busy]="busy()" [disabled]="busy()">{{ copy.submit }}</button>
-        </div>
-        <div class="login__demo">
-          <span class="meta">{{ copy.demoHint }}</span>
-          <div class="login__chips">
-            @for (e of demoEmails; track e) {
-              <button type="button" class="chip login__chip" [class.chip--on]="email() === e" (click)="pick(e)">{{ e }}</button>
-            }
-          </div>
-          <span class="meta">{{ demoPassword }}</span>
-        </div>
-      </form>
+          <button type="submit" class="btn btn--primary btn--lg login__submit" [class.btn--busy]="busy()" [disabled]="busy()">{{ copy.submit }}</button>
+          <span class="meta login__demo">{{ demoPassword }}</span>
+        </form>
+      </div>
     </main>
   `,
   styles: `
     .login {
+      position: relative;
       min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: var(--sp-6);
+      display: grid;
+      place-items: center;
+      padding: var(--sp-8) var(--sp-6);
+      overflow: hidden;
     }
-    .login__box {
-      width: 380px;
-      max-width: 100%;
+    .login__ring {
+      position: absolute;
+      left: -140px;
+      bottom: -160px;
+      color: var(--rr-ink);
+      opacity: 0.06;
+      pointer-events: none;
+    }
+    .login__in {
+      position: relative;
+      width: min(1120px, 100%);
+      display: grid;
+      grid-template-columns: 7fr 5fr;
+      gap: var(--sp-12);
+      align-items: center;
+    }
+    .login__intro {
       display: flex;
       flex-direction: column;
       gap: var(--sp-7);
+      min-width: 0;
     }
     .login__brand {
-      text-align: center;
       display: flex;
-      flex-direction: column;
-      gap: var(--sp-1);
+      align-items: center;
+      gap: var(--sp-3);
+      color: var(--rr-ink);
     }
     .login__name {
       margin: 0;
-      font-size: 40px;
-      line-height: 48px;
-      letter-spacing: -0.01em;
+      font-size: var(--rr-fs-40);
+      line-height: var(--rr-lh-40);
+      letter-spacing: -0.015em;
     }
-    .login__tagline {
+    .login__lead {
       margin: 0;
-      color: var(--rr-ink-2);
-    }
-    .login__fields {
       display: flex;
       flex-direction: column;
-      gap: var(--sp-3);
+      font-size: var(--fs-18);
+      line-height: var(--lh-18);
+      color: var(--rr-ink-2);
+      max-width: 34ch;
+    }
+    .login__lead-line:last-child {
+      color: var(--rr-ink);
+      font-weight: var(--fw-semibold);
+    }
+    .login__roles {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+    .login__roles .eyebrow {
+      margin-bottom: var(--sp-1);
+    }
+    .role {
+      position: relative;
+      display: grid;
+      grid-template-columns: 32px 1fr auto 16px;
+      align-items: center;
+      gap: var(--sp-4);
+      min-height: 72px;
+      padding: 0 var(--sp-5);
+      text-align: left;
+      cursor: pointer;
+      color: var(--rr-ink);
+    }
+    .role .avatar {
+      cursor: pointer;
+      box-shadow: none;
+    }
+    .role--on {
+      box-shadow: 0 0 0 2px var(--role-tone), var(--rr-shadow-1);
+      border-color: transparent;
+    }
+    .role__text {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+    }
+    .role__name {
+      font-size: var(--fs-16);
+      line-height: var(--lh-16);
+      font-weight: var(--fw-semibold);
+    }
+    .role__title {
+      font-size: var(--fs-14);
+      line-height: var(--lh-14);
+      color: var(--rr-ink-2);
+    }
+    .role__does {
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
+      color: var(--rr-ink-3);
+    }
+    .role__mail {
+      white-space: nowrap;
+    }
+    .role__check {
+      display: inline-flex;
+      color: var(--role-tone);
+      transform: scale(0);
+      transition: transform var(--dur) var(--rr-ease-spring);
+    }
+    .role--on .role__check {
+      transform: scale(1);
+    }
+    .login__steps {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--sp-2);
+    }
+    .login__step {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+    }
+    .login__arrow {
+      color: var(--rr-ink-3);
+    }
+    .login__box {
+      width: 400px;
+      max-width: 100%;
+      justify-self: end;
+      padding: var(--sp-7);
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-4);
+    }
+    .login__box.is-shake {
+      animation: rr-shake 240ms var(--rr-ease-in-out);
+    }
+    .login__title {
+      margin: 0 0 var(--sp-1);
+      font-size: var(--fs-22);
+      line-height: var(--lh-22);
+      font-weight: var(--fw-semibold);
     }
     .login__pass {
       position: relative;
@@ -147,22 +307,31 @@ const DEMO_EMAILS = ['dana@remarkround.dev', 'aigerim@remarkround.dev', 'timur@r
       color: var(--rr-danger);
     }
     .login__demo {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--sp-2);
       text-align: center;
     }
-    .login__chips {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 6px;
-    }
-    .login__chip {
-      height: 28px;
-      padding: 0 10px;
-      font-size: var(--fs-13);
+    @media (max-width: 900px) {
+      .login {
+        padding: var(--sp-6) var(--sp-4);
+        align-items: start;
+      }
+      .login__in {
+        grid-template-columns: 1fr;
+        gap: var(--sp-7);
+      }
+      .login__box {
+        order: -1;
+        justify-self: stretch;
+        width: 100%;
+      }
+      .login__steps {
+        display: none;
+      }
+      .role {
+        grid-template-columns: 32px 1fr 16px;
+      }
+      .role__mail {
+        display: none;
+      }
     }
   `,
 })
@@ -173,14 +342,14 @@ export class LoginPage {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   protected readonly appName = APP_NAME;
-  protected readonly tagline = TAGLINE;
   protected readonly copy = LOGIN;
-  protected readonly demoEmails = DEMO_EMAILS;
+  protected readonly roleTitle = ROLE_TITLE;
   protected readonly demoPassword = LOGIN_EXTRA.demoPassword;
   protected readonly email = signal('');
   protected readonly password = signal('');
   protected readonly error = signal(false);
   protected readonly busy = signal(false);
+  protected readonly shake = signal(false);
   protected readonly showPassword = signal(false);
 
   constructor() {
@@ -190,6 +359,22 @@ export class LoginPage {
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
+  }
+
+  protected tone(role: Role): 'accent' | 'wait' | 'work' {
+    return TONE_BY_ROLE[role];
+  }
+
+  /** Кольцо выбранной карточки — тон роли (business — медь, закон меди п. а). */
+  protected ring(role: Role): string {
+    switch (TONE_BY_ROLE[role]) {
+      case 'wait':
+        return 'var(--rr-accent-2)';
+      case 'work':
+        return 'var(--rr-work-dot)';
+      default:
+        return 'var(--rr-accent)';
+    }
   }
 
   protected pick(email: string): void {
@@ -209,6 +394,7 @@ export class LoginPage {
       await this.router.navigateByUrl(homeUrl(this.session));
     } catch {
       this.error.set(true);
+      this.shake.set(true);
     } finally {
       this.busy.set(false);
     }

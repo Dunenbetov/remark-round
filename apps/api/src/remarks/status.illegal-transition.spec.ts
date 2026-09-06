@@ -29,10 +29,19 @@ describe('status transitions', () => {
     expect(runId).toBeTruthy();
   });
 
-  it('разработчик не видит awaiting_pm ни в очереди, ни по прямой ссылке', async () => {
+  it('разработчик не видит awaiting_pm в очереди и журнале; по ссылке читает — чтобы посоветовать (ADR 004), но вердикт не его', async () => {
     const queue = await h.http.get(`/api/v1/projects/${h.projectId}/dev-queue`).set(h.auth('developer')).expect(200);
     expect(queue.body).toEqual([]);
-    await h.http.get(`/api/v1/projects/${h.projectId}/remarks/${remarkId}`).set(h.auth('developer')).expect(404);
+    const list = await h.http.get(`/api/v1/projects/${h.projectId}/rounds/${h.roundId}/remarks`).set(h.auth('developer')).expect(200);
+    expect(list.body).toEqual([]);
+    const card = await h.http.get(`/api/v1/projects/${h.projectId}/remarks/${remarkId}`).set(h.auth('developer')).expect(200);
+    expect(card.body.status).toBe('awaiting_pm');
+    expect(card.body.advice).toEqual([]);
+    await h.http
+      .post(`/api/v1/projects/${h.projectId}/remarks/${remarkId}/verdict`)
+      .set(h.auth('developer'))
+      .send({ verdict: 'defect', runId, idempotencyKey: randomUUID() })
+      .expect(403);
   });
 
   it('закрыть из awaiting_pm нельзя даже бизнесу — 409', async () => {

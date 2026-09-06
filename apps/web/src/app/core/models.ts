@@ -112,7 +112,19 @@ export interface Verdict {
   code: VerdictCode;
   userId: string;
   userName?: string;
+  userRole?: Role;
   /** «14:02» — локальное время решения. */
+  at: string;
+  comment?: string;
+}
+
+/** Совет разработчика по замечанию в awaiting_pm (RemarkView.advice): подсказка PM, не решение. */
+export interface Advice {
+  code: VerdictCode;
+  userId: string;
+  userName?: string;
+  role: Role;
+  /** «14:02» — когда совет дан или изменён. */
   at: string;
   comment?: string;
 }
@@ -138,8 +150,12 @@ export interface Remark {
   severity?: string;
   authorId: string | null;
   authorName?: string;
+  /** Роль автора в проекте — подпись рядом с именем, когда людей на стороне несколько. */
+  authorRole?: Role;
   fixedByName?: string;
+  fixedByRole?: Role;
   closedByName?: string;
+  closedByRole?: Role;
   screenshots: Screenshot[];
   citations: Citation[];
   /** «На скрине видно: …» */
@@ -150,6 +166,8 @@ export interface Remark {
   draftShort?: string;
   proposedClass?: ProposedClass;
   verdict?: Verdict;
+  /** Советы разработчиков; пусто, пока никто не советовал. */
+  advice?: Advice[];
   retest?: Retest;
   duplicateOfNumber?: number;
   /** «Связать с №4» нажато (локальная пометка). */
@@ -166,6 +184,21 @@ export interface Remark {
   runMode?: 'triage' | 'retest';
   /** Trace прогона в Langfuse — только когда сервер его настроил; показываем PM. */
   traceUrl?: string;
+  /** ISO-дата создания (RemarkView.createdAt). */
+  createdAt?: string;
+}
+
+/** Хит поиска по документам — GET /projects/:id/search (apps/api/src/rag/rag.service.ts SearchHit). */
+export interface SearchHit {
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  documentKind: DocumentKind;
+  section: string | null;
+  page: number | null;
+  content: string;
+  /** Косинусная близость 0..1; на экран не выводится. */
+  score: number;
 }
 
 export interface ProjectDocument {
@@ -234,7 +267,8 @@ export type ServerEvent =
   | { type: 'run.persisted'; runId: string; remarkStatus: RemarkStatus }
   | { type: 'run.cancelled'; runId: string; remarkStatus: RemarkStatus }
   | { type: 'run.failed'; runId: string; message: string }
-  | ({ type: 'presence'; action: 'join' | 'leave' } & Presence);
+  | ({ type: 'presence'; action: 'join' | 'leave' } & Presence)
+  | { type: 'remark.advice'; remarkId: string; advice: Advice[] };
 
 /** Ответ на join: текущий прогон (если идёт) и кто уже в комнате. */
 export type JoinAck = { ok: true; runId?: string; phase?: Phase; presence: Presence[] } | { ok: false; status: number; message: string };

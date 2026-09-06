@@ -10,6 +10,7 @@
 | [`reference.html`](reference.html) | **Открой в браузере** — живой эталон |
 | [`apps/web/src/styles/tokens.css`](../../apps/web/src/styles/tokens.css) | Переменные (единственный источник; `tokens.css` здесь — указатель) |
 | [`AGENT-PROMPT.md`](AGENT-PROMPT.md) | Текст задачи агенту |
+| [`REDESIGN-HANDOFF.md`](REDESIGN-HANDOFF.md) | Состояние редизайна «Инбокс приёмки»: карта файлов, инварианты, гочи, долги (временный) |
 | [`wireframes.html`](wireframes.html) | Старый серый каркас, не эталон |
 | `01`–`04` *.md | ASCII, если HTML не открывается |
 

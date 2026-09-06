@@ -1,4 +1,4 @@
-import type { AgentRunStatus, DocumentKind, ProposedClass, RemarkStatus, RetestOutcome, ScreenshotKind, VerdictCode } from '@remarkround/db';
+import type { AgentRunStatus, DocumentKind, ProposedClass, RemarkStatus, RetestOutcome, Role, ScreenshotKind, VerdictCode } from '@remarkround/db';
 import { IsIn, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
 import { mediaUrl } from '../media/media.controller';
 
@@ -29,6 +29,19 @@ export class CreateRemarkDto {
 }
 
 const VERDICTS: VerdictCode[] = ['defect', 'change_request', 'unspecified', 'duplicate', 'cannot_tell', 'rejected_binding'];
+
+/** Совет разработчика — те же пять кнопок, что у PM («Повтор» ставится связью, кнопки нет). */
+export const ADVICE_CODES: VerdictCode[] = ['defect', 'change_request', 'unspecified', 'cannot_tell', 'rejected_binding'];
+
+export class AdviceDto {
+  @IsIn(ADVICE_CODES)
+  code!: VerdictCode;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  comment?: string;
+}
 
 export class VerdictDto {
   @IsIn(VERDICTS)
@@ -126,6 +139,17 @@ export interface VerdictView {
   code: VerdictCode;
   userId: string;
   userName?: string;
+  userRole?: Role;
+  at: string;
+  comment?: string;
+}
+
+/** Совет разработчика по замечанию в awaiting_pm — подсказка PM, не решение. */
+export interface AdviceView {
+  code: VerdictCode;
+  userId: string;
+  userName?: string;
+  role: Role;
   at: string;
   comment?: string;
 }
@@ -146,8 +170,12 @@ export interface RemarkView {
   severity?: string;
   authorId: string | null;
   authorName?: string;
+  /** Роль автора в проекте — рядом с именем, когда людей на стороне несколько. */
+  authorRole?: Role;
   fixedByName?: string;
+  fixedByRole?: Role;
   closedByName?: string;
+  closedByRole?: Role;
   screenshots: ScreenshotView[];
   citations: CitationView[];
   seen?: string;
@@ -155,6 +183,8 @@ export interface RemarkView {
   draftShort?: string;
   proposedClass?: ProposedClass;
   verdict?: VerdictView;
+  /** Советы разработчиков (несколько человек — несколько советов); пусто, если никто не советовал. */
+  advice: AdviceView[];
   retest?: { outcome: RetestOutcome; explanation: string };
   duplicateOfNumber?: number;
   devNote?: string;
@@ -199,6 +229,7 @@ export interface RemarkRow {
   screenshots: Array<{ id: string; kind: ScreenshotKind; storageKey: string; width: number | null; height: number | null; createdAt: Date }>;
   citations: Array<{ id: string; chunkId: string }>;
   verdicts: Array<{ code: VerdictCode; userId: string; comment: string | null; createdAt: Date }>;
+  advices: Array<{ code: VerdictCode; userId: string; comment: string | null; updatedAt: Date }>;
   runs: Array<{ id: string; createdAt: Date; status: AgentRunStatus; mode: string }>;
 }
 
@@ -213,8 +244,10 @@ export interface ChunkInfo {
 export interface ViewExtra {
   duplicateOfNumber?: number;
   chunks: Map<string, ChunkInfo>;
-  /** userId → имя, для «Добавила Айгерим», «Исправил Тимур», «Дана · 14:02». */
+  /** userId → имя, для «Автор: Business», «Исправлено: Developer», «PM · 14:02». */
   names: Map<string, string>;
+  /** userId → роль в проекте (membership); нет — роль не показываем. */
+  roles?: Map<string, Role>;
   /** runId → ссылка на trace Langfuse; undefined, когда Langfuse не настроен. */
   traceUrl?: (runId: string) => string | undefined;
 }
@@ -239,8 +272,11 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra): RemarkView {
     severity: r.severity ?? undefined,
     authorId: r.authorId,
     authorName: r.authorId ? extra.names.get(r.authorId) : undefined,
+    authorRole: r.authorId ? extra.roles?.get(r.authorId) : undefined,
     fixedByName: r.fixedByUserId ? extra.names.get(r.fixedByUserId) : undefined,
+    fixedByRole: r.fixedByUserId ? extra.roles?.get(r.fixedByUserId) : undefined,
     closedByName: r.closedByUserId ? extra.names.get(r.closedByUserId) : undefined,
+    closedByRole: r.closedByUserId ? extra.roles?.get(r.closedByUserId) : undefined,
     screenshots: [...r.screenshots]
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((s) => ({ id: s.id, kind: s.kind, url: mediaUrl(r.projectId, s.storageKey), width: s.width, height: s.height })),
@@ -253,8 +289,11 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra): RemarkView {
     draftShort: first ? first.replace(/\.$/, '') : undefined,
     proposedClass: r.proposedClass ?? undefined,
     verdict: verdict
-      ? { code: verdict.code, userId: verdict.userId, userName: extra.names.get(verdict.userId), at: hhmm(verdict.createdAt), comment: verdict.comment ?? undefined }
+      ? { code: verdict.code, userId: verdict.userId, userName: extra.names.get(verdict.userId), userRole: extra.roles?.get(verdict.userId), at: hhmm(verdict.createdAt), comment: verdict.comment ?? undefined }
       : undefined,
+    advice: [...r.advices]
+      .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
+      .map((a) => ({ code: a.code, userId: a.userId, userName: extra.names.get(a.userId), role: extra.roles?.get(a.userId) ?? 'developer', at: hhmm(a.updatedAt), comment: a.comment ?? undefined })),
     retest: r.retestOutcome ? { outcome: r.retestOutcome, explanation: r.retestExplanation ?? '' } : undefined,
     duplicateOfNumber: extra.duplicateOfNumber,
     devNote: r.expected ?? undefined,

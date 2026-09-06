@@ -2,7 +2,7 @@
  * Все русские строки интерфейса. Источник — docs/ui/COPY.md (дословно) и дизайн RemarkRound.dc.html.
  * Синонимы запрещены: не Approve/Reject/Submit/Ticket.
  */
-import type { DocumentStatus, Phase, RemarkStatus, Role, VerdictCode } from './models';
+import type { DocumentKind, DocumentStatus, Phase, RemarkStatus, Role, VerdictCode } from './models';
 
 export const APP_NAME = 'RemarkRound';
 export const TAGLINE = 'Журнал замечаний как дело из улик';
@@ -113,6 +113,49 @@ export const DECISION = {
   attachNewFrame: 'Прикрепите новый кадр этого экрана.',
   readyForRetest: 'Готово, можно смотреть снова',
   closedRecord: 'Закрыто',
+  /** Заголовки групп кнопок PM (редизайн «Инбокс приёмки»). */
+  groups: { work: 'Это работа', notWork: 'Это не работа', needData: 'Нужны данные' },
+  addComment: 'Добавить комментарий',
+  next: (n: number, title: string) => `Следующее: № ${n} · ${title}`,
+  nextShort: (n: number) => `Следующее → № ${n}`,
+  nextNow: 'Решение уйдёт сразу',
+  queueEmpty: 'Очередь пуста',
+  toJournal: 'Вернуться в журнал',
+  /** Подсказка клавиш под панелью — по режиму панели (DecisionMode в ui/decision-panel.ts). */
+  keysHint: {
+    'pm-full': '1–5 — решение · → следующее · Esc — отменить',
+    'pm-two': '1–2 — решение · → следующее · Esc — отменить',
+    'dev-advice': '1–5 — совет · C — комментарий · → следующее',
+    attach: 'U — прикрепить скрин · → следующее',
+    retest: '1 — закрыть · 2 — не исправлено · → следующее · Esc — отменить',
+    'retest-wait': 'U — прикрепить новый кадр · → следующее',
+    disabled: 'Кнопки станут доступны, когда черновик будет готов.',
+    record: '→ следующее',
+  } satisfies Record<'disabled' | 'pm-full' | 'pm-two' | 'dev-advice' | 'attach' | 'retest' | 'retest-wait' | 'record', string>,
+  keysHintDev: '1 — готово · → следующее',
+  /** Совет разработчика (режим dev-advice) и бейдж у варианта PM. Совет — не решение. */
+  adviseTitle: 'Ваш совет',
+  adviseEyebrow: 'Посоветуйте руководителю приёмки',
+  adviseHint: 'Совет — не решение: руководитель приёмки увидит его рядом с вариантом, решает он.',
+  yourAdvice: (label: string) => `Ваш совет: ${label}`,
+  changeAdvice: 'Изменить',
+  retractAdvice: 'Убрать',
+  advises: (n: number, name: string) => (n === 1 ? `${name} советует` : `${n} ${plural(n, 'разработчик', 'разработчика', 'разработчиков')} советуют`),
+  adviceMatched: 'Совет совпал ✓',
+  adviceDiffered: (label: string) => `Ваш совет был: ${label}`,
+  /** Цифра чернильного отсчёта перед отправкой решения. */
+  seconds: (n: number) => String(n),
+};
+
+/** Очередь разбора: рельс слева от карточки и шаг «Начать разбор» в журнале. */
+export const QUEUE = {
+  title: 'Ждут вас',
+  dev: 'В работе',
+  of: (i: number, n: number) => `${i} из ${n}`,
+  start: 'Начать разбор',
+  prev: 'Предыдущее',
+  next: 'Следующее',
+  empty: 'Очередь пуста',
 };
 
 export const CARD = {
@@ -134,8 +177,10 @@ export const CARD = {
   diffReady: 'Кадры сравнили, разница на диффе.',
   linkDuplicate: (n: number) => `Связать с №${n}`,
   where: 'Где:',
-  addedBy: (name: string) => `Добавила ${name}`,
-  fixedBy: (name: string) => `Исправил ${name}`,
+  addedBy: (name: string) => `Автор: ${name}`,
+  fixedBy: (name: string) => `Исправлено: ${name}`,
+  /** «Business (заказчик)» — роль в скобках рядом с именем, когда она известна. */
+  withRole: (name: string, role: string) => `${name} (${role})`,
   back: '← Журнал раунда',
   backDev: '← В работу',
   frame: 'Кадр',
@@ -146,13 +191,64 @@ export const CARD = {
   severity: 'Важность:',
   /** Карточка строки без описания: ячейки из файла как есть, человек дописывает. */
   fixRowHint: 'Ячейки из файла оставили как есть. Опишите, что не так и где — и запустим разбор.',
+  /** Блок улик и сцена сравнения (редизайн). */
+  saidBy: 'Со слов заказчика',
+  whatWrong: 'Что не так',
+  noShotShort: 'Скрина нет',
+  diffHint: 'Разница подсвечена',
+  compare: 'Сравнить Было/Стало',
+  measuring: 'Измеряем кадры…',
+  /** Вид разработчика: цитата и действие вместо черновика. */
+  specRequires: 'Что требует ТЗ',
+  whatToDo: 'Что сделать',
+  showFullDraft: 'Показать разбор целиком',
+  hideFullDraft: 'Свернуть',
+  pasteHint: 'перетащите, нажмите или Ctrl+V',
+  toJournal: 'К журналу',
+  attachNewFrameLong: 'Прикрепите новый кадр этого экрана',
+  attachShotLong: 'Прикрепите скрин этого экрана',
 };
 
+/** Подпись штампа на закрытой карточке — короче STATUS_LABEL, в один удар. */
+export const STAMP_LABEL = {
+  defect: 'В работу',
+  change_request: 'Новое желание',
+  unspecified: 'Нет ответа в ТЗ',
+  cannot_tell: 'Нужен скрин',
+  rejected_binding: 'Не та цитата',
+  duplicate: 'Повтор',
+  closed: 'Закрыто',
+  ready: 'Готово',
+} as const;
+
 export const JOURNAL = {
-  columns: ['№', 'Суть', 'Скрин', 'Черновик', 'Статус'] as const,
-  chips: ['Ждут меня', 'Все', 'В работе', 'Новые желания', 'На ретесте', 'Дописать из журнала'] as const,
+  columns: ['№', 'Суть', 'Итог', 'Статус'] as const,
+  chips: ['Ждут меня', 'Все', 'В работе', 'Новые желания', 'На ретесте', 'Закрыто', 'Дописать из журнала'] as const,
   summary: (total: number, waiting: number) => `${total} ${plural(total, 'замечание', 'замечания', 'замечаний')}, ${waiting} ${waiting === 1 ? 'ждёт' : 'ждут'} вас`,
   emptyFilter: 'Нет строк, которые нужно дописать.',
+  /** Тайлы раунда над таблицей и их подписи. */
+  tiles: { mine: 'Ждут вас', work: 'В работе', retest: 'На ретесте', closed: 'Закрыто', all: 'Все' },
+  tileSub: {
+    work: 'у разработчика',
+    retest: 'ждут кадр',
+    closed: (n: number, total: number) => `из ${total}`,
+    all: (round: number) => `Раунд ${round}`,
+  },
+  groups: { mine: 'Ждут вас', rest: 'Остальные' },
+  fixBanner: (n: number) => `${n} ${plural(n, 'строку', 'строки', 'строк')} из журнала нужно дописать`,
+  fixBannerCta: 'Дописать',
+  showAll: 'Показать все',
+  restCount: (n: number) => `Остальные ${n} ${plural(n, 'замечание', 'замечания', 'замечаний')}`,
+  allDone: 'Здесь пусто — всё разобрано',
+  /** «Итог» для заказчика: только ненулевые части через « · ». */
+  businessBreakdown: (close: number, frame: number, shot: number) =>
+    [close > 0 ? `${close} закрыть` : '', frame > 0 ? `${frame} новый кадр` : '', shot > 0 ? `${shot} скрин` : ''].filter(Boolean).join(' · '),
+  waitingPm: 'Ждём первое замечание заказчика',
+  startFrom: 'Начните с «Ждут вас»: слева — что заметил заказчик, справа — ваше решение.',
+  explain: {
+    pm: 'Слева — что заметил заказчик, справа — ваше решение.',
+    business: 'Ваши замечания и то, что нужно закрыть после исправления.',
+  },
 };
 
 export type JournalChip = (typeof JOURNAL.chips)[number];
@@ -170,10 +266,10 @@ export const NAV = {
   menu: 'Меню',
   project: 'Проект',
   round: 'Раунд',
-  theme: 'Тема',
-  themeAuto: 'Как в системе',
-  themeLight: 'Светлая',
-  themeDark: 'Тёмная',
+  contextLabel: 'Проект и раунд',
+  howItWorks: 'Как это работает',
+  themeToDark: 'Включить тёмную тему',
+  themeToLight: 'Включить светлую тему',
 };
 
 /** Служебные подписи (добавлены при переработке UI, см. docs/ui/COPY.md). */
@@ -181,6 +277,8 @@ export const COMMON = {
   undo: 'Отменить',
   retry: 'Повторить',
   loading: 'Загружаем…',
+  close: 'Закрыть',
+  next: 'Далее',
 };
 
 export const ERROR = {
@@ -191,6 +289,8 @@ export const ERROR = {
 export const ROUND = {
   label: (n: number) => `Раунд ${n}`,
   closed: 'закрыт',
+  /** Одна пилюля в шапке: «Раунд 1 · закрыт · 6». */
+  item: (n: number, status: 'open' | 'closed', count: number) => `Раунд ${n} · ${status === 'closed' ? 'закрыт' : 'открыт'} · ${count}`,
 };
 
 export const TITLE = {
@@ -214,6 +314,14 @@ export const ROLE_GENITIVE: Record<Role, string> = {
   admin: 'настраивает проект',
 };
 
+/** Короткое имя роли для подписи рядом с человеком: «Business (заказчик)». */
+export const ROLE_SHORT: Record<Role, string> = {
+  business: 'заказчик',
+  pm: 'руководитель приёмки',
+  developer: 'разработчик',
+  admin: 'админ',
+};
+
 export const LOGIN_EXTRA = { demoPassword: 'пароль remarkround' };
 
 export const EMPTY = {
@@ -223,11 +331,162 @@ export const EMPTY = {
   importUnparsed: 'Эти строки не разобрали. Допишите сами — мы ничего не выдумываем.',
   devEmpty: 'Пока ничего не передали в работу.',
   noAccess: 'Нет доступа',
+  noAccessHint: 'Этот проект не ваш. Попросите доступ у руководителя приёмки.',
+  toMyProject: 'К моему проекту',
+  signedAs: (name: string, role: string) => `Вы вошли как ${name} · ${role}`,
 };
 
 export const DEV_QUEUE = {
   subtitle: 'Сюда не попадают желания и дыры в ТЗ, пока руководитель приёмки не решил иначе.',
+  groups: { todo: 'В работе', review: 'Ждут проверки заказчика', advisory: 'Сейчас у руководителя приёмки' },
+  counts: (todo: number, review: number, advisory = 0) =>
+    [`${todo} в работе`, `${review} ${review === 1 ? 'ждёт' : 'ждут'} проверки заказчика`, advisory > 0 ? `${advisory} на приёмке` : ''].filter(Boolean).join(' · '),
+  allDone: 'Всё передано на проверку',
+  /** Подпись «Как должно быть:» в meta карточки очереди. */
+  expected: 'Как должно быть:',
+  /** Группа «на приёмке»: это ещё не работа, но можно посоветовать PM, что выбрать. */
+  advisoryQueue: 'На приёмке',
+  advisoryHint: 'Это ещё не работа: решает руководитель приёмки. Откройте карточку и посоветуйте, что выбрали бы вы.',
+  advise: 'Посоветовать',
+  yourAdvice: 'Ваш совет:',
 };
+
+/** Подсказка-строка под заголовком страницы; закрывается и запоминается в ui-state. */
+export const HINT = {
+  journal: {
+    pm: 'Начните с «Ждут вас»: слева — что заметил заказчик, справа — ваше решение.',
+    business: 'В «Ждут вас» — то, что нужно закрыть или дополнить. Остальное разбирает руководитель приёмки.',
+  },
+  card: {
+    pm: 'Слева улики, в центре черновик с цитатой из ТЗ, справа — одна кнопка вашего решения. Клавиши 1–5.',
+    business: 'Здесь видно, что нашлось в ТЗ и что решил руководитель приёмки.',
+    developer: 'Что требует ТЗ и что сделать. Когда готово — одна кнопка.',
+  },
+  close: 'Понятно',
+};
+
+/** Лента шагов прогона на карточке (короткие имена фаз). */
+/** Схема «Как идёт замечание» (ui/process-strip.ts): шесть узлов и подписи под токеном в loop-режиме. */
+export const PROCESS = {
+  title: 'Как идёт замечание',
+  nodes: ['Замечание', 'Разбор', 'Решение', 'В работе', 'Проверка', 'Закрыто'] as const,
+  captions: [
+    'Заказчик замечает и добавляет — с экрана или из журнала',
+    'Ищем место в ТЗ, смотрим скрин, готовим черновик',
+    'Руководитель приёмки решает: работа или новое желание',
+    'Разработчик исправляет и нажимает «Готово»',
+    'Заказчик прикладывает новый кадр — сравниваем «Было» и «Стало»',
+    'Заказчик закрывает замечание',
+  ] as const,
+  stepByStep: 'По шагам',
+  collapse: 'Свернуть',
+  expand: 'Развернуть',
+  you: 'Здесь действуете вы',
+  now: 'Сейчас здесь',
+};
+
+export type TourIllustration = 'add' | 'steps' | 'keys' | 'queue' | 'dropzone' | 'stamp' | 'tile';
+
+export interface TourStep {
+  /** Узел схемы подсвечивается по этому статусу. */
+  status: RemarkStatus;
+  title: string;
+  text: string;
+  illustration: TourIllustration;
+}
+
+/** Тур «Как это работает» для бизнеса и PM (ui/onboarding-tour.ts). Без жаргона: ни «триаж», ни «RAG», ни «LLM». */
+export const TOUR = {
+  title: 'Как это работает',
+  skip: 'Пропустить',
+  next: 'Дальше',
+  back: 'Назад',
+  start: 'Начать работу',
+  of: (i: number, n: number) => `${i} из ${n}`,
+  or: 'или',
+  illo: {
+    journal: 'Журнал по шаблону — каждая строка станет замечанием',
+    queueTitle: 'Фильтр клиентов сбрасывается при обновлении',
+    queueMeta: 'Где: Список клиентов · Как должно быть: фильтр переживает обновление страницы',
+    dropzone: 'Прикрепите новый кадр этого экрана',
+    dropzoneHint: 'перетащите, нажмите или Ctrl+V',
+  },
+  business: {
+    steps: [
+      {
+        status: 'imported',
+        title: 'Вы замечаете — мы записываем',
+        text: 'Опишите, что не так, где и как должно быть, приложите скрин. Или загрузите журнал по шаблону — каждая строка станет замечанием.',
+        illustration: 'add',
+      },
+      {
+        status: 'triaging',
+        title: 'Мы ищем место в ТЗ',
+        text: 'Разбор идёт сам: найдём пункт ТЗ, посмотрим скрин, подготовим черновик. Если скрина не хватает — попросим прикрепить.',
+        illustration: 'steps',
+      },
+      {
+        status: 'awaiting_pm',
+        title: 'Решает руководитель приёмки',
+        text: 'Он видит вашу претензию, цитату из ТЗ и черновик — и решает, работа это или новое желание. Иногда спросит вас: «В документах нет ответа — решите вы».',
+        illustration: 'keys',
+      },
+      {
+        status: 'ready_for_retest',
+        title: 'Разработчик исправил — вы проверяете',
+        text: 'Когда появится «Можно смотреть снова», прикрепите новый кадр того же экрана. Мы сравним «Было» и «Стало» и подсветим разницу.',
+        illustration: 'dropzone',
+      },
+      {
+        status: 'awaiting_business_close',
+        title: 'Закрываете только вы',
+        text: 'Если исправлено — «Закрыть: исправлено». Если нет — «Не исправлено», и замечание вернётся разработчику. Всё, что ждёт вас, собрано в тайле «Ждут вас».',
+        illustration: 'stamp',
+      },
+    ] satisfies TourStep[],
+  },
+  pm: {
+    steps: [
+      {
+        status: 'imported',
+        title: 'Заказчик замечает',
+        text: 'Замечания приходят с экрана или из журнала. Вам ничего не нужно делать, пока не готов черновик.',
+        illustration: 'add',
+      },
+      {
+        status: 'triaging',
+        title: 'Мы готовим дело',
+        text: 'Цитата из ТЗ, факты со скрина, черновик разбора и похожие замечания раунда. Модель ничего не решает — только собирает улики.',
+        illustration: 'steps',
+      },
+      {
+        status: 'awaiting_pm',
+        title: 'Ваше решение — одна кнопка',
+        text: 'Слева улики, в центре черновик, справа пять кнопок тремя группами: это работа · это не работа · нужны данные. Клавиши 1–5, пять секунд на «Отменить».',
+        illustration: 'keys',
+      },
+      {
+        status: 'defect',
+        title: 'Разработчик видит только принятое',
+        text: 'В его очередь попадает лишь то, что вы назвали работой. Желания и дыры в ТЗ остаются в журнале.',
+        illustration: 'queue',
+      },
+      {
+        status: 'awaiting_business_close',
+        title: 'Закрывает заказчик',
+        text: 'После исправления заказчик сверяет кадры и закрывает замечание. Журнал показывает, где сейчас каждая строка; начинайте с «Ждут вас».',
+        illustration: 'tile',
+      },
+    ] satisfies TourStep[],
+  },
+};
+
+export const PHASE_STEPS = {
+  retrieving: 'Документы',
+  vision: 'Скрин',
+  binding: 'Место в ТЗ',
+  drafting: 'Черновик',
+} as const;
 
 export const IMPORT = {
   title: 'Журнал замечаний из файла',
@@ -247,6 +506,26 @@ export const IMPORT = {
   uploading: 'Загружаем журнал…',
   save: 'Сохранить строки',
   received: 'Получено',
+  /** Редизайн: колонки 5/7 до загрузки — шаблон слева, как работает справа. */
+  subtitle: (round: number) => `Строки станут замечаниями раунда ${round}. Строки без описания попросим дописать.`,
+  templateTitle: 'Что в шаблоне',
+  templateColumns: ['№', 'Где', 'Что не так', 'Как должно быть', 'Важность', 'Скрин'] as const,
+  templateExample: [
+    ['J-01', 'Профиль', 'Кнопка «Сохранить» серая', 'синяя по ТЗ', 'высокая', 'ссылка'],
+    ['J-02', 'Оплата', '', '', '', ''],
+  ] as const,
+  templateEmptyNote: '(пусто) → «Допишите строку журнала»',
+  howTitle: 'Как это работает',
+  steps: (round: number) => [
+    `Каждая строка станет замечанием раунда ${round}`,
+    'Разбор запустится сам: цитата из ТЗ, черновик, решение',
+    'Пустые строки допишете здесь',
+  ],
+  uploadOther: 'Загрузить другой',
+  groups: { fix: 'Допишите', parsed: 'Разобраны' },
+  toJournal: 'К журналу раунда',
+  allParsed: (n: number) => `Разобрали ${n} из ${n}`,
+  formats: 'xlsx · csv',
 };
 
 export const DOCUMENTS = {
@@ -254,6 +533,26 @@ export const DOCUMENTS = {
   upload: 'Загрузить документ',
   columns: ['Тип', 'Дата', 'Страниц', 'Статус'] as const,
   pages: (n: number) => `${n} стр`,
+  subtitle: 'Без ТЗ замечания не разбираем: цитаты для черновиков берём отсюда.',
+  whyTitle: 'Зачем документы',
+  why: ['Без ТЗ замечания не разбираем', 'Цитата на карточке — из этих файлов', 'Протокол уточняет ТЗ и снимает споры'],
+  chunks: (n: number) => `${n} ${plural(n, 'фрагмент', 'фрагмента', 'фрагментов')}`,
+  /** Русские имена типов документа; раньше жили в remarks.store.ts как DOC_LABEL. */
+  kinds: {
+    spec: 'ТЗ',
+    protocol: 'Протокол',
+    addendum: 'Доп. соглашение',
+    journal_source: 'Журнал',
+  } satisfies Record<DocumentKind, string>,
+  uploadTitle: 'Загрузить',
+  dropHint: 'Перетащите PDF, DOCX или MD — или нажмите',
+  kindLabel: 'Тип',
+  searchTitle: 'Проверить, что найдётся',
+  searchPlaceholder: 'Например: цвет кнопки «Сохранить»',
+  searchEmpty: 'Ничего похожего в документах нет',
+  searchDisabled: 'Поиск заработает, когда появится ТЗ',
+  emptySlot: 'Доп. соглашение — если было',
+  retryUpload: 'Загрузите файл ещё раз',
 };
 
 export const DOC_STATUS_LABEL: Record<DocumentStatus, string> = {
@@ -283,6 +582,15 @@ export const NEW_REMARK = {
   cancel: 'Отмена',
   save: 'Сохранить',
   shotMeta: 'profil-kompanii.png · 1440×900',
+  subtitle: 'Опишите, что не так, и приложите скрин — мы найдём место в ТЗ.',
+  nextTitle: 'Что будет дальше',
+  nextText: 'Найдём место в ТЗ → посмотрим скрин → подготовим черновик → решение примет руководитель приёмки',
+  remove: 'Убрать',
+  dropTitle: 'Перетащите скрин, нажмите или Ctrl+V',
+  roundClosed: (n: number) => `Раунд ${n} закрыт — добавляйте в открытый раунд`,
+  /** Строка «назад» над заголовком; стрелка — иконкой, не символом. */
+  back: 'Журнал',
+  required: 'обязательно',
 };
 
 export const LOGIN = {
@@ -294,6 +602,15 @@ export const LOGIN = {
   submit: 'Войти',
   unknown: 'Такого пользователя нет',
   demoHint: 'Демо-входы:',
+  /** Левая колонка входа: три строки лида и три шага; карточки ролей заполняют форму. */
+  lead: ['Заказчик замечает.', 'Мы находим место в ТЗ.', 'Вы решаете, работа ли это.'],
+  tryAs: 'Кто вы в демо',
+  roles: [
+    { email: 'business@remarkround.dev', name: 'Business', role: 'business', does: 'добавляет замечания, закрывает ретест' },
+    { email: 'pm@remarkround.dev', name: 'PM', role: 'pm', does: 'выносит вердикт по черновику с цитатой ТЗ' },
+    { email: 'developer@remarkround.dev', name: 'Developer', role: 'developer', does: 'видит только принятые поломки' },
+  ] satisfies ReadonlyArray<{ email: string; name: string; role: Role; does: string }>,
+  steps: ['Замечание', 'Цитата из ТЗ', 'Решение человека'],
 };
 
 export function plural(n: number, one: string, few: string, many: string): string {

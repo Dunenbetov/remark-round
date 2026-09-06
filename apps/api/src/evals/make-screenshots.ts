@@ -17,16 +17,27 @@ const PORT = 9333;
 interface Shot {
   file: string;
   path: (ctx: { projectId: string; remarks: Array<{ id: string; number: number; status: string }> }) => string;
-  as: 'dana' | 'aigerim' | 'timur';
+  as: 'pm' | 'business' | 'developer' | null;
   width?: number;
   height?: number;
+  /** Тёмная тема (localStorage rr.theme = dark). */
+  dark?: boolean;
 }
 
+const byNumber = (remarks: Array<{ id: string; number: number }>, n: number) => remarks.find((r) => r.number === n)!.id;
+
 const SHOTS: Shot[] = [
-  { file: 'journal.png', path: ({ projectId }) => `/p/${projectId}/r/2`, as: 'dana' },
-  { file: 'remark-card.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${remarks.find((r) => r.number === 12)!.id}`, as: 'dana', height: 1100 },
-  { file: 'retest.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${remarks.find((r) => r.number === 2)!.id}`, as: 'aigerim', height: 800 },
-  { file: 'dev-queue.png', path: ({ projectId }) => `/p/${projectId}/dev`, as: 'timur' },
+  { file: 'login.png', path: () => `/login`, as: null },
+  { file: 'journal.png', path: ({ projectId }) => `/p/${projectId}/r/2`, as: 'pm' },
+  { file: 'remark-card.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 12)}`, as: 'pm', height: 1000 },
+  { file: 'remark-card-dark.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 12)}`, as: 'pm', height: 1000, dark: true },
+  { file: 'retest.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 2)}`, as: 'business', height: 900 },
+  { file: 'documents.png', path: ({ projectId }) => `/p/${projectId}/documents`, as: 'pm' },
+  { file: 'import.png', path: ({ projectId }) => `/p/${projectId}/r/2/import`, as: 'business' },
+  { file: 'new-remark.png', path: ({ projectId }) => `/p/${projectId}/r/2/remarks/new`, as: 'business' },
+  { file: 'dev-queue.png', path: ({ projectId }) => `/p/${projectId}/dev`, as: 'developer' },
+  { file: 'dev-card.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 5)}`, as: 'developer', height: 900 },
+  { file: 'dev-advice.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 14)}`, as: 'developer', height: 900 },
 ];
 
 async function login(email: string): Promise<{ session: unknown; projectId: string; token: string }> {
@@ -74,11 +85,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
-  const dana = await login('dana@remarkround.dev');
-  const rounds = (await (await fetch(`${API}/projects/${dana.projectId}/rounds`, { headers: { Authorization: `Bearer ${dana.token}` } })).json()) as Array<{ id: string; number: number }>;
+  const pm = await login('pm@remarkround.dev');
+  const rounds = (await (await fetch(`${API}/projects/${pm.projectId}/rounds`, { headers: { Authorization: `Bearer ${pm.token}` } })).json()) as Array<{ id: string; number: number }>;
   const round2 = rounds.find((r) => r.number === 2)!;
-  const remarks = (await (await fetch(`${API}/projects/${dana.projectId}/rounds/${round2.id}/remarks`, { headers: { Authorization: `Bearer ${dana.token}` } })).json()) as Array<{ id: string; number: number; status: string }>;
-  const sessions = { dana: dana.session, aigerim: (await login('aigerim@remarkround.dev')).session, timur: (await login('timur@remarkround.dev')).session };
+  const remarks = (await (await fetch(`${API}/projects/${pm.projectId}/rounds/${round2.id}/remarks`, { headers: { Authorization: `Bearer ${pm.token}` } })).json()) as Array<{ id: string; number: number; status: string }>;
+  const sessions = { pm: pm.session, business: (await login('business@remarkround.dev')).session, developer: (await login('developer@remarkround.dev')).session };
 
   const profile = mkdtempSync(resolve(tmpdir(), 'rr-shots-'));
   const chrome = spawn(CHROME, [`--headless=new`, `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, '--no-first-run', '--hide-scrollbars', '--window-size=1440,900', 'about:blank'], { stdio: 'ignore' });
@@ -103,16 +114,18 @@ async function main(): Promise<void> {
       const loaded = cdp.once('Page.loadEventFired');
       await cdp.send('Page.navigate', { url: `${WEB}/login` });
       await loaded;
-      await cdp.send('Runtime.evaluate', {
-        expression: `localStorage.setItem('rr.session', ${JSON.stringify(JSON.stringify(sessions[shot.as]))}); localStorage.setItem('rr.project', ${JSON.stringify(dana.projectId)});`,
-      });
+      const session = shot.as ? `localStorage.setItem('rr.session', ${JSON.stringify(JSON.stringify(sessions[shot.as]))}); localStorage.setItem('rr.project', ${JSON.stringify(pm.projectId)});` : `localStorage.removeItem('rr.session');`;
+      const theme = shot.dark ? `localStorage.setItem('rr.theme', 'dark');` : `localStorage.removeItem('rr.theme');`;
+      // подсказки первого захода закрываем, чтобы скрины были «рабочими»
+      const hints = ['journal.pm', 'journal.business', 'card.pm', 'card.business', 'card.developer', 'tour.pm', 'tour.business'].map((k) => `localStorage.setItem('rr.hint.${k}', '1');`).join('');
+      await cdp.send('Runtime.evaluate', { expression: session + theme + hints + `sessionStorage.removeItem('rr.queue');` });
       const loaded2 = cdp.once('Page.loadEventFired');
-      await cdp.send('Page.navigate', { url: `${WEB}${shot.path({ projectId: dana.projectId, remarks })}` });
+      await cdp.send('Page.navigate', { url: `${WEB}${shot.path({ projectId: pm.projectId, remarks })}` });
       await loaded2;
       await sleep(2500);
       const { data } = await cdp.send<{ data: string }>('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
       writeFileSync(resolve(OUT, shot.file), Buffer.from(data, 'base64'));
-      console.log(`${shot.file} ${width}×${height}@2x как ${shot.as}`);
+      console.log(`${shot.file} ${width}×${height}@2x как ${shot.as ?? 'гость'}${shot.dark ? ' · тёмная' : ''}`);
     }
     cdp.close();
   } finally {

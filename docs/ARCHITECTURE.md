@@ -35,11 +35,11 @@ flowchart LR
 | Auth · Tenancy | JWT, membership → `ProjectContext`; чужой проект — 404, роль — 403 | `apps/api/src/{auth,tenancy}` |
 | Documents · Rag | PDF / DOCX / MD → чанки по разделам → `text-embedding-3-small` → pgvector; retrieve только `WHERE projectId` | `apps/api/src/{documents,rag}` |
 | Imports | Только официальный шаблон журнала (CSV/XLSX, картинки из ячеек); пустое описание → `needs_human_parse` | `apps/api/src/imports` |
-| Remarks | Единственный путь записи: статусы по `STATUS.md`, вердикт человека, идемпотентность `(runId, idempotencyKey)` | `apps/api/src/remarks` |
+| Remarks | Единственный путь записи: статусы по `STATUS.md`, вердикт человека, идемпотентность `(runId, idempotencyKey)`; совет разработчика `DeveloperAdvice` (не вердикт, событие `remark.advice`) | `apps/api/src/remarks` |
 | Agent | Граф триажа (retrieve → vision → bind ↔ rewrite ≤ 2 → classify → draft → faithfulness ↔ bind ≤ 2 → interrupt PM) и граф ретеста (pixel-diff → explain → interrupt бизнеса); guardrail входа; чекпоинты `GraphCheckpoint` | `apps/api/src/agent` |
 | Llm | Контракт `TriageLlm`: OpenAI (`gpt-4.1-mini` / `gpt-4.1`) или `RulesTriageLlm` без ключа; Skill `uat-triage` в промпте; стоимость по прайсу | `apps/api/src/llm` |
 | Diff | pixelmatch, `cannot_compare` на разных размерах / другом экране | `apps/api/src/diff` |
-| Gateway | socket.io комната `remark:{id}`: фазы, токены черновика, presence, вердикт | `apps/api/src/gateway` |
+| Gateway | socket.io комната `remark:{id}`: фазы, токены черновика, presence, вердикт, совет разработчика (`remark.advice`) | `apps/api/src/gateway` |
 | Observability | Langfuse SDK v5 поверх OpenTelemetry: один `AgentRun` = один trace, generation на каждый вызов | `apps/api/src/observability` |
 | Evals | Golden через те же сервисы; binding quality + faithfulness; A/B ретеста на одном коде | `apps/api/src/evals`, `evals/` |
 | MCP | Фасад тех же REST-маршрутов на официальном TypeScript SDK; `projectId` только из токена | `apps/mcp` |

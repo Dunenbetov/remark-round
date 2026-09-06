@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { ProposedClass, RemarkStatus } from '@remarkround/db';
-import type { CitationView } from '../remarks/remark.dto';
+import type { AdviceView, CitationView } from '../remarks/remark.dto';
 
 /** docs/WS.md — фазы одной строкой внизу карточки. */
 export type Phase = 'retrieving' | 'vision' | 'binding' | 'drafting' | 'awaiting_pm' | 'diffing' | 'awaiting_business_close' | 'persisted' | 'failed';
@@ -14,7 +14,9 @@ export type ServerEvent =
   | { type: 'run.persisted'; runId: string; remarkStatus: RemarkStatus }
   | { type: 'run.cancelled'; runId: string; remarkStatus: RemarkStatus }
   | { type: 'run.failed'; runId: string; message: string }
-  | { type: 'presence'; userId: string; role: string; name: string; action: 'join' | 'leave' };
+  | { type: 'presence'; userId: string; role: string; name: string; action: 'join' | 'leave' }
+  /** Совет разработчика записан или снят: полный список советов по замечанию (не прогон). */
+  | { type: 'remark.advice'; remarkId: string; advice: AdviceView[] };
 
 export type RunListener = (remarkId: string, event: ServerEvent) => void;
 

@@ -8,7 +8,7 @@ export const WS_PATH = '/api/v1/ws';
 
 export type CommandAck = { ok: true; remark: Remark } | { ok: false; status: number; message: string };
 
-const SERVER_EVENTS = new Set(['run.phase', 'run.token', 'run.citations', 'run.proposal', 'run.persisted', 'run.cancelled', 'run.failed', 'presence']);
+const SERVER_EVENTS = new Set(['run.phase', 'run.token', 'run.citations', 'run.proposal', 'run.persisted', 'run.cancelled', 'run.failed', 'presence', 'remark.advice']);
 
 /**
  * Комната замечания (docs/WS.md): один сокет на вкладку, тот же JWT, join по remarkId.

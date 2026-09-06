@@ -1,41 +1,57 @@
 /* RemarkRound — токены. Единственный источник (docs/ui/tokens.css — указатель сюда).
-   Роли: bg → surface → surface-raised; ink / ink-2 / ink-3; accent = заливка, accent-text = текст и ссылки.
-   Все текстовые пары ≥ 4.5:1 (см. docs/ui/VISUAL.md). */
+   Роли: bg (стол) → surface-2 (утопленное) → surface (бумага) → surface-raised (поднятое) → glass (стекло).
+   ink / ink-2 / ink-3: текст / вторичный смысл / плейсхолдеры и подсказки ≤13px (ink-3 — только на surface и surface-2).
+   accent = сосновый, цвет решения (заливка primary, ссылки, активный чип, полоса цитаты).
+   accent-2 = медь, «ждёт человека». ЗАКОН МЕДИ — полный список применений, других нет:
+     (а) маркеры: 3px полоса слева у строк группы «Ждут вас» и у активного элемента рельса, полоса заголовка группы «Ждут вас»,
+         нижний маркер активного тайла «Ждут вас», точка рельса «ждёт», точка бренд-знака, кольцо карточки роли business на входе;
+     (б) рамка 2px кадра «Дифф»; (в) крупное число тайла «Ждут вас» и текст accent-2-text ≥13px/600;
+     (г) полоска отсчёта 5 с (панель решения и undo-бар); (д) снято — тумблер темы рисует небо/солнце/луну своей палитрой --rr-tt-* (см. ниже);
+     (е) единственная заливка с текстом — аватар роли business.
+     Запрещено: медь как фон кнопки, пилюли, чипа; медь как цвет абзацного текста. danger — только «Допишите строку», ошибки, маска диффа.
+   Все текстовые пары ≥ 5.2:1 в обеих темах (см. план редизайна).
+   Брейкпоинты (единые на весь фронт): bp-rail 1280 — рельс очереди виден; bp-mobile 900 — нижний таб-бар, колонки в столбик. */
 
 :root {
   /* ---------- цвет: роли ---------- */
-  --rr-bg: #f3eee6;
-  --rr-bg-accent: #efe6d6;          /* угол радиального градиента фона */
+  --rr-bg: #f2ece2;
+  --rr-bg-accent: #ebe1cf;          /* угол радиального градиента стола */
   --rr-surface: #fffdf8;            /* бумага: карточки, таблицы, поля */
-  --rr-surface-2: #f8f3ea;          /* hover строк, утопленные зоны, dropzone */
-  --rr-surface-raised: #ffffff;     /* меню, undo-бар, тулбар */
-  --rr-ink: #1f1b16;
-  --rr-ink-2: #5c564e;              /* метаданные, подписи колонок */
-  --rr-ink-3: #6b655c;              /* плейсхолдеры, подсказки, «—» */
-  --rr-ink-inverse: #ffffff;
-  --rr-line: #e4d9c8;
-  --rr-line-strong: #cfc3af;        /* границы полей ввода */
-  --rr-accent: #1f4a3c;             /* заливка primary */
-  --rr-accent-hover: #16382d;
-  --rr-accent-text: #1f4a3c;        /* ссылки, текстовые кнопки, активный чип, полоса цитаты */
-  --rr-accent-soft: #e6efeb;        /* фон активного чипа, drop--over, выделение */
-  --rr-accent-ink: #ffffff;         /* текст на accent */
-  --rr-focus: #1f4a3c;
-  --rr-danger: #8f3a30;             /* только «допишите строку», ошибки, маска диффа */
-  --rr-scrim: rgba(31, 27, 22, 0.82);
-  --rr-thumb-bg: #f4f3f1;
+  --rr-surface-2: #f6f0e6;          /* утопленное: рельс, дропзоны, hover строк, запись решения */
+  --rr-surface-raised: #ffffff;     /* поднятое: меню, поповеры, тулбар просмотрщика */
+  --rr-ink: #191612;
+  --rr-ink-2: #5f584e;
+  --rr-ink-3: #675f50;
+  --rr-ink-inverse: #fffdf8;
+  --rr-line: #e6dccb;
+  --rr-line-strong: #cbbfa9;
+  --rr-accent: #1c5c48;
+  --rr-accent-hover: #164b3b;
+  --rr-accent-soft: #e2efe8;
+  --rr-accent-text: #1a5140;
+  --rr-accent-ink: #ffffff;
+  --rr-accent-2: #a84e28;           /* медь: маркеры, рамка диффа, полоска отсчёта */
+  --rr-accent-2-text: #8f3f1e;      /* медь как текст: только ≥13px/600 */
+  --rr-accent-2-soft: #f6e6dc;
+  --rr-ink-surface: #1b1813;        /* чернильная карточка отсчёта — единственный инвертированный элемент потока */
+  --rr-ink-surface-text: #f4efe6;
+  --rr-ink-surface-line: rgba(244, 239, 230, 0.3);
+  --rr-focus: #1c5c48;
+  --rr-danger: #9b3131;
+  --rr-scrim: rgba(25, 22, 18, 0.84);
+  --rr-thumb-bg: #f3f1ec;
 
-  /* статусы: -bg фон пилюли, -ink текст на нём, -dot точка и аватар */
-  --rr-wait-bg: #f8edd6;   --rr-wait-ink: #7a4f0e;   --rr-wait-dot: #b8893a;
-  --rr-work-bg: #e4eef6;   --rr-work-ink: #2b5578;   --rr-work-dot: #2b5578;
-  --rr-muted-bg: #eeeae3;  --rr-muted-ink: #5f5a52;  --rr-muted-dot: #8a847a;
-  --rr-ok-bg: #e3efe8;     --rr-ok-ink: #285e45;     --rr-ok-dot: #2f6b4f;
-  --rr-danger-bg: #f6e3e0; --rr-danger-ink: #8f3a30; --rr-danger-dot: #8f3a30;
+  /* статусы: -bg фон пилюли, -ink текст на нём, -dot точка */
+  --rr-wait-bg: #f8ecd4;   --rr-wait-ink: #7a4f0e;   --rr-wait-dot: #c08a36;
+  --rr-work-bg: #e3edf6;   --rr-work-ink: #2b5578;   --rr-work-dot: #3b6f9a;
+  --rr-muted-bg: #eee9e0;  --rr-muted-ink: #5f584e;  --rr-muted-dot: #8f887c;
+  --rr-ok-bg: #e1efe7;     --rr-ok-ink: #23593f;     --rr-ok-dot: #2f7a55;
+  --rr-danger-bg: #f7e3e1; --rr-danger-ink: #9b3131; --rr-danger-dot: #b44343;
 
-  /* стекло: только шапка, undo-бар, тулбар просмотра, липкая панель решения на мобильном */
-  --rr-glass-bg: rgba(255, 253, 248, 0.82);
-  --rr-glass-line: rgba(31, 27, 22, 0.08);
-  --rr-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 8px 32px rgba(31, 27, 22, 0.1);
+  /* стекло: шапка, панель решения (пока в ней кнопки или идёт отсчёт), undo-бар, тулбар просмотрщика */
+  --rr-glass-bg: rgba(255, 253, 248, 0.78);
+  --rr-glass-line: rgba(25, 22, 18, 0.08);
+  --rr-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 32px rgba(25, 22, 18, 0.1);
 
   /* ---------- отступы (сетка 4px) ---------- */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px; --sp-5: 20px;  --sp-6: 24px;
@@ -43,73 +59,104 @@
 
   /* ---------- шрифт ---------- */
   --rr-font: 'Golos Text', 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --rr-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif; /* только слово RemarkRound */
-  --fs-12: 12px; --lh-12: 16px;   /* подписи колонок (uppercase) */
-  --fs-13: 13px; --lh-13: 18px;   /* meta, пилюли, подсказки */
-  --fs-14: 14px; --lh-14: 20px;   /* кнопки, чипы */
-  --fs-15: 15px; --lh-15: 22px;   /* основной текст */
-  --fs-16: 16px; --lh-16: 24px;   /* цитата ТЗ */
-  --fs-18: 18px; --lh-18: 24px;   /* h1 на мобильном */
-  --fs-22: 22px; --lh-22: 28px;   /* h1 страницы, заголовок карточки */
-  --fs-28: 28px; --lh-28: 34px;   /* wordmark */
-  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600;
+  --rr-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif; /* голос документов: wordmark, «№», номера строк, текст цитаты */
+  --fs-12: 12px; --lh-12: 16px;   /* eyebrow: подписи колонок, группы кнопок, kbd */
+  --fs-13: 13px; --lh-13: 18px;   /* meta, пилюли, подсказки, фазовая строка */
+  --fs-14: 14px; --lh-14: 20px;   /* кнопки, сегменты, меню, элементы рельса */
+  --fs-15: 15px; --lh-15: 22px;   /* основной текст, черновик, «Итог» */
+  --fs-16: 16px; --lh-16: 24px;   /* заголовок строки журнала, карточки очереди, «Решение: …» */
+  --fs-18: 18px; --lh-18: 26px;   /* лид: первая строка черновика, вердикт ретеста, заголовки групп; цитата (сериф) */
+  --fs-22: 22px; --lh-22: 28px;   /* заголовок замечания в шапке карточки; h1 листовых страниц */
+  --fs-28: 28px; --lh-28: 34px;   /* h1 разделов на 1100–1280 */
+  --rr-fs-32: 32px; --rr-lh-32: 38px; /* h1 Журнала, Очереди, Документов, Импорта */
+  --rr-fs-40: 40px; --rr-lh-40: 44px; /* «№ 12» (сериф), wordmark входа, число тайла */
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
 
   /* ---------- форма ---------- */
-  --rr-r-sm: 6px;    /* миниатюры, скелетон */
-  --rr-r-md: 10px;   /* кнопки, поля */
-  --rr-r-lg: 14px;   /* карточки, таблицы */
-  --rr-r-xl: 18px;   /* меню, undo-бар */
+  --rr-r-xs: 6px;    /* kbd, точки шагов */
+  --rr-r-sm: 8px;    /* миниатюры, скелетон, штамп */
+  --rr-r-md: 12px;   /* кнопки, поля, сегменты, элементы рельса, тайлы */
+  --rr-r-lg: 16px;   /* бумага: карточки, таблицы, панели */
+  --rr-r-xl: 20px;   /* чернильная карточка, меню, панель решения */
   --rr-r-pill: 999px;
-  --rr-shadow-1: 0 0 0 1px rgba(31, 27, 22, 0.05), 0 1px 2px rgba(31, 27, 22, 0.06);
-  --rr-shadow-2: 0 1px 2px rgba(31, 27, 22, 0.06), 0 10px 40px rgba(31, 27, 22, 0.08);
+  --rr-shadow-1: 0 1px 2px rgba(25, 22, 18, 0.05), 0 8px 24px -12px rgba(25, 22, 18, 0.14);
+  --rr-shadow-2: 0 2px 6px rgba(25, 22, 18, 0.08), 0 16px 48px -16px rgba(25, 22, 18, 0.22);
+  --rr-shadow-btn: 0 6px 16px -6px rgba(28, 92, 72, 0.45);
+  --rr-primary-ring: none;
+
+  /* ---------- тумблер темы (rr-theme-toggle) ----------
+     Намеренное исключение из закона меди и из палитры стола: референс автора — небо с солнцем и облаками /
+     ночь с луной и звёздами. Только внутри тумблера; в тёмной теме не переопределяется — он сам показывает оба состояния. */
+  --rr-tt-sky-1: #3d8fe6; --rr-tt-sky-2: #8ccaf7;
+  --rr-tt-night-1: #0b0f1a; --rr-tt-night-2: #2a3150;
+  --rr-tt-sun: #f7c948; --rr-tt-sun-hi: #ffe58a; --rr-tt-sun-edge: #e2a52b;
+  --rr-tt-moon: #dcdfe6; --rr-tt-moon-edge: #aeb4c2; --rr-tt-crater: #b9bfcc;
+  --rr-tt-cloud: #ffffff; --rr-tt-star: #ffffff;
+  --rr-tt-ring: rgba(255, 255, 255, 0.18); --rr-tt-ring-night: rgba(255, 255, 255, 0.07);
 
   /* ---------- движение ---------- */
-  --dur-fast: 120ms; --dur: 180ms; --dur-slow: 240ms;
+  --dur-fast: 120ms; --dur: 200ms; --dur-slow: 260ms;
+  --rr-dur-page: 280ms; --rr-dur-theme: 600ms; --rr-dur-stamp: 340ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
+  --rr-ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --rr-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --rr-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --rr-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
   --undo-ms: 5000ms;
+  --rr-strip-cycle: 12s;         /* цикл схемы «Как идёт замечание» */
 
   /* ---------- слои ---------- */
   --z-bar: 10; --z-sheet: 15; --z-menu: 20; --z-undo: 30; --z-modal: 40;
 
   /* ---------- сетка ---------- */
-  --rr-container: 1248px;
-  --rr-bar-h: 56px;
+  --rr-container: 1360px;        /* журнал, документы, импорт, очередь */
+  --rr-container-wide: 1600px;   /* карточка с рельсом очереди */
+  --rr-bar-h: 60px;
   --rr-tabbar-h: 56px;
-
+  --rr-rail-w: 240px;
 }
 
 /* ---------- тёмная тема: ThemeService ставит data-theme (и в режиме «как в системе») ---------- */
 [data-theme='dark'] {
-  --rr-bg: #16140f;
-  --rr-bg-accent: #1b1813;
-  --rr-surface: #1e1b16;
-  --rr-surface-2: #262219;
-  --rr-surface-raised: #2a2620;
-  --rr-ink: #ece7de;
-  --rr-ink-2: #b5ada0;
-  --rr-ink-3: #948c7f;
-  --rr-ink-inverse: #16140f;
-  --rr-line: #33302a;
-  --rr-line-strong: #45413a;
-  --rr-accent: #2a6b54;
-  --rr-accent-hover: #245c48;
-  --rr-accent-text: #7bbf9f;
-  --rr-accent-soft: #1c3328;
+  --rr-bg: #121110;
+  --rr-bg-accent: #1a1712;
+  --rr-surface: #1d1b17;
+  --rr-surface-2: #262319;
+  --rr-surface-raised: #2f2b25;
+  --rr-ink: #efe9df;
+  --rr-ink-2: #b8b0a2;
+  --rr-ink-3: #9c9486;
+  --rr-ink-inverse: #121110;
+  --rr-line: #332f28;
+  --rr-line-strong: #4b463d;
+  --rr-accent: #2b755c;
+  --rr-accent-hover: #256650;
+  --rr-accent-soft: #1d332a;
+  --rr-accent-text: #86cba8;
   --rr-accent-ink: #ffffff;
-  --rr-focus: #9fd6bd;
-  --rr-danger: #e0847a;
-  --rr-scrim: rgba(0, 0, 0, 0.8);
-  --rr-thumb-bg: #2a2620;
-  --rr-wait-bg: #3a2d14;   --rr-wait-ink: #e3b76a;   --rr-wait-dot: #d4a24f;
-  --rr-work-bg: #1c2f40;   --rr-work-ink: #9cc1e3;   --rr-work-dot: #7fb0dc;
-  --rr-muted-bg: #2c2822;  --rr-muted-ink: #b5ada0;  --rr-muted-dot: #8f877a;
-  --rr-ok-bg: #1c3328;     --rr-ok-ink: #8fd1b0;     --rr-ok-dot: #6fb597;
-  --rr-danger-bg: #3e1f1a; --rr-danger-ink: #f0a094; --rr-danger-dot: #e0847a;
-  --rr-glass-bg: rgba(30, 27, 22, 0.82);
+  --rr-accent-2: #e8946c;
+  --rr-accent-2-text: #f0a880;
+  --rr-accent-2-soft: #3a2418;
+  --rr-ink-surface: #efe9df;        /* инверсия: чернильная карточка в тёмной теме светлая */
+  --rr-ink-surface-text: #191612;
+  --rr-ink-surface-line: rgba(25, 22, 18, 0.3);
+  --rr-focus: #a3dcc0;
+  --rr-danger: #ef8a84;
+  --rr-scrim: rgba(0, 0, 0, 0.82);
+  --rr-thumb-bg: #2f2b25;
+  --rr-wait-bg: #3a2d14;   --rr-wait-ink: #e6ba6e;   --rr-wait-dot: #d8a24f;
+  --rr-work-bg: #1c2f42;   --rr-work-ink: #a2c6e6;   --rr-work-dot: #7fb3dd;
+  --rr-muted-bg: #2c2822;  --rr-muted-ink: #b8b0a2;  --rr-muted-dot: #8f887c;
+  --rr-ok-bg: #1c3328;     --rr-ok-ink: #93d3b3;     --rr-ok-dot: #6fb597;
+  --rr-danger-bg: #3f1f1c; --rr-danger-ink: #f2a29a; --rr-danger-dot: #e8857d;
+  --rr-glass-bg: rgba(29, 27, 23, 0.78);
   --rr-glass-line: rgba(255, 253, 248, 0.1);
-  --rr-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 32px rgba(0, 0, 0, 0.5);
-  --rr-shadow-1: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.4);
-  --rr-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 40px rgba(0, 0, 0, 0.5);
+  --rr-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 32px rgba(0, 0, 0, 0.55);
+  /* «кромка листа»: без неё бумага сливается со столом */
+  --rr-shadow-1: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --rr-shadow-2: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 6px rgba(0, 0, 0, 0.5), 0 16px 48px -16px rgba(0, 0, 0, 0.7);
+  --rr-shadow-btn: 0 6px 16px -6px rgba(0, 0, 0, 0.6);
+  --rr-primary-ring: 0 0 0 1px rgba(134, 203, 168, 0.22);
 }
 
 html,

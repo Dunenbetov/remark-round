@@ -4,67 +4,63 @@ import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { APP_NAME, NAV, ROLE_TITLE, ROUND } from '../core/copy';
 import { homeUrlFor } from '../core/guards';
+import { filterRemarks } from '../core/journal-filter';
 import type { Role } from '../core/models';
+import { OnboardingService } from '../core/onboarding.service';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
-import { ThemeMode, ThemeService } from '../core/theme.service';
+import { BrandMark } from './brand-mark';
+import { Icon } from './icons';
 import { Menu, MenuItem } from './menu';
+import { SegmentItem, Segmented } from './segmented';
+import { ThemeToggle } from './theme-toggle';
 
 type Section = 'journal' | 'documents' | 'import' | 'dev';
 
 const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', admin: 'accent', business: 'wait', developer: 'work' };
 
 /**
- * Верхняя панель: RemarkRound · проект · раунд | разделы | «Добавить замечание» · аватар.
- * Роль человека — в заголовке страницы (rr-page-header) и в меню аватара.
+ * Верхняя панель 60px: бренд-знак + RemarkRound + одна контекст-пилюля «Проект · Раунд ▾» | сегменты разделов |
+ * «Добавить замечание» (бизнес) · тумблер темы · аватар. Роль человека — в заголовке страницы и в меню аватара.
  * На узком экране разделы уезжают в нижний таб-бар.
  */
 @Component({
   selector: 'rr-app-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Menu],
+  imports: [RouterLink, Menu, Segmented, ThemeToggle, BrandMark, Icon],
   template: `
     <a class="skip" href="#main" (click)="skipToMain($event)">{{ nav.skip }}</a>
     <header class="bar">
-      <div class="bar__in">
+      <div class="bar__in" [class.bar__in--brand]="brandOnly() || !projectId()">
         <div class="bar__left">
-          <a class="serif bar__brand" routerLink="/">{{ appName }}</a>
+          <a class="bar__brand" routerLink="/">
+            <rr-brand-mark [size]="24" />
+            <span class="serif bar__word">{{ appName }}</span>
+          </a>
           @if (!brandOnly() && projectId()) {
-            @if (projectItems().length > 1) {
-              <rr-menu align="start" [items]="projectItems()" [label]="nav.project" triggerClass="switch" (pick)="switchProject($event)">
-                <span class="switch__text">{{ projectName() }}</span>
-                <svg class="switch__chev" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5l3 3 3-3" /></svg>
+            @if (contextItems().length) {
+              <rr-menu align="start" [items]="contextItems()" [label]="nav.contextLabel" triggerClass="switch" (pick)="onContextPick($event)">
+                <span class="switch__text">{{ contextLabel() }}</span>
+                <rr-icon class="switch__chev" name="chevron-down" [size]="14" />
               </rr-menu>
             } @else {
-              <span class="bar__project">{{ projectName() }}</span>
-            }
-            @if (role() !== 'developer' && roundItems().length) {
-              @if (roundItems().length > 1) {
-                <rr-menu align="start" [items]="roundItems()" [label]="nav.round" triggerClass="switch switch--round" (pick)="switchRound($event)">
-                  <span class="switch__text">{{ roundLabel() }}</span>
-                  <svg class="switch__chev" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5l3 3 3-3" /></svg>
-                </rr-menu>
-              } @else {
-                <span class="bar__project bar__project--round">{{ roundLabel() }}</span>
-              }
+              <span class="bar__context">{{ contextLabel() }}</span>
             }
           }
         </div>
         @if (!brandOnly() && projectId()) {
           <nav class="bar__nav" [attr.aria-label]="nav.sections">
-            @if (role() === 'developer') {
-              <a class="bar__pill bar__pill--on" [routerLink]="link('dev')" aria-current="page">{{ nav.dev }}</a>
-            } @else {
-              <a class="bar__pill" [class.bar__pill--on]="section() === 'documents'" [attr.aria-current]="section() === 'documents' ? 'page' : null" [routerLink]="link('documents')">{{ nav.documents }}</a>
-              <a class="bar__pill" [class.bar__pill--on]="section() === 'journal'" [attr.aria-current]="section() === 'journal' ? 'page' : null" [routerLink]="link('r', roundParam())">{{ nav.journal }}</a>
-              <a class="bar__pill" [class.bar__pill--on]="section() === 'import'" [attr.aria-current]="section() === 'import' ? 'page' : null" [routerLink]="link('r', roundParam(), 'import')">{{ nav.import }}</a>
-            }
+            <rr-segmented [items]="segments()" [selected]="section()" [label]="nav.sections" />
           </nav>
         }
         <div class="bar__right">
           @if (!brandOnly() && role() === 'business' && projectId()) {
-            <a class="btn btn--primary bar__add" [routerLink]="link('r', roundParam(), 'remarks', 'new')">{{ nav.addRemark }}</a>
+            <a class="btn btn--primary btn--sm bar__add" [routerLink]="link('r', roundParam(), 'remarks', 'new')">
+              <rr-icon name="plus" [size]="16" />
+              {{ nav.addRemark }}
+            </a>
           }
+          <rr-theme-toggle />
           @if (user(); as u) {
             <rr-menu [items]="userItems()" [head]="userHead()" [label]="nav.menu" [triggerClass]="'avatar avatar--' + tone()" (pick)="onUserPick($event)">
               {{ initial() }}
@@ -75,8 +71,8 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
     </header>
     @if (tabs() && !brandOnly() && projectId() && role() !== 'developer') {
       <nav class="tabs" [attr.aria-label]="nav.sections">
-        <a class="tabs__link" [class.tabs__link--on]="section() === 'documents'" [attr.aria-current]="section() === 'documents' ? 'page' : null" [routerLink]="link('documents')">{{ nav.documents }}</a>
         <a class="tabs__link" [class.tabs__link--on]="section() === 'journal'" [attr.aria-current]="section() === 'journal' ? 'page' : null" [routerLink]="link('r', roundParam())">{{ nav.journal }}</a>
+        <a class="tabs__link" [class.tabs__link--on]="section() === 'documents'" [attr.aria-current]="section() === 'documents' ? 'page' : null" [routerLink]="link('documents')">{{ nav.documents }}</a>
         <a class="tabs__link" [class.tabs__link--on]="section() === 'import'" [attr.aria-current]="section() === 'import' ? 'page' : null" [routerLink]="link('r', roundParam(), 'import')">{{ nav.import }}</a>
       </nav>
     }
@@ -96,32 +92,40 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
       border-bottom: 1px solid var(--rr-line);
     }
     .bar__in {
-      width: min(var(--rr-container), 100% - 32px);
+      width: min(var(--rr-container-wide), 100% - 48px);
       margin-inline: auto;
       height: 100%;
-      display: flex;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
       align-items: center;
       gap: var(--sp-4);
+    }
+    .bar__in--brand {
+      grid-template-columns: 1fr auto;
     }
     .bar__left {
       display: flex;
       align-items: center;
-      gap: var(--sp-2);
+      gap: var(--sp-3);
       min-width: 0;
-      flex: 1 1 auto;
     }
     .bar__brand {
-      font-size: var(--fs-18);
-      line-height: var(--lh-18);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
       color: var(--rr-ink);
       text-decoration: none;
       white-space: nowrap;
-      margin-right: var(--sp-1);
     }
     .bar__brand:hover {
       color: var(--rr-ink);
     }
-    .bar__project {
+    .bar__word {
+      font-size: 20px;
+      line-height: 24px;
+      letter-spacing: -0.01em;
+    }
+    .bar__context {
       font-size: var(--fs-14);
       color: var(--rr-ink-2);
       white-space: nowrap;
@@ -129,68 +133,44 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
       text-overflow: ellipsis;
       padding: 0 6px;
       min-width: 0;
-      max-width: 260px;
+      max-width: 320px;
     }
-    .bar__project::before,
+    .bar__context::before,
     .bar__left ::ng-deep .switch::before {
       content: '·';
-      margin-right: 10px;
+      margin-right: 8px;
       color: var(--rr-ink-3);
     }
     .bar__nav {
       display: flex;
-      gap: 4px;
-      flex: none;
-      margin-inline: auto;
-    }
-    .bar__pill {
-      display: inline-flex;
-      align-items: center;
-      height: 32px;
-      padding: 0 14px;
-      border-radius: var(--rr-r-pill);
-      font-size: var(--fs-14);
-      color: var(--rr-ink);
-      text-decoration: none;
-      white-space: nowrap;
-      transition: background-color var(--dur-fast) var(--ease);
-    }
-    .bar__pill:hover {
-      background: color-mix(in srgb, var(--rr-ink) 5%, transparent);
-      color: var(--rr-ink);
-    }
-    .bar__pill--on,
-    .bar__pill--on:hover {
-      background: color-mix(in srgb, var(--rr-ink) 8%, transparent);
-      font-weight: var(--fw-semibold);
+      justify-content: center;
     }
     .bar__right {
       display: flex;
       align-items: center;
       justify-content: flex-end;
       gap: var(--sp-3);
-      flex: 0 0 auto;
+      min-width: 0;
     }
     .bar__add {
-      min-height: 36px;
-      padding: 0 14px;
+      padding-left: 12px;
     }
     .tabs {
       display: none;
     }
-    @media (max-width: 720px) {
+    @media (max-width: 900px) {
       .bar__in {
         width: calc(100% - 24px);
+        grid-template-columns: 1fr auto;
         gap: var(--sp-3);
       }
       .bar__nav,
       .bar__add,
-      .bar__project,
-      .bar__left ::ng-deep .switch:not(.switch--round) {
+      .bar__word {
         display: none;
       }
-      .bar__left ::ng-deep .switch--round::before {
-        content: none;
+      .bar__context {
+        max-width: 200px;
       }
       .tabs {
         position: fixed;
@@ -232,7 +212,7 @@ export class AppBar {
   private readonly session = inject(SessionService);
   private readonly store = inject(RemarksStore);
   private readonly router = inject(Router);
-  private readonly theme = inject(ThemeService);
+  private readonly onboarding = inject(OnboardingService);
 
   protected readonly appName = APP_NAME;
   protected readonly nav = NAV;
@@ -246,22 +226,59 @@ export class AppBar {
   protected readonly projectName = computed(() => this.session.membership(this.projectId())?.projectName ?? '');
   protected readonly roundLabel = computed(() => (this.store.roundNumber() ? ROUND.label(this.store.roundNumber()!) : ''));
 
-  protected readonly projectItems = computed<MenuItem[]>(() =>
-    this.session.memberships().map((m) => ({ id: m.projectId, label: m.projectName, hint: ROLE_TITLE[m.role], selected: m.projectId === this.projectId() })),
-  );
-  protected readonly roundItems = computed<MenuItem[]>(() =>
-    this.store.roundNumber()
-      ? this.store.rounds().map((r) => ({ id: String(r.number), label: ROUND.label(r.number), hint: r.status === 'closed' ? ROUND.closed : undefined, selected: r.number === this.store.roundNumber() }))
-      : [],
-  );
-  protected readonly userItems = computed<MenuItem[]>(() => {
-    const mode = this.theme.mode();
+  /** «Клиентский кабинет · Раунд 2»; у разработчика — только проект. */
+  protected readonly contextLabel = computed(() => {
+    const parts = [this.projectName()];
+    if (this.role() !== 'developer' && this.roundLabel()) parts.push(this.roundLabel());
+    return parts.filter(Boolean).join(' · ');
+  });
+
+  /** Одно меню с двумя группами: проекты (если их больше одного) и раунды. Пусто → текст без шеврона. */
+  protected readonly contextItems = computed<MenuItem[]>(() => {
+    const items: MenuItem[] = [];
+    const memberships = this.session.memberships();
+    if (memberships.length > 1) {
+      memberships.forEach((m, i) =>
+        items.push({ id: `project:${m.projectId}`, label: m.projectName, hint: ROLE_TITLE[m.role], selected: m.projectId === this.projectId(), group: i === 0 ? NAV.project : undefined }),
+      );
+    }
+    const rounds = this.store.rounds();
+    if (this.role() !== 'developer' && this.store.roundNumber() && rounds.length > 1) {
+      rounds.forEach((r, i) =>
+        items.push({
+          id: `round:${r.number}`,
+          label: ROUND.item(r.number, r.status, r.remarks),
+          selected: r.number === this.store.roundNumber(),
+          group: i === 0 ? NAV.round : undefined,
+          separatorBefore: i === 0 && items.length > 0,
+        }),
+      );
+    }
+    return items;
+  });
+
+  /** Разделы: у PM и бизнеса — Журнал (со счётчиком «Ждут меня») · Документы · Импорт; у разработчика — «В работу». */
+  protected readonly segments = computed<SegmentItem[]>(() => {
+    const role = this.role();
+    if (role === 'developer') {
+      const count = this.store.devQueue().filter((r) => r.status === 'defect').length;
+      return [{ id: 'dev', label: NAV.dev, count, link: this.link('dev') }];
+    }
+    const count = filterRemarks(this.store.remarks(), 'Ждут меня', role).length;
     return [
-      { id: 'theme:auto', label: NAV.themeAuto, hint: NAV.theme, selected: mode === 'auto', separatorBefore: true },
-      { id: 'theme:light', label: NAV.themeLight, selected: mode === 'light' },
-      { id: 'theme:dark', label: NAV.themeDark, selected: mode === 'dark' },
-      { id: 'logout', label: NAV.logout, separatorBefore: true },
+      { id: 'journal', label: NAV.journal, count, link: this.link('r', this.roundParam()) },
+      { id: 'documents', label: NAV.documents, link: this.link('documents') },
+      { id: 'import', label: NAV.import, link: this.link('r', this.roundParam(), 'import') },
     ];
+  });
+
+  /** Меню аватара: «Как это работает» (бизнес и PM) и «Выйти» — тема живёт тумблером в шапке. */
+  protected readonly userItems = computed<MenuItem[]>(() => {
+    const role = this.role();
+    const items: MenuItem[] = [];
+    if (role === 'business' || role === 'pm') items.push({ id: 'how', label: NAV.howItWorks, separatorBefore: true });
+    items.push({ id: 'logout', label: NAV.logout, separatorBefore: true });
+    return items;
   });
   protected readonly userHead = computed(() => {
     const u = this.user();
@@ -289,20 +306,24 @@ export class AppBar {
     return ['/p', this.projectId() ?? '', ...parts];
   }
 
-  protected switchProject(projectId: string): void {
-    const m = this.session.membership(projectId);
-    if (!m || projectId === this.projectId()) return;
-    this.session.selectProject(projectId);
-    void this.router.navigateByUrl(homeUrlFor(m));
-  }
-
-  protected switchRound(round: string): void {
-    void this.router.navigate(['/p', this.projectId(), 'r', round]);
+  protected onContextPick(id: string): void {
+    if (id.startsWith('project:')) {
+      const projectId = id.slice('project:'.length);
+      const m = this.session.membership(projectId);
+      if (!m || projectId === this.projectId()) return;
+      this.session.selectProject(projectId);
+      void this.router.navigateByUrl(homeUrlFor(m));
+      return;
+    }
+    if (id.startsWith('round:')) {
+      void this.router.navigate(['/p', this.projectId(), 'r', id.slice('round:'.length)]);
+    }
   }
 
   protected onUserPick(id: string): void {
-    if (id.startsWith('theme:')) {
-      this.theme.set(id.slice('theme:'.length) as ThemeMode);
+    if (id === 'how') {
+      const role = this.role();
+      if (role === 'business' || role === 'pm') this.onboarding.open(role);
       return;
     }
     if (id === 'logout') {

@@ -21,7 +21,7 @@ Tool'а «закрыть замечание» **нет** и не будет: `cl
 
 ```bash
 TOKEN=$(curl -s localhost:3001/api/v1/auth/login -H 'content-type: application/json' \
-  -d '{"email":"dana@remarkround.dev","password":"remarkround"}' | jq -r .accessToken)
+  -d '{"email":"pm@remarkround.dev","password":"remarkround"}' | jq -r .accessToken)
 curl -s -X POST localhost:3001/api/v1/projects/11111111-1111-4111-8111-111111111111/mcp-token \
   -H "authorization: Bearer $TOKEN" | jq
 ```

@@ -1,127 +1,209 @@
-import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterNextRender, computed, inject, input, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { EMPTY, NEW_REMARK } from '../core/copy';
+import { EMPTY, NEW_REMARK, ROUND } from '../core/copy';
 import { RemarksStore } from '../core/remarks.store';
 import { AppBar } from '../ui/app-bar';
+import { DropZone } from '../ui/drop-zone';
 import { ErrorBanner } from '../ui/error-banner';
+import { Icon } from '../ui/icons';
+import { PageHeader } from '../ui/page-header';
 
-/** Добавить замечание (бизнес): «Что не так», «Где», «Как должно быть», «Прикрепить скрин», «Сохранить». */
+/**
+ * Новое замечание (бизнес): слева лист-форма «Что не так · Где · Как должно быть», справа дропзона для скрина
+ * (перетащить, нажать, Ctrl+V) и тихая карточка «Что будет дальше». Ctrl/Cmd+Enter в любом поле — сохранить.
+ * Закрытый раунд — поля выключены и подсказка danger-тоном; таб-бар шапки выключен.
+ */
 @Component({
   selector: 'rr-new-remark-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, AppBar, ErrorBanner],
+  imports: [RouterLink, AppBar, PageHeader, DropZone, ErrorBanner, Icon],
   template: `
     <div class="page">
       <rr-app-bar [tabs]="false" />
-      <main id="main" class="page__body page__body--loose">
-        <form class="paper form" (submit)="save($event)" novalidate>
-          <h1 class="form__title">{{ copy.title }}</h1>
-          <label class="field">
-            <span class="field__label">{{ copy.what }}</span>
-            <textarea
-              class="textarea"
-              rows="4"
-              name="what"
-              [placeholder]="copy.whatPlaceholder"
-              [value]="what()"
-              (input)="what.set(value($event))"
-              [attr.aria-invalid]="showError() ? 'true' : null"
-            ></textarea>
-          </label>
-          <label class="field">
-            <span class="field__label">{{ copy.where }}</span>
-            <input class="input" name="where" [placeholder]="copy.wherePlaceholder" [value]="where()" (input)="where.set(value($event))" />
-          </label>
-          <label class="field">
-            <span class="field__label">{{ copy.expected }}</span>
-            <textarea class="textarea" rows="2" name="expected" [placeholder]="copy.expectedPlaceholder" [value]="expected()" (input)="expected.set(value($event))"></textarea>
-          </label>
-          <div class="field">
-            <span class="field__label">{{ copy.attach }}</span>
-            <span class="meta">{{ needShot }}</span>
+      <main id="main" class="page__body page__body--loose nr-body">
+        <a class="link nr-back" [routerLink]="journalLink()">
+          <rr-icon name="arrow-left" [size]="16" />
+          {{ copy.back }}
+        </a>
+        <rr-page-header size="md" [title]="copy.title" [subtitle]="copy.subtitle" [eyebrow]="eyebrow()" />
+
+        <div class="nr-grid">
+          <form class="paper nr-form rise" [style.--i]="0" (submit)="save($event)" (keydown)="onKey($event)" novalidate>
+            <label class="field">
+              <span class="field__label">{{ copy.what }} <span class="nr-req" [attr.aria-label]="copy.required">*</span></span>
+              <textarea
+                class="textarea"
+                rows="4"
+                name="what"
+                [placeholder]="copy.whatPlaceholder"
+                [value]="what()"
+                [disabled]="closed()"
+                (input)="what.set(value($event))"
+                [attr.aria-invalid]="showError() ? 'true' : null"
+              ></textarea>
+            </label>
+            <label class="field">
+              <span class="field__label">{{ copy.where }}</span>
+              <input class="input" name="where" [placeholder]="copy.wherePlaceholder" [value]="where()" [disabled]="closed()" (input)="where.set(value($event))" />
+            </label>
+            <label class="field">
+              <span class="field__label">{{ copy.expected }}</span>
+              <textarea class="textarea" rows="2" name="expected" [placeholder]="copy.expectedPlaceholder" [value]="expected()" [disabled]="closed()" (input)="expected.set(value($event))"></textarea>
+            </label>
+
+            @if (closed()) {
+              <p class="meta nr-closed" role="status">{{ copy.roundClosed(store.roundNumber() ?? 0) }}</p>
+            }
+            @if (store.error(); as err) {
+              <rr-error-banner [message]="err" [retryable]="false" />
+            }
+
+            <div class="nr-actions">
+              <a class="btn btn--secondary" [routerLink]="journalLink()">{{ copy.cancel }}</a>
+              <button type="submit" class="btn btn--primary btn--lg" [class.btn--busy]="store.loading()" [disabled]="store.loading() || closed()">{{ copy.save }}</button>
+            </div>
+          </form>
+
+          <aside class="nr-side">
             <input #file type="file" class="visually-hidden" accept="image/*" (change)="pick($event)" />
             @if (preview(); as url) {
-              <div class="shot-row">
-                <div class="shot-preview"><img class="shot-img" [src]="url" alt="" /></div>
-                <div class="shot-meta">
-                  <span class="meta">{{ fileMeta() }}</span>
-                  <button type="button" class="btn btn--secondary shot-replace" (click)="file.click()">{{ copy.replace }}</button>
+              <div class="paper nr-shot rise" [style.--i]="1">
+                <img class="nr-shot__img" [src]="url" alt="" />
+                <div class="nr-shot__row">
+                  <span class="meta nr-shot__meta">{{ fileMeta() }}</span>
+                  <div class="nr-shot__btns">
+                    <button type="button" class="btn btn--secondary btn--sm" [disabled]="closed()" (click)="file.click()">{{ copy.replace }}</button>
+                    <button type="button" class="btn btn--text" (click)="clear()">{{ copy.remove }}</button>
+                  </div>
                 </div>
               </div>
             } @else {
-              <button type="button" class="btn btn--secondary shot-attach" (click)="file.click()">{{ copy.attach }}</button>
+              <rr-drop-zone
+                class="rise"
+                [style.--i]="1"
+                size="wide"
+                [title]="copy.dropTitle"
+                [hint]="needShot"
+                accept="image/*"
+                [paste]="true"
+                icon="image"
+                [disabled]="closed()"
+                (file)="setFile($event)"
+              />
             }
-          </div>
-          @if (store.error(); as err) {
-            <rr-error-banner [message]="err" [retryable]="false" />
-          }
-          <div class="form__actions">
-            <a class="btn btn--secondary" [routerLink]="journalLink()">{{ copy.cancel }}</a>
-            <button type="submit" class="btn btn--primary" [class.btn--busy]="store.loading()" [disabled]="store.loading()">{{ copy.save }}</button>
-          </div>
-        </form>
+            <div class="paper nr-next rise" [style.--i]="2">
+              <div class="eyebrow">{{ copy.nextTitle }}</div>
+              <p class="nr-next__text">{{ copy.nextText }}</p>
+            </div>
+          </aside>
+        </div>
       </main>
     </div>
   `,
   styles: `
-    .form {
-      width: 640px;
-      max-width: 100%;
-      margin: 0 auto;
+    .nr-body {
+      width: min(1400px, 100% - 48px);
+    }
+    .nr-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      width: max-content;
+      margin-bottom: var(--sp-4);
+    }
+    .nr-grid {
+      display: grid;
+      grid-template-columns: 560px minmax(0, 1fr);
+      gap: var(--sp-8);
+      align-items: start;
+    }
+    .nr-form {
       padding: var(--sp-7);
       display: flex;
       flex-direction: column;
       gap: var(--sp-5);
+      min-width: 0;
     }
-    .form__title {
+    .nr-req {
+      color: var(--rr-ink-2);
+      font-weight: var(--fw-regular);
+    }
+    .nr-closed {
       margin: 0;
-      font-size: var(--fs-22);
-      line-height: var(--lh-22);
-      font-weight: var(--fw-semibold);
+      color: var(--rr-danger);
+      font-weight: var(--fw-medium);
     }
-    .field {
+    .nr-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
       gap: var(--sp-2);
     }
-    .shot-row {
+    .nr-side {
       display: flex;
+      flex-direction: column;
       gap: var(--sp-4);
-      align-items: flex-start;
+      min-width: 0;
     }
-    .shot-preview {
-      width: 200px;
-      flex: none;
-      aspect-ratio: 4 / 3;
-      border: 1px solid var(--rr-line);
-      border-radius: var(--rr-r-sm);
-      background: var(--rr-thumb-bg);
-      overflow: hidden;
+    .nr-shot {
+      padding: var(--sp-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-3);
     }
-    .shot-img {
+    .nr-shot__img {
+      display: block;
       width: 100%;
-      height: 100%;
+      aspect-ratio: 16 / 10;
       object-fit: contain;
+      border-radius: var(--rr-r-sm);
+      border: 1px solid var(--rr-line);
+      background: var(--rr-thumb-bg);
     }
-    .shot-meta {
+    .nr-shot__row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-3);
+      flex-wrap: wrap;
+    }
+    .nr-shot__meta {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .nr-shot__btns {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      flex: none;
+    }
+    .nr-next {
+      padding: var(--sp-5);
       display: flex;
       flex-direction: column;
       gap: var(--sp-2);
     }
-    .shot-replace,
-    .shot-attach {
-      min-height: 36px;
-      padding: 0 14px;
-      width: max-content;
+    .nr-next__text {
+      margin: 0;
+      font-size: var(--fs-14);
+      line-height: var(--lh-14);
+      color: var(--rr-ink-2);
+      max-width: 60ch;
     }
-    .form__actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: var(--sp-2);
-    }
-    @media (max-width: 720px) {
-      .form {
-        padding: var(--sp-4);
+    @media (max-width: 900px) {
+      .nr-body {
+        width: calc(100% - 24px);
       }
-      .form__actions > * {
+      .nr-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--sp-5);
+      }
+      .nr-form {
+        padding: var(--sp-5);
+      }
+      .nr-actions > * {
         flex: 1;
       }
     }
@@ -144,6 +226,14 @@ export class NewRemarkPage {
   protected readonly preview = signal<string | null>(null);
   protected readonly touched = signal(false);
   protected readonly showError = computed(() => this.touched() && !this.what().trim());
+  /** Закрытый раунд: форма выключена, сохранять некуда. */
+  protected readonly closed = computed(() => this.store.round()?.status === 'closed');
+  /** «Раунд 2» / «Раунд 1 · закрыт» над заголовком. */
+  protected readonly eyebrow = computed(() => {
+    const r = this.store.round();
+    if (!r) return null;
+    return r.status === 'closed' ? `${ROUND.label(r.number)} · ${ROUND.closed}` : ROUND.label(r.number);
+  });
   protected readonly fileMeta = computed(() => {
     const f = this.file();
     return f ? `${f.name} · ${Math.round(f.size / 1024)} КБ` : '';
@@ -154,33 +244,63 @@ export class NewRemarkPage {
       // страница открыта напрямую: подтянем раунд, чтобы было куда сохранять
       queueMicrotask(() => void this.store.enterRound(this.projectId(), this.round()));
     }
-    afterNextRender(() => this.host.nativeElement.querySelector<HTMLTextAreaElement>('textarea[name=what]')?.focus());
+    afterNextRender(() => this.focusWhat());
+    // objectURL превью живёт не дольше страницы
+    inject(DestroyRef).onDestroy(() => this.revoke());
   }
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement | HTMLTextAreaElement).value;
   }
 
+  /** Ctrl/Cmd+Enter в любом поле формы — сохранить. */
+  protected onKey(e: KeyboardEvent): void {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      void this.save(e);
+    }
+  }
+
+  /** Выбор через скрытый input («Заменить»). */
   protected pick(e: Event): void {
     const input = e.target as HTMLInputElement;
     const f = input.files?.[0] ?? null;
     input.value = '';
-    if (!f) return;
-    const old = this.preview();
-    if (old) URL.revokeObjectURL(old);
+    if (f) this.setFile(f);
+  }
+
+  /** Файл из дропзоны или input: старое превью освобождаем. */
+  protected setFile(f: File): void {
+    this.revoke();
     this.file.set(f);
     this.preview.set(URL.createObjectURL(f));
   }
 
-  protected journalLink(): unknown[] {
+  protected clear(): void {
+    this.revoke();
+    this.file.set(null);
+  }
+
+  private revoke(): void {
+    const old = this.preview();
+    if (old) URL.revokeObjectURL(old);
+    this.preview.set(null);
+  }
+
+  private focusWhat(): void {
+    this.host.nativeElement.querySelector<HTMLTextAreaElement>('textarea[name=what]')?.focus();
+  }
+
+  protected journalLink(): (string | number)[] {
     return ['/p', this.projectId(), 'r', this.round()];
   }
 
   protected async save(e: Event): Promise<void> {
     e.preventDefault();
+    if (this.closed() || this.store.loading()) return;
     this.touched.set(true);
     if (!this.what().trim()) {
-      this.host.nativeElement.querySelector<HTMLTextAreaElement>('textarea[name=what]')?.focus();
+      this.focusWhat();
       return;
     }
     if (!this.store.round()) await this.store.enterRound(this.projectId(), this.round());
