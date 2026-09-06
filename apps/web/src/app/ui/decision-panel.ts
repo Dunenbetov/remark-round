@@ -677,6 +677,10 @@ export class DecisionPanel {
 
   constructor() {
     effect(() => {
+      this.remarkId();
+      untracked(() => this.restoreDraft());
+    });
+    effect(() => {
       if (!this.busy()) this.clicked.set(null);
     });
     // Отсчёт 5…1 рядом с полоской: живёт только пока pending; смена карточки его гасит.
@@ -777,6 +781,52 @@ export class DecisionPanel {
   protected onComment(e: Event): void {
     this.comment.set((e.target as HTMLTextAreaElement).value);
     if (this.comment().trim()) this.hint.set(false);
+    this.saveDraft();
+  }
+
+  /**
+   * Черновик комментария живёт в sessionStorage по id замечания (аудит: session-expiry-loses-work): истёкшая сессия
+   * или случайный переход не теряют то, что человек уже написал; отправка решения черновик снимает.
+   */
+  private draftKey(): string | null {
+    const id = this.remarkId();
+    return id ? `rr.draft.comment:${id}` : null;
+  }
+
+  private saveDraft(): void {
+    const key = this.draftKey();
+    if (!key) return;
+    try {
+      if (this.comment().trim()) sessionStorage.setItem(key, this.comment());
+      else sessionStorage.removeItem(key);
+    } catch {
+      /* приватный режим */
+    }
+  }
+
+  private restoreDraft(): void {
+    const key = this.draftKey();
+    if (!key) return;
+    try {
+      const saved = sessionStorage.getItem(key);
+      if (saved && !this.comment()) {
+        this.comment.set(saved);
+        this.commentOpen.set(true);
+      }
+    } catch {
+      /* приватный режим */
+    }
+  }
+
+  private clearDraft(): void {
+    this.comment.set('');
+    const key = this.draftKey();
+    if (!key) return;
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      /* приватный режим */
+    }
   }
 
   protected act(what: 'close' | 'notFixed'): void {
@@ -791,7 +841,7 @@ export class DecisionPanel {
       // Совет — не решение: уходит сразу, без отсчёта; кнопки не гаснут — совет можно тут же изменить.
       this.clicked.set(code);
       this.advise.emit({ code, comment });
-      this.comment.set('');
+      this.clearDraft();
       this.commentOpen.set(false);
       return;
     }
@@ -804,13 +854,13 @@ export class DecisionPanel {
       this.hint.set(false);
       this.clicked.set(code);
       this.rejectBinding.emit(comment);
-      this.comment.set('');
+      this.clearDraft();
       return;
     }
     // Нажатая кнопка отмечается, остальные гаснут; родитель тут же переводит панель в отсчёт.
     this.chosen.set(code);
     this.clicked.set(code);
     this.verdict.emit({ code, comment });
-    this.comment.set('');
+    this.clearDraft();
   }
 }

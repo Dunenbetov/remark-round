@@ -4,6 +4,7 @@ import { ApiService } from '../core/api.service';
 import { COMMON, ERROR, ROLE_SIDE, ROLE_SHORT, SIDES, TEAM } from '../core/copy';
 import type { InvitationLink, InvitationSummary, MemberSummary, Role, Side } from '../core/models';
 import { PendingActionService } from '../core/pending-action.service';
+import { errorMessage } from '../core/errors';
 import { SessionService } from '../core/session.service';
 import { AppBar } from '../ui/app-bar';
 import { ErrorBanner } from '../ui/error-banner';
@@ -439,12 +440,9 @@ export class TeamPage {
 
   private message(err: unknown): string {
     if (err instanceof HttpErrorResponse) {
-      const body = err.error as { message?: string | string[] } | null;
-      const text = Array.isArray(body?.message) ? body.message.join(', ') : body?.message;
       if (err.status === 409) return this.copy.lastPm;
-      if (text) return text;
     }
-    return ERROR.request;
+    return errorMessage(err);
   }
 
   protected readonly common = COMMON;

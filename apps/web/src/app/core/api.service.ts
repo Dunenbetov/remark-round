@@ -256,8 +256,11 @@ export class ApiService {
       return await firstValueFrom(req);
     } catch (e) {
       if (e instanceof HttpErrorResponse && e.status === 401 && this.session.isLoggedIn()) {
+        // Сессия истекла посреди работы: после входа вернуть на ту же карточку (аудит: session-expiry-loses-work)
+        const current = this.router.url;
+        const next = current && !current.startsWith('/login') && !current.startsWith('/register') ? current : null;
         this.session.logout();
-        void this.router.navigateByUrl('/login');
+        void this.router.navigate(['/login'], next ? { queryParams: { next } } : undefined);
       }
       throw e;
     }

@@ -13,7 +13,7 @@ const REMARK_INCLUDE = {
   citations: { select: { id: true, chunkId: true, quoteText: true, section: true, documentTitle: true, documentKind: true, effectiveAt: true } },
   verdicts: { select: { code: true, userId: true, comment: true, createdAt: true } },
   advices: { select: { code: true, userId: true, comment: true, updatedAt: true } },
-  runs: { select: { id: true, createdAt: true, status: true, mode: true, failureMessage: true } },
+  runs: { select: { id: true, createdAt: true, status: true, mode: true, failureMessage: true, model: true } },
 } satisfies Prisma.RemarkInclude;
 
 /** Разработчик видит только принятые поломки и то, что сам отдал на ретест. */

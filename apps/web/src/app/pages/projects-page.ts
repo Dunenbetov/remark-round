@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { AccountService } from '../core/account.service';
 import { ApiService } from '../core/api.service';
 import { ERROR, PROJECTS, ROLE_SHORT } from '../core/copy';
+import { errorMessage } from '../core/errors';
 import { homeUrlFor } from '../core/guards';
 import type { Membership } from '../core/models';
 import { SessionService } from '../core/session.service';
@@ -202,8 +203,8 @@ export class ProjectsPage {
       this.session.selectProject(project.id);
       this.name.set('');
       await this.router.navigateByUrl(`/p/${project.id}/r/latest`);
-    } catch {
-      this.error.set(ERROR.request);
+    } catch (err) {
+      this.error.set(errorMessage(err));
     } finally {
       this.busy.set(false);
     }

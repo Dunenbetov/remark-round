@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ApiService } from '../core/api.service';
 import { ADMIN, ERROR, ROLE_SHORT } from '../core/copy';
 import type { AdminProject, AdminUser } from '../core/models';
+import { errorMessage } from '../core/errors';
 import { SessionService } from '../core/session.service';
 import { AppBar } from '../ui/app-bar';
 import { ErrorBanner } from '../ui/error-banner';
@@ -249,10 +250,7 @@ export class AdminPage {
   private message(err: unknown): string {
     if (err instanceof HttpErrorResponse) {
       if (err.status === 409) return this.copy.disabledSelf;
-      const body = err.error as { message?: string | string[] } | null;
-      const text = Array.isArray(body?.message) ? body.message.join(', ') : body?.message;
-      if (text) return text;
     }
-    return ERROR.request;
+    return errorMessage(err);
   }
 }

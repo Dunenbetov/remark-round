@@ -1,7 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { Advice, DocumentKind, ImportJob, NewRemarkDto, ProjectDocument, Remark, Round, VerdictCode } from './models';
 import { ApiDocument, ApiService } from './api.service';
-import { DOCUMENTS, ERROR } from './copy';
+import { DOCUMENTS } from './copy';
+import { errorMessage, errorStatus } from './errors';
 import { SessionService } from './session.service';
 import { WsService } from './ws.service';
 
@@ -149,14 +150,14 @@ export class RemarksStore {
     const remark = this.byId(remarkId);
     if (!remark?.runId) return;
     const body = { verdict: code, comment: comment || undefined, runId: remark.runId, idempotencyKey: crypto.randomUUID() };
-    await this.mutate(() => this.ws.command('verdict.approve', { remarkId, ...body }, () => this.api.verdict(remark.projectId, remarkId, body)));
+    await this.mutate(remarkId, () => this.ws.command('verdict.approve', { remarkId, ...body }, () => this.api.verdict(remark.projectId, remarkId, body)));
   }
 
   async rejectBinding(remarkId: string, comment: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark?.runId) return;
     const body = { verdict: 'rejected_binding' as const, comment, runId: remark.runId, idempotencyKey: crypto.randomUUID() };
-    await this.mutate(() => this.ws.command('verdict.reject_binding', { remarkId, ...body }, () => this.api.verdict(remark.projectId, remarkId, body)));
+    await this.mutate(remarkId, () => this.ws.command('verdict.reject_binding', { remarkId, ...body }, () => this.api.verdict(remark.projectId, remarkId, body)));
   }
 
   /** run.cancel: вердикта нет, замечание снова «Получено». */
@@ -164,20 +165,20 @@ export class RemarksStore {
     const remark = this.byId(remarkId);
     if (!remark?.runId) return;
     const body = { runId: remark.runId, idempotencyKey: crypto.randomUUID() };
-    await this.mutate(() => this.ws.command('run.cancel', { remarkId, ...body }, () => this.api.cancelRun(remark.projectId, remarkId, body)));
+    await this.mutate(remarkId, () => this.ws.command('run.cancel', { remarkId, ...body }, () => this.api.cancelRun(remark.projectId, remarkId, body)));
   }
 
   /** «Запустить снова» после сбоя: новый прогон. */
   async triageAgain(remarkId: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark) return;
-    await this.mutate(() => this.api.action(remark.projectId, remarkId, 'triage'));
+    await this.mutate(remarkId, () => this.api.action(remark.projectId, remarkId, 'triage'));
   }
 
   async linkDuplicate(remarkId: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark?.duplicateOfNumber) return;
-    await this.mutate(() => this.api.linkDuplicate(remark.projectId, remarkId, remark.duplicateOfNumber!));
+    await this.mutate(remarkId, () => this.api.linkDuplicate(remark.projectId, remarkId, remark.duplicateOfNumber!));
     this.patch(remarkId, { duplicateLinked: true });
   }
 
@@ -185,13 +186,13 @@ export class RemarksStore {
   async advise(remarkId: string, code: VerdictCode, comment?: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark) return;
-    await this.mutate(() => this.api.advise(remark.projectId, remarkId, { code, comment: comment || undefined }));
+    await this.mutate(remarkId, () => this.api.advise(remark.projectId, remarkId, { code, comment: comment || undefined }));
   }
 
   async retractAdvice(remarkId: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark) return;
-    await this.mutate(() => this.api.retractAdvice(remark.projectId, remarkId));
+    await this.mutate(remarkId, () => this.api.retractAdvice(remark.projectId, remarkId));
   }
 
   /** Событие remark.advice из комнаты: обновить советы без перечитывания карточки. */
@@ -202,14 +203,14 @@ export class RemarksStore {
   async readyForRetest(remarkId: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark) return;
-    await this.mutate(() => this.api.action(remark.projectId, remarkId, 'ready-for-retest'));
+    await this.mutate(remarkId, () => this.api.action(remark.projectId, remarkId, 'ready-for-retest'));
   }
 
   /** Новый кадр по «Не хватает скрина»: сервер сам запускает разбор. */
   async attachShot(remarkId: string, file: File): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark) return;
-    await this.mutate(async () => {
+    await this.mutate(remarkId, async () => {
       const media = await this.api.uploadMedia(remark.projectId, file);
       return this.api.screenshot(remark.projectId, remarkId, media.storageKey);
     });
@@ -218,7 +219,7 @@ export class RemarksStore {
   async retest(remarkId: string, file: File): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark) return;
-    await this.mutate(async () => {
+    await this.mutate(remarkId, async () => {
       const media = await this.api.uploadMedia(remark.projectId, file);
       return this.api.retest(remark.projectId, remarkId, media.storageKey);
     });
@@ -227,13 +228,13 @@ export class RemarksStore {
   async close(remarkId: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark) return;
-    await this.mutate(() => this.api.action(remark.projectId, remarkId, 'close'));
+    await this.mutate(remarkId, () => this.api.action(remark.projectId, remarkId, 'close'));
   }
 
   async notFixed(remarkId: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark) return;
-    await this.mutate(() => this.api.action(remark.projectId, remarkId, 'not-fixed'));
+    await this.mutate(remarkId, () => this.api.action(remark.projectId, remarkId, 'not-fixed'));
   }
 
   // ---------- helpers ----------
@@ -243,8 +244,12 @@ export class RemarksStore {
     if (remarks) this.remarks.set(remarks);
   }
 
-  private async mutate(fn: () => Promise<Remark>): Promise<void> {
-    const updated = await this.guard(fn);
+  /**
+   * Мутация карточки. 409 — статус уже изменился (второй человек нажал раньше, прогон завершился):
+   * перечитываем карточку, чтобы человек увидел актуальное решение, а не своё пропавшее (docs/STATUS.md).
+   */
+  private async mutate(remarkId: string, fn: () => Promise<Remark>): Promise<void> {
+    const updated = await this.guard(fn, remarkId);
     if (updated) this.upsert(updated);
   }
 
@@ -277,14 +282,21 @@ export class RemarksStore {
     this.advisoryQueue.update(apply);
   }
 
-  private async guard<T>(fn: () => Promise<T>): Promise<T | null> {
+  private async guard<T>(fn: () => Promise<T>, remarkId?: string): Promise<T | null> {
     this.loading.set(true);
     this.error.set(null);
     try {
       return await fn();
     } catch (e) {
-      const message = (e as { error?: { message?: string | string[] }; message?: string }).error?.message ?? (e as Error).message ?? ERROR.request;
-      this.error.set(Array.isArray(message) ? message.join(', ') : String(message));
+      this.error.set(errorMessage(e));
+      const stale = remarkId ? this.byId(remarkId) : null;
+      if (errorStatus(e) === 409 && stale) {
+        try {
+          this.upsert(await this.api.remark(stale.projectId, remarkId!));
+        } catch {
+          /* не смогли перечитать — сообщение об ошибке уже показано */
+        }
+      }
       return null;
     } finally {
       this.loading.set(false);

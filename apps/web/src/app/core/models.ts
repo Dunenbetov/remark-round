@@ -273,6 +273,10 @@ export interface Remark {
   /** `running` — фазы идут по WS; `awaiting_human` — прогон ждёт кнопки. */
   runStatus?: 'running' | 'awaiting_human' | 'persisted' | 'cancelled' | 'failed';
   runMode?: 'triage' | 'retest';
+  /** Причина сбоя последнего прогона по-русски (модель перегружена, ключ не принят…). */
+  runFailure?: string;
+  /** Чем шёл прогон: `openai/…` или `rules/retrieve-only` — бейдж «по правилам, без модели». */
+  runModel?: string;
   /** Trace прогона в Langfuse — только когда сервер его настроил; показываем PM. */
   traceUrl?: string;
   /** ISO-дата создания (RemarkView.createdAt). */

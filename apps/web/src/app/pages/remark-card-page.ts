@@ -154,7 +154,12 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                     <!-- ЧЕРНОВИК РАЗБОРА / ЧТО ТРЕБУЕТ ТЗ -->
                     @if (!twoCols()) {
                       <section class="col col--draft">
-                        <h2 class="col-title">{{ role() === 'developer' && r.status !== 'awaiting_pm' ? copy.specRequires : copy.draft }}</h2>
+                        <h2 class="col-title">
+                          {{ role() === 'developer' && r.status !== 'awaiting_pm' ? copy.specRequires : copy.draft }}
+                          @if (byRules()) {
+                            <span class="pill pill--muted col-title__pill" [attr.title]="copy.draftByRules">{{ copy.draftByRules }}</span>
+                          }
+                        </h2>
                         @if (running() && r.runMode !== 'retest') {
                           <rr-run-steps [hasShot]="!!original()" [phase]="phase()" [text]="phaseText()" />
                         }
@@ -395,6 +400,11 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
     }
     .col--draft {
       gap: var(--sp-4);
+    }
+    .col-title__pill {
+      margin-left: var(--sp-2);
+      vertical-align: middle;
+      font-weight: var(--fw-medium);
     }
     .col-title {
       margin: 0;
@@ -963,6 +973,8 @@ export class RemarkCardPage {
 
   protected readonly running = computed(() => this.runSig()?.analyzing() ?? false);
   protected readonly failed = computed(() => this.runSig()?.failed() ?? false);
+  /** Прогон шёл правилами без модели: честно показать, что черновик грубее (аудит: silent-rules-fallback). */
+  protected readonly byRules = computed(() => this.remark()?.runModel?.startsWith('rules') === true && this.role() !== 'business');
   protected readonly busy = computed(() => this.runSig()?.busy() ?? false);
   protected readonly quoteVisible = computed(() => this.runSig()?.quoteVisible() ?? true);
   protected readonly draftVisible = computed(() => this.runSig()?.draftVisible() ?? true);
@@ -1170,7 +1182,7 @@ export class RemarkCardPage {
       const phase: Phase = run.rebinding() && run.phase() === 'binding' ? 'rebinding' : run.phase();
       return PHASE_TEXT[phase];
     }
-    if (this.failed()) return PHASE_TEXT.failed;
+    if (this.failed()) return r.runFailure ?? PHASE_TEXT.failed;
     switch (r.status) {
       case 'awaiting_pm':
         return role === 'pm' ? PHASE_TEXT.awaiting_pm : PHASE_EXTRA.awaitingPmOther;
