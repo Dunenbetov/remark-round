@@ -1,6 +1,9 @@
 import { GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Invitation, Role } from '@remarkround/db';
 import { createHash, randomBytes } from 'node:crypto';
+import { config } from '../config';
+import { MailService } from '../mail/mail.service';
+import { invitationMail } from '../mail/templates';
 import { securityEvent } from '../observability/security-log';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectContext } from './project-context';
@@ -23,7 +26,10 @@ export interface InvitationLink {
   expiresAt: string;
 }
 
-export type InvitationCreated = InvitationSummary & InvitationLink;
+export type InvitationCreated = InvitationSummary & InvitationLink & {
+  /** Письмо со ссылкой ушло приглашённому (ADR 009): без SMTP — false, ссылку шлёт PM сам. */
+  emailed: boolean;
+};
 
 /** Что видно по ссылке до входа: ровно столько, чтобы человек понял, куда его зовут. E-mail приглашённого не показываем. */
 export interface InvitationPeek {
@@ -34,14 +40,18 @@ export interface InvitationPeek {
 }
 
 /**
- * Приглашения (ADR 005, ADR 006). Писем нет: PM копирует ссылку и отправляет сам. Приглашение принимается
+ * Приглашения (ADR 005, ADR 006). Со SMTP письмо со ссылкой уходит само (ADR 009), без него PM копирует ссылку
+ * и отправляет сам — в любом случае ссылка показывается один раз. Приглашение принимается
  * ТОЛЬКО по ссылке — регистрацией с inviteToken или вошедшим пользователем. Совпадение e-mail без ссылки
  * ничего не даёт: иначе место в чужом проекте забирал бы тот, кто первым зарегистрировал угаданный адрес.
  * Membership создаётся только здесь и в MembersService — единственные пути записи участников.
  */
 @Injectable()
 export class InvitationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+  ) {}
 
   /** Одно приглашение на e-mail в проекте: повтор меняет роль и выпускает новую ссылку (старая перестаёт работать). */
   async create(ctx: ProjectContext, email: string, role: Role): Promise<InvitationCreated> {
@@ -58,7 +68,19 @@ export class InvitationsService {
           data: { projectId: ctx.projectId, email: normalized, role, tokenHash: hashToken(token), invitedById: ctx.userId, expiresAt },
         });
     securityEvent('invitation.create', { projectId: ctx.projectId, by: ctx.userId, email: normalized, role, invitationId: row.id });
-    return { ...summary(row), token, expiresAt: expiresAt.toISOString() };
+    const emailed = await this.sendLink(ctx, normalized, role, token, expiresAt);
+    return { ...summary(row), token, expiresAt: expiresAt.toISOString(), emailed };
+  }
+
+  /** Письмо со ссылкой (ADR 009): текст — без e-mail других участников, только проект, роль и кто зовёт. */
+  private async sendLink(ctx: ProjectContext, to: string, role: Role, token: string, expiresAt: Date): Promise<boolean> {
+    if (!this.mail.enabled) return false;
+    const [project, inviter] = await Promise.all([
+      this.prisma.project.findUnique({ where: { id: ctx.projectId }, select: { name: true } }),
+      this.prisma.user.findUnique({ where: { id: ctx.userId }, select: { name: true } }),
+    ]);
+    const url = `${config().WEB_ORIGIN}/join/${token}`;
+    return this.mail.enqueue(invitationMail({ to, projectName: project?.name ?? '', role, inviterName: inviter?.name ?? '', url, expiresAt }), ctx.projectId);
   }
 
   /** Новая ссылка для ожидающего приглашения: прежняя перестаёт работать, срок продлевается. */

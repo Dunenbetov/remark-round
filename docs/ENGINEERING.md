@@ -4,7 +4,7 @@
 
 ## Модули Nest (`apps/api`)
 
-`Auth` · `Tenancy` (guard membership) · `Projects` · `Documents` · `Remarks` · `Media` · `Rag` · `Diff` · `Llm` · `Agent` · `Jobs` · `Observability` · `Gateway`.
+`Auth` · `Tenancy` (guard membership) · `Projects` · `Documents` · `Remarks` · `Media` · `Rag` · `Diff` · `Llm` · `Agent` · `Jobs` · `Notifications` · `Mail` · `Observability` · `Gateway`.
 
 Публичные контроллеры тонкие. Запись Remark/Verdict/Run — `RemarksService` (и узкие сервисы рядом: `ImportService`). `AgentService` оркестрирует граф (старт, resume, cancel) и сам ничего не пишет: контроллер и WS-гейтвей зовут его, он — `RemarksService`.
 
@@ -43,6 +43,7 @@
 | `remarks.integrity.spec` | два одновременных вердикта → один HumanVerdict и 409; цитата переживает reindex |
 | `remarks.audience.spec` | заказчик не получает советы, комментарий PM, трейс и черновик до вердикта (REST и WS) |
 | `accounts.spec` · `members.spec` · `admin.spec` | контур доступа ADR 006: режимы регистрации, ссылка один раз, отключение и отзыв сессий |
+| `notifications.spec` | ADR 009: письмо получает роль, которую ждёт статус, а не тот, кто нажал; несколько замечаний за окно — одно письмо; выключатель профиля; SMTP-сбой повторяется; приглашение уходит письмом без чужих e-mail |
 | `jobs.spec` | очередь: 429 модели повторяется без «не получилось», осиротевшая задача исполняется заново, `run.cancel` снимает задачу, зависший прогон с живой задачей не сметается |
 
 ## Именование

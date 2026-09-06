@@ -43,6 +43,11 @@ const Schema = z
     LLM_MODE: z.enum(['openai', 'rules']).optional(),
     LANGFUSE_SECRET_KEY: z.string().optional(),
     LANGFUSE_TRACING_ENABLED: z.string().optional(),
+    /** Почта (ADR 009): smtp://user:pass@host:587 или smtps://…:465. Без значения писем нет — приглашения только ссылкой. */
+    SMTP_URL: z.string().optional(),
+    SMTP_FROM: z.string().default('RemarkRound <no-reply@localhost>'),
+    /** Окно, за которое уведомления одного человека склеиваются в одно письмо (мс). */
+    NOTIFY_DIGEST_MS: z.coerce.number().int().min(0).default(5 * 60 * 1000),
   })
   .superRefine((c, ctx) => {
     if (c.NODE_ENV !== 'production') return;
@@ -82,6 +87,8 @@ export type AppConfig = z.infer<typeof Schema> & {
   readonly registrationDomains: readonly string[];
   /** Нормализованные (lower-case) e-mail администраторов инстанса. */
   readonly adminEmails: ReadonlySet<string>;
+  /** SMTP_URL задан: письма отправляются (приглашения, «вас ждёт кнопка»). */
+  readonly mailEnabled: boolean;
 };
 
 let cached: AppConfig | null = null;
@@ -105,6 +112,7 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     registrationMode: c.REGISTRATION_MODE ?? (c.NODE_ENV === 'production' ? 'invite_only' : 'open'),
     registrationDomains: splitList(c.REGISTRATION_DOMAINS).map((d) => d.replace(/^@/, '')),
     adminEmails: new Set(splitList(c.ADMIN_EMAILS)),
+    mailEnabled: Boolean(c.SMTP_URL),
   };
 }
 

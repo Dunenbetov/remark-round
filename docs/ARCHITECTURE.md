@@ -37,6 +37,7 @@ flowchart LR
 | Imports | Только официальный шаблон журнала (CSV/XLSX, картинки из ячеек); пустое описание → `needs_human_parse` | `apps/api/src/imports` |
 | Remarks | Единственный путь записи: статусы по `STATUS.md`, вердикт человека, идемпотентность `(runId, idempotencyKey)`; совет разработчика `DeveloperAdvice` (не вердикт, событие `remark.advice`) | `apps/api/src/remarks` |
 | Agent | Граф триажа (retrieve → vision → bind ↔ rewrite ≤ 2 → classify → draft → faithfulness ↔ bind ≤ 2 → interrupt PM) и граф ретеста (pixel-diff → explain → interrupt бизнеса); guardrail входа; чекпоинты `GraphCheckpoint` | `apps/api/src/agent` |
+| Notifications · Mail | «Вас ждёт кнопка» (ADR 009): переход пишет `Notification` участникам нужной роли, задача `notify_digest` шлёт одно письмо на окно; приглашение — письмом со ссылкой; SMTP через nodemailer, без `SMTP_URL` — `skipped` | `apps/api/src/{notifications,mail}` |
 | Jobs | Очередь фоновых задач в той же Postgres (`Job`, `FOR UPDATE SKIP LOCKED`): прогоны графа и индексация документов; повтор временной ошибки модели с паузой, возврат осиротевших задач после падения процесса, heartbeat, остановка по SIGTERM | `apps/api/src/jobs` |
 | Llm | Контракт `TriageLlm`: OpenAI (`gpt-4.1-mini` / `gpt-4.1`) или `RulesTriageLlm` без ключа; Skill `uat-triage` в промпте; стоимость по прайсу | `apps/api/src/llm` |
 | Diff | pixelmatch, `cannot_compare` на разных размерах / другом экране | `apps/api/src/diff` |

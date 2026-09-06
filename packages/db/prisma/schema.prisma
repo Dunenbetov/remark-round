@@ -124,9 +124,12 @@ model User {
   disabledAt   DateTime?
   /// Версия сессий: токены с другой `tv` недействительны — «завершить все сессии» без смены пароля (ADR 006)
   tokenVersion Int          @default(0)
+  /// Письма «вас ждёт кнопка» (ADR 009): человек выключает в профиле; приглашения и служебные письма это не трогает
+  notifyByEmail Boolean     @default(true)
   memberships  Membership[]
   verdicts     HumanVerdict[]
   advices      DeveloperAdvice[]
+  notifications Notification[]
   createdAt    DateTime     @default(now())
 }
 
@@ -137,6 +140,7 @@ model Project {
   invitations Invitation[]
   documents   Document[]
   rounds      Round[]
+  notifications Notification[]
   createdAt   DateTime       @default(now())
 }
 
@@ -256,6 +260,7 @@ model Remark {
   screenshots    RemarkScreenshot[]
   citations      EvidenceCitation[]
   runs           AgentRun[]
+  notifications  Notification[]
   verdicts       HumanVerdict[]
   advices        DeveloperAdvice[]
   createdAt      DateTime      @default(now())
@@ -428,4 +433,40 @@ model Job {
 
   @@index([status, runAfter])
   @@index([runId])
+}
+
+/// Кому и о чём написать (ADR 009): статус замечания, который ждёт роль этого человека
+enum NotificationKind {
+  awaiting_pm
+  defect
+  ready_for_retest
+  awaiting_business_close
+  cannot_tell
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  skipped
+  failed
+}
+
+/// Уведомление одному человеку об одном замечании (ADR 009). Копятся `pending`, задача `notify_digest` собирает
+/// всё ожидающее для человека в одно письмо; `skipped` — письма выключены (профиль, SMTP не настроен, человек отключён).
+model Notification {
+  id        String             @id @default(uuid())
+  userId    String
+  projectId String
+  remarkId  String
+  kind      NotificationKind
+  status    NotificationStatus @default(pending)
+  createdAt DateTime           @default(now())
+  sentAt    DateTime?
+  error     String?
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  remark    Remark             @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([projectId])
 }

@@ -16,14 +16,14 @@
 | POST | `/auth/login` | — | JWT + `user` (`preferredRole`, `canCreateProjects`, `isInstanceAdmin`) + `memberships`. Отключённый администратором — 403. Лимит `THROTTLE_AUTH_LIMIT`/мин с IP |
 | POST | `/auth/register` | — | `{ name, email, password ≥ 8, preferredRole: business \| pm \| developer, inviteToken? }` → 201, ответ как у входа; дубликат e-mail — 409. Режим (ADR 006): `open` — всем; `invite_only` (в production по умолчанию) — только с живым `inviteToken` (мёртвая ссылка — 404, аккаунт не создаётся), с домена из `REGISTRATION_DOMAINS` или e-mail из `ADMIN_EMAILS`; иначе 403. Приглашение принимается только по ссылке |
 | GET | `/auth/me` | any | Свежие `{ user, memberships }` без перелогина — страница ожидания опрашивает это |
-| PATCH | `/auth/profile` | any | `{ name?, preferredRole? }` |
+| PATCH | `/auth/profile` | any | `{ name?, preferredRole?, notifyByEmail? }` — `notifyByEmail` выключает письма «вас ждёт кнопка» (ADR 009) |
 | POST | `/auth/password` | any | `{ current, next ≥ 8 }` → `{ accessToken }`; неверный текущий — 422; все прежние токены (и MCP) недействительны |
-| GET | `/auth/options` | — | `{ demoLogins, registration: open \| invite_only }` — карточки демо-персон на входе (в production выключены) и режим регистрации |
+| GET | `/auth/options` | — | `{ demoLogins, registration: open \| invite_only, mail }` — карточки демо-персон на входе (в production выключены), режим регистрации, настроена ли почта |
 | GET | `/projects` | any | Список membership |
 | POST | `/projects` | `canCreateProjects` | Создать: только с правом от администратора инстанса (иначе 403); создатель становится `pm` проекта |
 | GET | `/projects/:projectId` | member | Карточка |
 | GET | `/projects/:projectId/members` | pm, admin | `{ members[], invitations[] }` — участники и ожидающие приглашения (без токена: в БД только хэш) |
-| POST | `/projects/:projectId/members` | pm, admin | `{ email, role }`: зарегистрированный → `{ kind: 'member', member }` сразу (повтор меняет роль, ожидающая ссылка снимается); незнакомый e-mail → `{ kind: 'invitation', invitation }` с сырым `token` для `/join/<token>` — показывается один раз |
+| POST | `/projects/:projectId/members` | pm, admin | `{ email, role }`: зарегистрированный → `{ kind: 'member', member }` сразу (повтор меняет роль, ожидающая ссылка снимается); незнакомый e-mail → `{ kind: 'invitation', invitation }` с сырым `token` для `/join/<token>` — показывается один раз; `invitation.emailed` — письмо со ссылкой ушло (SMTP настроен) |
 | PATCH | `/projects/:projectId/members/:userId` | pm, admin | `{ role }`; единственный pm не понижается — 409; сокеты человека выкидываются из комнат проекта (роль на join закеширована) |
 | DELETE | `/projects/:projectId/members/:userId` | pm, admin | 204; единственный pm — 409; сокеты удалённого выкидываются из комнат проекта |
 | DELETE | `/projects/:projectId/invitations/:invitationId` | pm, admin | Отозвать ссылку |
@@ -75,7 +75,7 @@
 
 ## Аккаунты (фаза 11, ADR 005)
 
-Регистрация открыта: без проекта человек видит экран ожидания и опрашивает `GET /auth/me` — как только руководитель приёмки добавит его по e-mail, проект появится. Сторона `preferredRole` — подсказка (и право создавать проекты для `pm`); роль в проекте — всегда `Membership.role`, её ставит PM. Приглашение — ссылка `/join/<token>`, письма не отправляются: PM копирует и шлёт сам; регистрация или вход с приглашённым e-mail принимает приглашение автоматически. Ошибки: 409 — e-mail занят или единственный pm; 410 — ссылка уже принята; 422 — неверный текущий пароль или валидация.
+Регистрация открыта: без проекта человек видит экран ожидания и опрашивает `GET /auth/me` — как только руководитель приёмки добавит его по e-mail, проект появится. Сторона `preferredRole` — подсказка (и право создавать проекты для `pm`); роль в проекте — всегда `Membership.role`, её ставит PM. Приглашение — ссылка `/join/<token>`: со SMTP письмо со ссылкой уходит само (ADR 009), без него PM копирует и шлёт сам; принимается только по ссылке (ADR 006). Ошибки: 409 — e-mail занят или единственный pm; 410 — ссылка уже принята; 422 — неверный текущий пароль или валидация.
 
 ## Тело вердикта
 
@@ -101,3 +101,7 @@
 ## MCP (`apps/mcp`)
 
 Тот же контракт для Cursor / Claude Desktop, без второго CRUD: tool'ы фасада зовут маршруты выше с токеном из `POST /projects/:projectId/mcp-token`. `search_spec` = `GET .../search`, `get_round_remarks` = `GET .../rounds` + `GET .../rounds/:roundId/remarks`, `apply_human_verdict` = `GET .../remarks/:id` + `POST .../remarks/:id/verdict` (фасад подставляет `runId` и `idempotencyKey`), `submit_retest_evidence` = `POST .../media` + `POST .../remarks/:id/retest`. `projectId` в аргументах tool'ов нет — он в токене. `close` через MCP недоступен. Подробнее: [`apps/mcp/README.md`](../apps/mcp/README.md).
+
+## Уведомления (ADR 009)
+
+Отдельных маршрутов нет. Переход, после которого у роли появляется кнопка, пишет `Notification` каждому участнику этой роли (кроме того, кто нажал) и через `NOTIFY_DIGEST_MS` шлёт **одно** письмо на всё накопившееся: `awaiting_pm` → pm; `defect` (вердикт или «не исправлено») → developer; `ready_for_retest`, `awaiting_business_close`, `cannot_tell` → business. Письмо содержит номер, короткое описание, что именно ждёт, и ссылку `/p/:projectId/r/:round/remarks/:remarkId`. Без `SMTP_URL` уведомления помечаются `skipped`, `GET /auth/options` отдаёт `mail: false`.

@@ -40,6 +40,18 @@ import { Sheet } from '../ui/sheet';
             }
           </form>
 
+          <section class="pf__form pf__form--pass" [attr.aria-label]="copy.notifyTitle">
+            <h2 class="pf__title pf__title--sm">{{ copy.notifyTitle }}</h2>
+            <label class="pf__check">
+              <input type="checkbox" name="notifyByEmail" [checked]="notify()" [disabled]="notifySaving() || !mailOn()" (change)="toggleNotify($event)" />
+              <span>{{ copy.notifyLabel }}</span>
+            </label>
+            <span class="meta">{{ mailOn() ? copy.notifyHint : copy.notifyOff }}</span>
+            @if (notifyError(); as err) {
+              <div class="pf__error" role="alert">{{ err }}</div>
+            }
+          </section>
+
           <form class="pf__form pf__form--pass" (submit)="changePassword($event)" novalidate>
             <h2 class="pf__title pf__title--sm">{{ copy.passwordTitle }}</h2>
             <label class="field">
@@ -107,6 +119,16 @@ import { Sheet } from '../ui/sheet';
       line-height: var(--lh-13);
       color: var(--rr-danger);
     }
+    .pf__check {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-3);
+      cursor: pointer;
+    }
+    .pf__check input {
+      margin-top: 3px;
+      accent-color: var(--rr-accent);
+    }
   `,
 })
 export class ProfilePage {
@@ -127,6 +149,32 @@ export class ProfilePage {
   protected readonly changing = signal(false);
   protected readonly changedNote = signal(false);
   protected readonly passwordError = signal<string | null>(null);
+  protected readonly notify = signal(this.session.user()?.notifyByEmail ?? true);
+  protected readonly notifySaving = signal(false);
+  protected readonly notifyError = signal<string | null>(null);
+  /** Почта настроена на сервере (ADR 009): без неё выключатель ничего не меняет и показан серым. */
+  protected readonly mailOn = signal(false);
+
+  constructor() {
+    this.api.authOptions().then((o) => this.mailOn.set(o.mail)).catch(() => null);
+  }
+
+  protected async toggleNotify(e: Event): Promise<void> {
+    const next = (e.target as HTMLInputElement).checked;
+    const prev = this.notify();
+    this.notify.set(next);
+    this.notifySaving.set(true);
+    this.notifyError.set(null);
+    try {
+      const user = await this.api.updateProfile({ notifyByEmail: next });
+      this.session.patch({ user });
+    } catch {
+      this.notify.set(prev);
+      this.notifyError.set(ERROR.request);
+    } finally {
+      this.notifySaving.set(false);
+    }
+  }
   protected readonly canChange = computed(() => this.current().length > 0 && this.next().length >= 8 && this.repeat().length > 0);
 
   protected value(e: Event): string {

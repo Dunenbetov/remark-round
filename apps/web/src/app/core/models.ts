@@ -76,6 +76,8 @@ export interface User {
   canCreateProjects: boolean;
   /** E-mail из ADMIN_EMAILS: видит /admin — люди и проекты инстанса. */
   isInstanceAdmin: boolean;
+  /** Письма «вас ждёт кнопка» (ADR 009): выключаются в профиле. */
+  notifyByEmail: boolean;
 }
 
 export interface Session {
@@ -100,6 +102,8 @@ export interface AuthOptions {
   demoLogins: boolean;
   /** invite_only — регистрация только по ссылке приглашения (ADR 006): ссылку «Зарегистрироваться» на входе не показываем. */
   registration: RegistrationMode;
+  /** SMTP настроен: приглашения и «вас ждёт кнопка» уходят письмом (ADR 009). */
+  mail: boolean;
 }
 
 export interface ProjectSummary {
@@ -132,7 +136,10 @@ export interface InvitationLink {
   expiresAt: string;
 }
 
-export type InvitationCreated = InvitationSummary & InvitationLink;
+export type InvitationCreated = InvitationSummary & InvitationLink & {
+  /** Письмо со ссылкой ушло приглашённому; иначе ссылку шлёт PM сам. */
+  emailed: boolean;
+};
 
 export interface InvitationPeek {
   projectName: string;

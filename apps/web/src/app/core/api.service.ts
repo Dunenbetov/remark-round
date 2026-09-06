@@ -82,7 +82,7 @@ export class ApiService {
     return this.run(this.http.get<AuthOptions>(`${API_BASE}/auth/options`));
   }
 
-  updateProfile(body: { name?: string; preferredRole?: Side }): Promise<User> {
+  updateProfile(body: { name?: string; preferredRole?: Side; notifyByEmail?: boolean }): Promise<User> {
     return this.run(this.http.patch<User>(`${API_BASE}/auth/profile`, body));
   }
 

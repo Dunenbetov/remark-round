@@ -1,7 +1,8 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException, Logger } from '@nestjs/common';
 import type { Prisma, ProposedClass, Remark, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
 import type { LlmUsage } from '../llm/triage-llm';
 import { ObservabilityService } from '../observability/observability.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
@@ -79,10 +80,12 @@ export interface VerdictResult {
  */
 @Injectable()
 export class RemarksService {
+  private readonly log = new Logger(RemarksService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly observability: ObservabilityService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Кадр из тела запроса — только ключ этого проекта той же формы, что выдаёт POST /media: чужой иначе ушёл бы в vision и pixel-diff (фаза 11). */
@@ -327,6 +330,7 @@ export class RemarksService {
       if (citations.length) await tx.evidenceCitation.createMany({ data: citations });
       await tx.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human', ...usageData(proposal.usage) } });
     });
+    await this.notify(ctx, remarkId, 'awaiting_pm', ctx.userId);
     return this.get(ctx, remarkId);
   }
 
@@ -427,6 +431,7 @@ export class RemarksService {
       await tx.humanVerdict.create({ data: { remarkId, runId: dto.runId, userId: ctx.userId, code: dto.verdict, comment: dto.comment?.trim() || null, idempotencyKey: dto.idempotencyKey } });
       await tx.agentRun.update({ where: { id: dto.runId }, data: { status: 'persisted' } });
     });
+    await this.notify(ctx, remarkId, next, ctx.userId);
     return { remark: await this.get(ctx, remarkId), applied: true };
   }
 
@@ -456,6 +461,7 @@ export class RemarksService {
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['defect'], 'ready_for_retest');
     await this.prisma.$transaction((tx) => this.transition(tx, remarkId, ['defect'], 'ready_for_retest', { status: 'ready_for_retest', fixedByUserId: ctx.userId }));
+    await this.notify(ctx, remarkId, 'ready_for_retest', ctx.userId);
     return this.get(ctx, remarkId);
   }
 
@@ -532,6 +538,8 @@ export class RemarksService {
       if (result.diffShot) await tx.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...result.diffShot } });
       await tx.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human', ...usageData(result.usage) } });
     });
+    // Ретест запускает сам заказчик и, пока граф сравнивает кадры, мог уйти: письмо — и ему тоже (actor = null)
+    await this.notify(ctx, remarkId, 'awaiting_business_close', null);
     return this.get(ctx, remarkId);
   }
 
@@ -555,10 +563,16 @@ export class RemarksService {
       await tx.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } });
       await tx.agentRun.updateMany({ where: { remarkId, mode: 'retest', status: 'awaiting_human' }, data: { status: 'persisted' } });
     });
+    await this.notify(ctx, remarkId, 'defect', ctx.userId);
     return this.get(ctx, remarkId);
   }
 
   // ---------- helpers ----------
+
+  /** Переход записан — сказать тем, кого он ждёт (ADR 009). Сбой почты не откатывает и не роняет решение. */
+  private async notify(ctx: ProjectContext, remarkId: string, status: RemarkStatus, actorUserId: string | null): Promise<void> {
+    await this.notifications.remarkChanged(ctx.projectId, remarkId, status, actorUserId).catch((e: Error) => this.log.warn(`notify ${remarkId} ${status}: ${e.message}`));
+  }
 
   private assertTransition(from: RemarkStatus, allowed: RemarkStatus[], action: string): void {
     if (!allowed.includes(from)) throw new ConflictException(`Переход «${action}» из статуса ${from} запрещён (docs/STATUS.md)`);

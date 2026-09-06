@@ -15,7 +15,7 @@ import { Skeleton } from '../ui/skeleton';
 
 /**
  * Участники проекта (ADR 005, ADR 006): руководитель приёмки добавляет по e-mail — зарегистрированный входит сразу,
- * незнакомый получает ссылку-приглашение, которую PM копирует и шлёт сам (писем нет). Токен ссылки сервер отдаёт
+ * незнакомый получает ссылку-приглашение, которая уходит письмом при настроенном SMTP (ADR 009), иначе PM копирует и шлёт сам. Токен ссылки сервер отдаёт
  * один раз; «Новая ссылка» выпускает заново. Роль — на проект, меняется здесь же; «Убрать из проекта» — через
  * 5-секундную отмену, как любое необратимое действие.
  */
@@ -106,7 +106,7 @@ import { Skeleton } from '../ui/skeleton';
             <section class="paper inv" [attr.aria-label]="copy.invitationsTitle">
               <div class="inv__head">
                 <div class="eyebrow">{{ copy.invitationsTitle }}</div>
-                <p class="meta inv__hint">{{ copy.invitationsHint }}</p>
+                <p class="meta inv__hint">{{ mailOn() ? copy.invitationsHintMail : copy.invitationsHint }}</p>
               </div>
               <ul class="inv__list">
                 @for (inv of invitations(); track inv.id) {
@@ -275,6 +275,8 @@ export class TeamPage {
   protected readonly copiedId = signal<string | null>(null);
   /** Сырые токены, полученные в этой сессии страницы (создание или «Новая ссылка»): сервер их больше не отдаст. */
   protected readonly links = signal<Record<string, InvitationLink>>({});
+  /** Письма настроены на сервере (ADR 009): подсказка про ссылку меняется. */
+  protected readonly mailOn = signal(false);
   protected readonly linking = signal<string | null>(null);
   /** Строка, ждущая отмены: скрыта, пока идёт отсчёт; отмена возвращает её. */
   private readonly hiddenUserId = signal<string | null>(null);
@@ -301,6 +303,7 @@ export class TeamPage {
   }
 
   protected async load(): Promise<void> {
+    this.api.authOptions().then((o) => this.mailOn.set(o.mail)).catch(() => null);
     this.loading.set(true);
     this.error.set(null);
     try {
@@ -342,7 +345,7 @@ export class TeamPage {
     this.addNote.set(null);
     try {
       const result = await this.api.addMember(this.projectId(), { email: this.email().trim(), role: this.side() });
-      this.addNote.set(result.kind === 'member' ? this.copy.addedMember(result.member.name) : this.copy.addedInvitation(result.invitation.email));
+      this.addNote.set(result.kind === 'member' ? this.copy.addedMember(result.member.name) : result.invitation.emailed ? this.copy.addedInvitationMailed(result.invitation.email) : this.copy.addedInvitation(result.invitation.email));
       if (result.kind === 'invitation') this.remember(result.invitation.id, result.invitation);
       this.email.set('');
       await this.load();
