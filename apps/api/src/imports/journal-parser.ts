@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { sniff } from '../storage/sniff';
 import { HEADER_ALIASES, JOURNAL_COLUMNS, JOURNAL_HEADERS, JournalColumn } from './journal-template';
 
 export type JournalCells = Record<JournalColumn, string>;
@@ -26,8 +27,11 @@ export interface ParsedJournalRow {
 export class JournalTemplateError extends Error {}
 
 export const MAX_JOURNAL_ROWS = 500;
+/** Как в CreateRemarkDto: длиннее — строка уходит человеку, полный текст остаётся в ImportRow.rawJson. */
+export const MAX_CELL_CHARS = 2000;
 
 export const REASON_EMPTY_DESCRIPTION = 'пустое описание';
+export const REASON_TOO_LONG = `описание или «как должно быть» длиннее ${MAX_CELL_CHARS} знаков — сократите`;
 export const REASON_TOO_MANY_CELLS = 'в строке больше ячеек, чем колонок в шаблоне — проверьте кавычки';
 
 /**
@@ -36,8 +40,10 @@ export const REASON_TOO_MANY_CELLS = 'в строке больше ячеек, �
  */
 export async function parseJournal(data: Buffer, fileName: string): Promise<ParsedJournalRow[]> {
   const ext = fileName.toLowerCase().slice(fileName.lastIndexOf('.'));
-  if (ext === '.xlsx') return parseXlsx(data);
-  if (ext === '.csv') return parseCsv(data);
+  // Содержимое обязано совпасть с расширением: xlsx — zip, csv — текст (аудит: uploads-validation-parsers)
+  if (ext === '.xlsx' && sniff(data) === 'zip') return parseXlsx(data);
+  if (ext === '.csv' && sniff(data) === 'text') return parseCsv(data);
+  if (ext === '.xlsx' || ext === '.csv') throw new JournalTemplateError('Содержимое файла не совпадает с его типом: нужен настоящий .xlsx или .csv');
   throw new JournalTemplateError('Журнал принимается только в .xlsx или .csv по шаблону');
 }
 
@@ -233,6 +239,7 @@ function toRow(rowNumber: number, columns: Map<JournalColumn, number>, raw: stri
     return { rowNumber, cells, status: 'needs_human_parse', reason: REASON_TOO_MANY_CELLS };
   }
   if (!cells.description) return { rowNumber, cells, status: 'needs_human_parse', reason: REASON_EMPTY_DESCRIPTION };
+  if (cells.description.length > MAX_CELL_CHARS || cells.expected.length > MAX_CELL_CHARS) return { rowNumber, cells, status: 'needs_human_parse', reason: REASON_TOO_LONG };
   return { rowNumber, cells, status: 'parsed' };
 }
 

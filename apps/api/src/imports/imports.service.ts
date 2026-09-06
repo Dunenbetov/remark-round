@@ -6,7 +6,7 @@ import { RemarksService } from '../remarks/remarks.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import { ImportJobView, ImportRowView } from './import.dto';
-import { JournalCells, JournalTemplateError, parseJournal } from './journal-parser';
+import { JournalCells, JournalTemplateError, MAX_CELL_CHARS, parseJournal } from './journal-parser';
 
 export interface ImportInput {
   roundId: string;
@@ -57,8 +57,9 @@ export class ImportService {
       const remark = await this.remarks.createImported(ctx, round.id, {
         externalId: row.cells.external_id || null,
         pageOrScreen: row.cells.page_or_screen || null,
-        description: row.cells.description,
-        expected: row.cells.expected || null,
+        // Полная ячейка остаётся в ImportRow.rawJson; в замечание — не длиннее лимита формы «Допишите строку»
+        description: clipCell(row.cells.description),
+        expected: clipCell(row.cells.expected) || null,
         severity: row.cells.severity || null,
         screenshot: screenshotKey ? { storageKey: screenshotKey, width: row.image!.width, height: row.image!.height } : null,
         status: row.status === 'parsed' ? 'imported' : 'needs_human_parse',
@@ -134,4 +135,8 @@ export class ImportService {
 
 function firstLine(s: string): string {
   return s.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+}
+
+function clipCell(text: string): string {
+  return text.length > MAX_CELL_CHARS ? `${text.slice(0, MAX_CELL_CHARS - 1)}…` : text;
 }

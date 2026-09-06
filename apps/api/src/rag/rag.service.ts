@@ -73,6 +73,8 @@ export class RagService implements OnModuleInit {
           await this.prisma.document.update({ where: { id: doc.id }, data: { status: 'parsed' } });
 
           const chunks = chunkByHeadings(text);
+          // Скан без текстового слоя или пустой файл: «indexed» с нулём чанков выглядел бы как готовый пакет (аудит: empty-index-scanned-pdf)
+          if (!chunks.length) throw new Error('текст не извлечён — похоже на скан без текстового слоя или пустой файл');
           const vectors = await this.embeddings.embed(chunks.map((c) => c.embedText));
 
           await this.prisma.$transaction(async (tx) => {

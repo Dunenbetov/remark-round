@@ -1,6 +1,7 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
+import { sniff } from '../storage/sniff';
 
 export type SupportedMime =
   | 'application/pdf'
@@ -23,6 +24,14 @@ export function detectMime(fileName: string, declared?: string): SupportedMime {
   if (byExt) return byExt;
   if (declared && (Object.values(BY_EXT) as string[]).includes(declared)) return declared as SupportedMime;
   throw new UnprocessableEntityException('Поддерживаются PDF, DOCX, Markdown и текст');
+}
+
+/** Содержимое обязано совпасть с заявленным типом: PDF начинается с %PDF, DOCX — zip, markdown и текст — текст без NUL. */
+export function assertContent(data: Buffer, mime: SupportedMime): void {
+  const kind = sniff(data);
+  const ok =
+    mime === 'application/pdf' ? kind === 'pdf' : mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? kind === 'zip' : kind === 'text';
+  if (!ok) throw new UnprocessableEntityException('Содержимое файла не совпадает с его типом: нужен настоящий PDF, DOCX, Markdown или текст');
 }
 
 /**

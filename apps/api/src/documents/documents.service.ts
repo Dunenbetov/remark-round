@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { DocumentKind, DocumentStatus } from '@remarkround/db';
 import { PrismaService } from '../prisma/prisma.service';
-import { detectMime } from '../rag/extract';
+import { assertContent, detectMime } from '../rag/extract';
 import { RagService } from '../rag/rag.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
@@ -61,6 +61,7 @@ export class DocumentsService {
   async upload(ctx: ProjectContext, input: UploadInput, options: { indexInBackground?: boolean } = {}): Promise<DocumentSummary> {
     if (!input.data.length) throw new UnprocessableEntityException('Пустой файл');
     const mime = detectMime(input.fileName, input.mime);
+    assertContent(input.data, mime);
     const storageKey = await this.storage.save(ctx.projectId, input.fileName, input.data);
     const doc = await this.prisma.document.create({
       data: {

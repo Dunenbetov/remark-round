@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import { IMAGE_KIND_BY_EXT, sniff } from '../storage/sniff';
 import { StorageService } from '../storage/storage.service';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
@@ -57,6 +58,8 @@ export class MediaController {
     const ext = extname(file.originalname).toLowerCase();
     // SVG больше не принимаем: pixelmatch его не сравнивает, а скрипт внутри — лишний риск (фаза 11)
     if (!IMAGE_MIME[ext] || ext === '.svg') throw new UnprocessableEntityException('Скрин: PNG, JPG, WebP или GIF');
+    // Содержимое обязано совпасть с расширением: чужой формат под маской картинки в pixelmatch и vision не пойдёт
+    if (sniff(file.buffer) !== IMAGE_KIND_BY_EXT[ext]) throw new UnprocessableEntityException('Файл не похож на картинку этого формата');
     const storageKey = await this.storage.save(ctx.projectId, file.originalname, file.buffer);
     return { storageKey, url: mediaUrl(ctx.projectId, storageKey) };
   }
