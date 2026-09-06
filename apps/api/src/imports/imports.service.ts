@@ -120,13 +120,14 @@ export class ImportService {
   }
 
   /**
-   * Разбор строк по очереди после ответа клиенту: импорт из 10–12 строк не должен держать запрос
-   * и не должен запускать десять графов разом. Упавшая строка остаётся `imported` — с карточки её можно запустить снова.
+   * Разбор строк — задачами очереди (JobsService): импорт из 300 строк не держит запрос, порядок и параллельность
+   * задаёт воркер (GRAPH_MAX_CONCURRENT / на проект), рестарт API не теряет строки. Упавшая после повторов строка
+   * остаётся `imported` с причиной на карточке — её можно запустить снова.
    */
   private async triageInBackground(ctx: ProjectContext, remarkIds: string[]): Promise<void> {
     for (const id of remarkIds) {
       try {
-        await this.agent.startTriage(ctx, id, { wait: true });
+        await this.agent.startTriage(ctx, id);
       } catch (e) {
         this.log.warn(`import triage ${id}: ${(e as Error).message}`);
       }

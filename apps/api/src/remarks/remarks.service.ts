@@ -342,11 +342,20 @@ export class RemarksService {
     return next;
   }
 
-  /** Прогоны, которые остались `running` после падения процесса: чекпоинт есть, исполнителя нет. */
+  /**
+   * Прогоны, которые остались `running` без исполнителя: чекпоинт есть, задачи в очереди нет (упал процесс до
+   * появления очереди, задача исчерпала попытки и была снята вручную). Прогон с живой задачей — ждёт свой повтор.
+   */
   async failStaleRuns(olderThanMs: number): Promise<number> {
     const stale = await this.prisma.agentRun.findMany({ where: { status: 'running', createdAt: { lt: new Date(Date.now() - olderThanMs) } }, select: { id: true } });
-    for (const run of stale) await this.failRun(run.id, { code: 'process_restart', message: 'Прогон прервался при перезапуске сервера — запустите снова' });
-    return stale.length;
+    let n = 0;
+    for (const run of stale) {
+      const pending = await this.prisma.job.count({ where: { runId: run.id, status: { in: ['queued', 'running'] } } });
+      if (pending) continue;
+      await this.failRun(run.id, { code: 'process_restart', message: 'Прогон прервался при перезапуске сервера — запустите снова' });
+      n++;
+    }
+    return n;
   }
 
   /**

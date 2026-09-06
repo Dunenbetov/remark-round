@@ -74,6 +74,14 @@ enum ImportRowStatus {
   failed
 }
 
+enum JobStatus {
+  queued
+  running
+  done
+  failed
+  cancelled
+}
+
 /// Предложение модели до решения человека (docs/WS.md ProposedClass)
 enum ProposedClass {
   defect_candidate
@@ -390,4 +398,34 @@ model ImportRow {
   job        ImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId])
+}
+
+/// Фоновая задача (аудит: no-job-queue): прогон графа, индексация документа. Очередь живёт в той же Postgres —
+/// SELECT … FOR UPDATE SKIP LOCKED вместо брокера (REMARKROUND §5: без Kafka/микросервисов). Рестарт API
+/// не теряет работу: running с протухшим lockedAt возвращается в queued, временные ошибки модели — повтор с паузой.
+model Job {
+  id          String    @id @default(uuid())
+  /// graph | index_document
+  kind        String
+  projectId   String?
+  /// Для graph — runId прогона: cancel помечает очередь этого прогона cancelled
+  runId       String?
+  payload     Json
+  status      JobStatus @default(queued)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  /// Не раньше этого момента (backoff повторов)
+  runAfter    DateTime  @default(now())
+  /// Кто и когда взял: инстанс API (heartbeat раз в 15 с); lockedAt старше минуты — задача осиротела
+  lockedAt    DateTime?
+  lockedBy    String?
+  /// Инстанс, поставивший задачу: в тестах воркер берёт только свои
+  owner       String
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  finishedAt  DateTime?
+
+  @@index([status, runAfter])
+  @@index([runId])
 }

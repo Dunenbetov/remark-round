@@ -12,6 +12,7 @@ import { GatewayModule } from './gateway/gateway.module';
 import { HealthModule } from './health/health.module';
 import { HttpExceptionsFilter } from './http/http-exception.filter';
 import { ImportsModule } from './imports/imports.module';
+import { JobsModule } from './jobs/jobs.module';
 import { LlmModule } from './llm/llm.module';
 import { MediaModule } from './media/media.module';
 import { ObservabilityModule } from './observability/observability.module';
@@ -76,6 +77,7 @@ const REQUEST_ID = /^[\w.-]{8,64}$/;
     GatewayModule,
     ImportsModule,
     AdminModule,
+    JobsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

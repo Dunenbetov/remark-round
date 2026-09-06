@@ -37,6 +37,12 @@ elif grep -q '"llm":"rules"' /tmp/rr-health.json 2>/dev/null; then
   problems="$problems\n• API: граф работает правилами без модели (llm=rules)"
 elif grep -q '"vectorIndex":"missing"' /tmp/rr-health.json 2>/dev/null; then
   problems="$problems\n• API: нет HNSW-индекса (retrieve полным сканом)"
+else
+  # Очередь задач: сотня ждущих задач при исправном API — воркер не берёт их или модель лежит дольше всех повторов
+  queued=$(sed -n 's/.*"jobs":{"queued":\([0-9]*\).*/\1/p' /tmp/rr-health.json 2>/dev/null)
+  if [ -n "$queued" ] && [ "$queued" -ge "${JOBS_QUEUED_ALERT:-100}" ]; then
+    problems="$problems\n• API: в очереди задач $queued ждущих (docker compose logs api | grep jobs)"
+  fi
 fi
 
 [ -z "$problems" ] && exit 0

@@ -2,7 +2,9 @@ import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { startActiveObservation } from '@langfuse/tracing';
 import { Prisma, type DocumentKind } from '@remarkround/db';
 import { randomUUID } from 'node:crypto';
+import { JobsService, RetryJobError, type JobContext } from '../jobs/jobs.service';
 import { EmbeddingsService } from '../llm/embeddings.service';
+import { classifyRunError, isRetryable } from '../llm/llm-errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
@@ -43,9 +45,11 @@ export class RagService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly embeddings: EmbeddingsService,
+    private readonly jobs: JobsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    this.jobs.register('index_document', (payload, ctx) => this.indexJob(payload as { documentId: string }, ctx));
     try {
       const rows = await this.prisma.$queryRaw<Array<{ indexname: string }>>`SELECT indexname FROM pg_indexes WHERE tablename = 'DocumentChunk' AND indexdef ILIKE '%USING hnsw%'`;
       this.vectorIndex = rows.length ? 'ok' : 'missing';
@@ -58,6 +62,20 @@ export class RagService implements OnModuleInit {
   /** Для /health: есть ли векторный индекс. */
   get vectorIndexStatus(): 'ok' | 'missing' | 'unknown' {
     return this.vectorIndex;
+  }
+
+  /** Индексация в очереди задач: временная ошибка эмбеддингов (429, 5xx) — повтор с паузой, документ возвращается в uploaded. */
+  private async indexJob(payload: { documentId: string }, ctx: JobContext): Promise<void> {
+    try {
+      await this.indexDocument(payload.documentId);
+    } catch (e) {
+      const failure = classifyRunError(e);
+      if (isRetryable(failure) && ctx.attempt < ctx.maxAttempts) {
+        await this.prisma.document.update({ where: { id: payload.documentId }, data: { status: 'uploaded' } }).catch(() => null);
+        throw new RetryJobError(`${failure.code}: ${(e as Error).message}`);
+      }
+      throw e;
+    }
   }
 
   /** Полная переиндексация документа: статус parsed → indexed, при ошибке failed. Свой trace Langfuse `index_document`. */

@@ -37,6 +37,7 @@ flowchart LR
 | Imports | Только официальный шаблон журнала (CSV/XLSX, картинки из ячеек); пустое описание → `needs_human_parse` | `apps/api/src/imports` |
 | Remarks | Единственный путь записи: статусы по `STATUS.md`, вердикт человека, идемпотентность `(runId, idempotencyKey)`; совет разработчика `DeveloperAdvice` (не вердикт, событие `remark.advice`) | `apps/api/src/remarks` |
 | Agent | Граф триажа (retrieve → vision → bind ↔ rewrite ≤ 2 → classify → draft → faithfulness ↔ bind ≤ 2 → interrupt PM) и граф ретеста (pixel-diff → explain → interrupt бизнеса); guardrail входа; чекпоинты `GraphCheckpoint` | `apps/api/src/agent` |
+| Jobs | Очередь фоновых задач в той же Postgres (`Job`, `FOR UPDATE SKIP LOCKED`): прогоны графа и индексация документов; повтор временной ошибки модели с паузой, возврат осиротевших задач после падения процесса, heartbeat, остановка по SIGTERM | `apps/api/src/jobs` |
 | Llm | Контракт `TriageLlm`: OpenAI (`gpt-4.1-mini` / `gpt-4.1`) или `RulesTriageLlm` без ключа; Skill `uat-triage` в промпте; стоимость по прайсу | `apps/api/src/llm` |
 | Diff | pixelmatch, `cannot_compare` на разных размерах / другом экране | `apps/api/src/diff` |
 | Gateway | socket.io комната `remark:{id}`: фазы, токены черновика, presence, вердикт, совет разработчика (`remark.advice`) | `apps/api/src/gateway` |
@@ -83,7 +84,7 @@ sequenceDiagram
   API->>DB: HumanVerdict + status defect
 ```
 
-Как сделано (фаза 6): `AgentService.startTriage` создаёт `AgentRun` через `RemarksService.beginTriage` и запускает граф в фоне; ответ REST — `triaging` + `runId`. Ноды зовут `RagService.search` (SQL с `projectId`), `LlmService` (OpenAI или правила), `RemarksService.applyProposal`; `RunEvents` раздаёт фазы, токены и цитаты в комнату `remark:{id}` через `RemarkGateway`. Вердикт — `AgentService.verdict` → `RemarksService.verdict` (идемпотентный `HumanVerdict`) → `Command({ resume })` в тот же thread. Чекпоинты — `GraphCheckpoint` (порт MemorySaver на Prisma).
+Как сделано (фаза 6): `AgentService.startTriage` создаёт `AgentRun` через `RemarksService.beginTriage` и кладёт задачу `graph` в очередь `JobsService`; ответ REST — `triaging` + `runId`, граф исполняет воркер очереди (см. «Очередь задач» ниже). Ноды зовут `RagService.search` (SQL с `projectId`), `LlmService` (OpenAI или правила), `RemarksService.applyProposal`; `RunEvents` раздаёт фазы, токены и цитаты в комнату `remark:{id}` через `RemarkGateway`. Вердикт — `AgentService.verdict` → `RemarksService.verdict` (идемпотентный `HumanVerdict`) → `Command({ resume })` в тот же thread. Чекпоинты — `GraphCheckpoint` (порт MemorySaver на Prisma).
 
 ## Путь: ретест
 
@@ -97,13 +98,18 @@ sequenceDiagram
 
 Почему детектор не последняя линия обороны: фильтр проекта стоит в SQL, закрытие — только `HumanVerdict` роли `business`, дефект без цитаты невозможен в `classify` и в воротах. Injection не может снять ни одно из этих правил (`guardrail.injection.spec`, `evals` тип 10: 3/3 `cannot_tell`). PII: для курса синтетика; для компании — договор на облачную модель или локальная за `LlmModule`.
 
+## Очередь задач
+
+Всё, что дольше HTTP-запроса — прогон графа (старт и продолжение после вердикта) и индексация документа, — задача в таблице `Job` той же Postgres (`apps/api/src/jobs`). Отдельного брокера нет намеренно: одна база — один бэкап, один restore, одна транзакция «создать `AgentRun` и задачу к нему». Воркер живёт в каждом процессе API: берёт задачу `SELECT … FOR UPDATE SKIP LOCKED` (два процесса не возьмут одну), держит `lockedAt` heartbeat'ом, по SIGTERM даёт активным до 25 с и возвращает недоделанное в `queued`; на старте задачи с протухшим `lockedAt` (процесс упал, не дописав) возвращаются в очередь и исполняются заново — прогон графа на повторе начинает с чистого thread. Временная ошибка модели (таймаут, 429, 5xx) — `RetryJobError`: задача повторяется через 30 с, 2 мин, 8 мин, карточка всё это время «разбирается», и только после последней попытки прогон становится `failed` с текстом причины; ошибка ключа или запроса — сразу `failed`. `run.cancel` снимает ещё не начатую задачу и прерывает начатую. Обработчики регистрируют модули-владельцы (`AgentService` → `graph`, `RagService` → `index_document`): очередь не знает домена. `wait: true` (evals, тесты) исполняет граф прямо в вызове, минуя очередь. `/health` отдаёт `jobs: {queued, running}`; лимиты — `JOBS_CONCURRENCY`, `GRAPH_MAX_CONCURRENT`, `GRAPH_MAX_PER_PROJECT`. Завершённые задачи хранятся 30 дней (упавшие — 90, с `lastError`) и удаляются на старте процесса.
+
 ## Стоимость, латентность, fallback
 
 Один триаж — около $0.008 и 5 с (vision + classify + draft), ретест — $0.004 и 1.3 с; несопоставимые и идентичные кадры решаются без модели (`docs/EVALS.md`). Дешёвая модель на classify / vision / rewrite / explain, сильная только на черновик для человека. Без `OPENAI_API_KEY` (в production — только с явным `LLM_MODE=rules`, иначе процесс не стартует; ошибки ключа в рантайме валят прогон, а не подменяют модель правилами) тот же граф идёт на `RulesTriageLlm` — правила по близости retrieve: стенд и тесты работают офлайн, черновик честный (без выдуманных разделов), но грубее (binding 21/30 против 25/30). Провайдер заменяется за `LlmModule` без изменения нод; ретест-ветка переключается `RETEST_STRATEGY`.
 
 ## Осознанные trade-off
 
-- **LangGraph.js in-process, не CrewAI / Parlant и не отдельный Python-сервис.** Нужны циклы с лимитом, interrupt дольше HTTP и чекпоинт в той же Postgres; один процесс и один язык дешевле в поддержке, чем два рантайма. Цена — граф живёт в Nest, масштабирование горизонтально требует внешнего чекпоинтера (он уже на Prisma).
+- **LangGraph.js in-process, не CrewAI / Parlant и не отдельный Python-сервис.** Нужны циклы с лимитом, interrupt дольше HTTP и чекпоинт в той же Postgres; один процесс и один язык дешевле в поддержке, чем два рантайма. Цена — граф живёт в Nest; чекпоинтер и очередь задач уже в Postgres, так что второй процесс API подхватит прогоны без переделки.
+- **Очередь задач в Postgres, не Redis / BullMQ.** Задач — единицы в минуту, а не тысячи в секунду; вторая система хранения означала бы второй бэкап, второй restore и задачу, которая пережила откат базы. **Пересмотреть**, если задач станет больше ~10 в секунду или понадобятся приоритеты и отложенные расписания.
 - **pgvector, не Qdrant / Chroma.** Тенанси в одном SQL `WHERE projectId` вместе с цитатами и статусами; отдельная векторная БД добавила бы второй источник истины для фильтра проекта.
 - **MCP как фасад REST, не прямой доступ к сервисам.** Один путь записи, одна авторизация, один тест leakage; цена — MCP не умеет ничего, чего нет в REST (и это намеренно).
 - **Правила без LLM как fallback, а не вторая модель.** Дешевле и честнее: при недоступности модели продукт не «врёт с меньшим качеством», а переходит на детерминированный retrieve с теми же воротами.

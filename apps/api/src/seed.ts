@@ -8,6 +8,7 @@ import { PrismaClient, type DocumentKind, type Role } from '@remarkround/db';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { hashPassword } from './auth/password';
+import { JobsService } from './jobs/jobs.service';
 import { EmbeddingsService } from './llm/embeddings.service';
 import { PrismaService } from './prisma/prisma.service';
 import { RagService } from './rag/rag.service';
@@ -87,7 +88,8 @@ export async function seed(prisma: PrismaClient, options: { index?: boolean } = 
   const embeddings = new EmbeddingsService();
   const shouldIndex = options.index ?? embeddings.available;
   if (shouldIndex) {
-    const rag = new RagService(prisma as PrismaService, storage, embeddings);
+    // Сид индексирует прямо здесь, воркер очереди не запускается (onModuleInit не вызывается)
+    const rag = new RagService(prisma as PrismaService, storage, embeddings, new JobsService(prisma as PrismaService));
     for (const d of SEED.documents) {
       const result = await rag.indexDocument(d.id);
       console.log(`seed: indexed ${d.title} — ${result.chunks} chunks`);

@@ -35,7 +35,7 @@ docker compose pull                                 # образы api/web/mcp �
 docker compose run --rm api migrate                 # миграции — отдельным шагом (в проде MIGRATE_ON_START=false)
 docker compose up -d
 docker compose ps                                   # api/web/mcp — healthy
-curl -s https://$PUBLIC_HOST/api/v1/health          # {"ok":true,"db":"ok","version":"sha-…","llm":"openai","vectorIndex":"ok"}
+curl -s https://$PUBLIC_HOST/api/v1/health          # {"ok":true,"db":"ok","version":"sha-…","llm":"openai","vectorIndex":"ok","jobs":{"queued":0,"running":0}}
 curl -s https://$PUBLIC_HOST/api/v1/auth/options    # {"demoLogins":false,"registration":"invite_only"} — демо-персон нет, seed не шёл
 ```
 
@@ -57,6 +57,8 @@ docker compose run --rm api migrate        # применит непримене
 docker compose up -d api web mcp
 docker compose ps && curl -s https://$PUBLIC_HOST/api/v1/health   # version = RR_TAG
 ```
+
+Во время `up -d` старый контейнер api получает SIGTERM: воркер очереди не берёт новых задач, даёт бегущим прогонам до 25 с и возвращает недоделанные в очередь; новый контейнер их подхватывает (задачи с протухшим `lockedAt` возвращаются в `queued` на старте). Карточки в «разбирается» доходят до вердикта сами, кнопку «запустить снова» нажимать не нужно. Перед обновлением можно глянуть `/health` → `jobs.running`: ноль — самый спокойный момент.
 
 Откат кода — вернуть прежний `RR_TAG` и повторить `pull && up -d` (сборки нет, минута). Откат данных — restore ниже: миграции Prisma не откатываются автоматически, поэтому миграцию, которая удаляет или переписывает данные, сначала репетируют на копии (`docs/adr/008-release-and-ownership.md`).
 
@@ -84,7 +86,8 @@ docker compose ps && curl -s https://$PUBLIC_HOST/api/v1/health   # version = RR
   ```bash
   echo '0 * * * * ALERT_TELEGRAM_BOT_TOKEN=… ALERT_TELEGRAM_CHAT_ID=… /opt/remark-round/deploy/alerts.sh' | crontab -
   ```
-- **Что делать, если** OpenAI лежит или ключ протух: карточки показывают «сервис модели недоступен» / «ключ не принят», прогоны можно запускать снова кнопкой; ключ меняется в `.env` и `docker compose up -d api`. Диск кончился: `docker system prune`, затем проверить `docker compose ps` и `/health`; кадры и дампы — самые крупные тома (`docker system df -v`). Postgres не отвечает: `docker compose logs postgres`, `docker compose restart postgres`, затем `/health` → `db: ok`.
+- **Очередь задач.** `/health` → `jobs: {queued, running}`. Растущий `queued` при `running: 0` — воркер не берёт задачи (смотреть `docker compose logs api | grep jobs`); задача, упавшая после всех попыток, — `Job.status = failed` с `lastError`, прогон при этом уже помечен `failed` с причиной на карточке. Осмотреть: `docker compose exec postgres psql -U remarkround -c "select kind, status, attempts, \"lastError\" from \"Job\" where status in ('queued','running','failed') order by \"createdAt\" desc limit 20"`.
+- **Что делать, если** OpenAI лежит или ключ протух: таймауты, 429 и 5xx модели очередь повторяет сама через 30 с, 2 мин и 8 мин — карточка всё это время «разбирается»; после последней попытки и при ошибке ключа карточки показывают «сервис модели недоступен» / «ключ не принят», прогоны можно запускать снова кнопкой; ключ меняется в `.env` и `docker compose up -d api`. Диск кончился: `docker system prune`, затем проверить `docker compose ps` и `/health`; кадры и дампы — самые крупные тома (`docker system df -v`). Postgres не отвечает: `docker compose logs postgres`, `docker compose restart postgres`, затем `/health` → `db: ok`.
 
 ## Обслуживание БД
 
@@ -114,7 +117,7 @@ UI Langfuse наружу не публикуется (порт 3000 только
 
 Каждый пункт — с условием, когда его пересмотреть; иначе через полгода не отличить решение от забывчивости.
 
-- Один инстанс API: socket.io без Redis, файлы на локальном томе, прогоны графа в процессе. Для второго инстанса нужны Redis-адаптер, S3 и очередь. **Пересмотреть до подключения второй команды с требованием к аптайму деплоя.**
+- Один инстанс API: socket.io без Redis, файлы на локальном томе. Прогоны графа и индексация уже идут через очередь в Postgres и переживают перезапуск; для второго инстанса остаются Redis-адаптер socket.io и общее хранилище файлов (S3). **Пересмотреть до подключения второй команды с требованием к аптайму деплоя.**
 - Почта: приглашения — ссылкой, «забыли пароль» и подтверждение e-mail — нет. **Пересмотреть при первом же потоке обращений «сбросьте пароль» или до раскатки на несколько команд.**
 - Метрики: Prometheus/Grafana нет — есть `/health` (версия, режим модели, векторный индекс), структурные логи и `deploy/alerts.sh`. Полноценные метрики и Sentry — **до раскатки на несколько команд.**
 - Staging: отдельного окружения нет, релиз проверяется на демо-стенде и в CI. **Пересмотреть, когда цена сломанного релиза станет дороже второго сервера.**

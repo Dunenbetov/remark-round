@@ -1,5 +1,6 @@
-import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { DocumentKind, DocumentStatus } from '@remarkround/db';
+import { JobsService } from '../jobs/jobs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertContent, detectMime } from '../rag/extract';
 import { RagService } from '../rag/rag.service';
@@ -31,12 +32,11 @@ export interface UploadInput {
  */
 @Injectable()
 export class DocumentsService {
-  private readonly log = new Logger(DocumentsService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly rag: RagService,
+    private readonly jobs: JobsService,
   ) {}
 
   async list(ctx: ProjectContext): Promise<DocumentSummary[]> {
@@ -74,9 +74,8 @@ export class DocumentsService {
         effectiveAt: input.effectiveAt ?? null,
       },
     });
-    if (options.indexInBackground ?? true) {
-      void this.rag.indexDocument(doc.id).catch((e: Error) => this.log.warn(`background index ${doc.id}: ${e.message}`));
-    }
+    // Индексация — задача очереди (аудит: no-job-queue): переживает рестарт, повторяет временные ошибки эмбеддингов
+    if (options.indexInBackground ?? true) await this.jobs.enqueue('index_document', { documentId: doc.id }, { projectId: ctx.projectId });
     return toSummary(doc);
   }
 
@@ -84,7 +83,8 @@ export class DocumentsService {
   async reindex(ctx: ProjectContext, documentId: string): Promise<DocumentSummary> {
     const row = await this.prisma.document.findFirst({ where: { id: documentId, projectId: ctx.projectId } });
     if (!row) throw new NotFoundException();
-    void this.rag.indexDocument(row.id).catch((e: Error) => this.log.warn(`reindex ${row.id}: ${e.message}`));
+    await this.prisma.document.update({ where: { id: row.id }, data: { status: 'uploaded' } });
+    await this.jobs.enqueue('index_document', { documentId: row.id }, { projectId: ctx.projectId });
     return toSummary({ ...row, status: 'uploaded' });
   }
 }

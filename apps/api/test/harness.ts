@@ -97,8 +97,13 @@ export async function createHarness(): Promise<Harness> {
       throw new Error(`waitFor ${remarkId}: ждали ${statuses.join('|')}, сейчас ${last}`);
     },
     cleanup: async () => {
-      // Фоновые прогоны (импорт, triage без wait) должны дописать чекпоинты до того, как их строки исчезнут
+      // Фоновые прогоны (импорт, triage без wait) должны дописать чекпоинты до того, как их строки исчезнут;
+      // задачи очереди, которые ещё ждут (повтор с паузой), снимаем — их прогоны ниже удалятся вместе с remarks
+      await prisma.job.updateMany({ where: { projectId: project.id, status: 'queued' }, data: { status: 'cancelled', finishedAt: new Date() } });
       for (let i = 0; i < 50 && (await prisma.agentRun.count({ where: { projectId: project.id, status: 'running' } })) > 0; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      for (let i = 0; i < 50 && (await prisma.job.count({ where: { projectId: project.id, status: 'running' } })) > 0; i++) {
         await new Promise((r) => setTimeout(r, 100));
       }
       const remarkIds = (await prisma.remark.findMany({ where: { projectId: project.id }, select: { id: true } })).map((r) => r.id);
@@ -116,6 +121,7 @@ export async function createHarness(): Promise<Harness> {
         }
       }
       await prisma.importJob.deleteMany({ where: { projectId: project.id } });
+      await prisma.job.deleteMany({ where: { projectId: project.id } });
       await prisma.round.deleteMany({ where: { projectId: project.id } });
       await prisma.documentChunk.deleteMany({ where: { projectId: project.id } });
       await prisma.document.deleteMany({ where: { projectId: project.id } });

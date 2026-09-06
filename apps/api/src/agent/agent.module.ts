@@ -1,4 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { JobsModule } from '../jobs/jobs.module';
 import { DiffModule } from '../diff/diff.module';
 import { LlmModule } from '../llm/llm.module';
 import { RagModule } from '../rag/rag.module';
@@ -12,7 +13,7 @@ import { RunEvents } from './run-events';
  * RemarksModule ↔ AgentModule связаны forwardRef: контроллер замечаний стартует прогон, граф пишет через RemarksService.
  */
 @Module({
-  imports: [forwardRef(() => RemarksModule), RagModule, DiffModule, StorageModule, LlmModule],
+  imports: [forwardRef(() => RemarksModule), RagModule, DiffModule, StorageModule, LlmModule, JobsModule],
   providers: [AgentService, RunEvents],
   exports: [AgentService, RunEvents],
 })
