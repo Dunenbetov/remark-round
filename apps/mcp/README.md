@@ -17,7 +17,7 @@ Tool'а «закрыть замечание» **нет** и не будет: `cl
 
 ## Проект — из токена, не из аргумента
 
-Ни один tool не принимает `projectId`. Токен выдаёт API: `POST /api/v1/projects/:projectId/mcp-token` (любой участник проекта) — это JWT с полем `projectId` из membership. С таким токеном API отдаёт 404 на любой другой проект, даже если пользователь там тоже состоит (`MembershipGuard`, WS `join`). Роли — те же `RolesGuard`, что для Angular; отказ приходит модели текстом («Роль не позволяет…»), а не падением процесса.
+Ни один tool не принимает `projectId`. Токен выдаёт API: `POST /api/v1/projects/:projectId/mcp-token` (любой участник проекта) — это JWT с полем `projectId` из membership. С таким токеном API отдаёт 404 на любой другой проект, даже если пользователь там тоже состоит (`MembershipGuard`, WS `join`), а также на всё вне `/projects/:projectId/*` — список проектов, `/auth/*`, приглашения (`JwtAuthGuard`, фаза 11). Смена пароля пользователем отзывает и этот токен — выпустите новый. Роли — те же `RolesGuard`, что для Angular; отказ приходит модели текстом («Роль не позволяет…»), а не падением процесса.
 
 ```bash
 TOKEN=$(curl -s localhost:3001/api/v1/auth/login -H 'content-type: application/json' \

@@ -56,7 +56,7 @@ export class DocumentsController {
   }
 
   @Post(':documentId/reindex')
-  @Roles('admin')
+  @Roles('admin', 'pm')
   @HttpCode(202)
   reindex(@Ctx() ctx: ProjectContext, @Param('documentId') documentId: string): Promise<DocumentSummary> {
     return this.documents.reindex(ctx, documentId);

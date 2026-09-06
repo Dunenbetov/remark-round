@@ -1,6 +1,7 @@
 # RemarkRound — Docker Compose
 # cp .env.example .env && docker compose up  →  web :4200, api :3001, mcp :3002, Langfuse :3000
 # API сам применяет миграции и кладёт демо-данные (apps/api/docker-entrypoint.sh)
+# Порты опубликованы только на 127.0.0.1: наружу в проде смотрит caddy из docker-compose.prod.yml (docs/PROD.md)
 
 services:
   postgres:
@@ -8,11 +9,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: remarkround
-      POSTGRES_PASSWORD: remarkround
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-remarkround}
       POSTGRES_DB: remarkround
     ports:
       # Хост-порт: если на машине уже есть свой Postgres на 5432, задайте POSTGRES_PORT в .env
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -33,7 +34,11 @@ services:
         condition: service_started
     environment:
       PORT: 3000
-      DATABASE_URL: postgresql://remarkround:remarkround@postgres:5432/remarkround
+      # Демо-стенд (фаза 11): в образе NODE_ENV=production, но здесь — development: seed и карточки ролей на входе.
+      # Прод — docker-compose.prod.yml (production, настоящий JWT_SECRET, без seed).
+      NODE_ENV: development
+      TRUST_PROXY_HOPS: '1'
+      DATABASE_URL: postgresql://remarkround:${POSTGRES_PASSWORD:-remarkround}@postgres:5432/remarkround
       WEB_ORIGIN: http://localhost:4200
       JWT_SECRET: ${JWT_SECRET:-change-me}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -56,7 +61,13 @@ services:
       # Та же папка, что у seed и локального API: файлы документов и кадров общие (в .gitignore)
       - ./apps/api/storage:/app/apps/api/storage
     ports:
-      - '${API_PORT:-3001}:3000'
+      - '127.0.0.1:${API_PORT:-3001}:3000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/api/v1/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
 
   web:
     build:
@@ -66,7 +77,12 @@ services:
     depends_on:
       - api
     ports:
-      - '${WEB_PORT:-4200}:80'
+      - '127.0.0.1:${WEB_PORT:-4200}:80'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1/ >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   # MCP-фасад домена (ADR 003): те же REST-маршруты, токен проекта в Authorization каждого запроса.
   # Cursor / Claude Desktop: url http://localhost:3002/mcp + заголовок Bearer <POST /projects/:id/mcp-token>
@@ -82,7 +98,12 @@ services:
       MCP_PORT: 3002
       REMARKROUND_API_URL: http://api:3000/api/v1
     ports:
-      - '${MCP_PORT:-3002}:3002'
+      - '127.0.0.1:${MCP_PORT:-3002}:3002'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3002/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   # --- Langfuse self-host (official stack, separate DB from app) ---
 
@@ -96,7 +117,7 @@ services:
       TZ: UTC
       PGTZ: UTC
     ports:
-      - '5433:5432'
+      - '127.0.0.1:5433:5432'
     volumes:
       - langfuse-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -132,7 +153,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-local-dev}
     ports:
-      - '9090:9000'
+      - '127.0.0.1:9090:9000'
     volumes:
       - langfuse-minio-data:/data
     healthcheck:
@@ -206,7 +227,7 @@ services:
     restart: unless-stopped
     depends_on: *langfuse-depends-on
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     environment:
       <<: *langfuse-env
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-local-dev}

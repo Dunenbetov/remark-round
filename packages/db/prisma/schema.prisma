@@ -102,8 +102,14 @@ enum VerdictCode {
 model User {
   id           String       @id @default(uuid())
   email        String       @unique
-  passwordHash String
+  /// null — пользователь без пароля (задел под вход через Google): verifyPassword(null) всегда false
+  passwordHash String?
   name         String
+  /// Сторона при регистрации (ADR 005): подсказка для приглашений и право создавать проекты (только pm).
+  /// Роль в конкретном проекте — всегда Membership.role.
+  preferredRole Role?
+  /// Смена пароля: токены с iat раньше этого момента недействительны (выход везде, включая MCP-токены)
+  passwordChangedAt DateTime?
   memberships  Membership[]
   verdicts     HumanVerdict[]
   advices      DeveloperAdvice[]
@@ -114,6 +120,7 @@ model Project {
   id          String         @id @default(uuid())
   name        String
   memberships Membership[]
+  invitations Invitation[]
   documents   Document[]
   rounds      Round[]
   createdAt   DateTime       @default(now())
@@ -124,11 +131,35 @@ model Membership {
   userId    String
   projectId String
   role      Role
+  /// Кто добавил (без relation, как authorId у Remark); null — создатель проекта или seed
+  invitedById String?
   user      User     @relation(fields: [userId], references: [id])
   project   Project  @relation(fields: [projectId], references: [id])
+  createdAt DateTime @default(now())
 
   @@unique([userId, projectId])
   @@index([projectId])
+}
+
+/// Приглашение в проект по e-mail (ADR 005). Писем нет: ссылку /join/<token> PM отправляет сам.
+/// Принимается регистрацией или входом с этим e-mail (auto-accept) либо по token уже вошедшим пользователем.
+model Invitation {
+  id               String    @id @default(uuid())
+  projectId        String
+  /// Нормализованный lower-case e-mail
+  email            String
+  role             Role
+  /// randomBytes(24).toString('base64url') — bearer-способность: у кого ссылка, тот и входит с этой ролью
+  token            String    @unique
+  invitedById      String
+  createdAt        DateTime  @default(now())
+  expiresAt        DateTime?
+  acceptedAt       DateTime?
+  acceptedByUserId String?
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, email])
+  @@index([email])
 }
 
 model Document {
@@ -159,6 +190,7 @@ model DocumentChunk {
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([documentId])
 }
 
 model Round {
@@ -218,6 +250,8 @@ model RemarkScreenshot {
   height    Int?
   remark    Remark         @relation(fields: [remarkId], references: [id], onDelete: Cascade)
   createdAt DateTime       @default(now())
+
+  @@index([remarkId])
 }
 
 model EvidenceCitation {
@@ -225,6 +259,8 @@ model EvidenceCitation {
   remarkId  String
   chunkId   String
   remark    Remark @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+
+  @@index([remarkId])
 }
 
 model AgentRun {
@@ -240,6 +276,9 @@ model AgentRun {
   remark    Remark         @relation(fields: [remarkId], references: [id])
   checkpoints GraphCheckpoint[]
   createdAt DateTime       @default(now())
+
+  @@index([remarkId])
+  @@index([status, createdAt])
 }
 
 /// Чекпоинт LangGraph (фаза 6): thread_id = AgentRun.id, поэтому interrupt живёт дольше HTTP и рестарта API.
@@ -273,6 +312,7 @@ model HumanVerdict {
   createdAt DateTime    @default(now())
 
   @@unique([runId, idempotencyKey])
+  @@index([remarkId])
 }
 
 /// Совет разработчика по замечанию в awaiting_pm: не вердикт — статус не меняет, граф не трогает.

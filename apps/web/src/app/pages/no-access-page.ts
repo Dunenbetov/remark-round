@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { EMPTY, LOGIN, NAV, ROLE_GENITIVE } from '../core/copy';
 import { homeUrl } from '../core/guards';
+import { AccountService } from '../core/account.service';
 import { SessionService } from '../core/session.service';
 import { AppBar } from '../ui/app-bar';
 import { BrandMark } from '../ui/brand-mark';
@@ -27,8 +28,8 @@ import { BrandMark } from '../ui/brand-mark';
             <p class="meta na__who">{{ who }}</p>
           }
           <div class="na__actions">
-            @if (hasProject()) {
-              <a class="btn btn--primary" [routerLink]="home()">{{ empty.toMyProject }}</a>
+            @if (loggedIn()) {
+              <a class="btn btn--primary" [routerLink]="home()">{{ hasProject() ? empty.toMyProject : empty.toMyProjects }}</a>
               <button type="button" class="btn btn--secondary" (click)="logout()">{{ nav.switchUser }}</button>
             } @else {
               <a class="btn btn--primary" routerLink="/login">{{ loginLabel }}</a>
@@ -90,12 +91,13 @@ import { BrandMark } from '../ui/brand-mark';
 })
 export class NoAccessPage {
   private readonly session = inject(SessionService);
-  private readonly router = inject(Router);
+  private readonly account = inject(AccountService);
 
   protected readonly empty = EMPTY;
   protected readonly nav = NAV;
   protected readonly loginLabel = LOGIN.submit;
 
+  protected readonly loggedIn = this.session.isLoggedIn;
   protected readonly hasProject = computed(() => this.session.memberships().length > 0);
   /** Куда ведёт «К моему проекту»: очередь разработчика или последний раунд. */
   protected readonly home = computed(() => homeUrl(this.session));
@@ -108,7 +110,6 @@ export class NoAccessPage {
   });
 
   protected logout(): void {
-    this.session.logout();
-    void this.router.navigateByUrl('/login');
+    this.account.logout();
   }
 }

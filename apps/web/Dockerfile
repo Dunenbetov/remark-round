@@ -2,10 +2,10 @@ FROM node:24-alpine AS build
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
-COPY package.json pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY apps/web ./apps/web
 
-RUN pnpm install
+RUN pnpm install --frozen-lockfile --filter @remarkround/web
 WORKDIR /app/apps/web
 RUN pnpm build
 

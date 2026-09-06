@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import OpenAI from 'openai';
+import { createOpenAi } from './openai-client';
 import { ObservabilityService } from '../observability/observability.service';
 import { OpenAiTriageLlm } from './openai-triage-llm';
 import type { ClassifyInput, ClassifyResult, DraftInput, LlmCallMeta, LlmUsage, RetestExplainInput, RetestExplainResult, RetestJudgeInput, RewriteInput, TriageLlm, VisionInput } from './triage-llm';
@@ -18,7 +18,7 @@ export class LlmService implements TriageLlm {
   constructor(observability: ObservabilityService) {
     const apiKey = process.env['OPENAI_API_KEY'];
     // Каждый вызов OpenAI — generation-span Langfuse с именем ноды (фаза 8); без ключей Langfuse клиент отдаётся как есть.
-    this.impl = apiKey ? new OpenAiTriageLlm(new OpenAI({ apiKey }), undefined, (client, meta) => observability.openai(client, meta)) : new RulesTriageLlm();
+    this.impl = apiKey ? new OpenAiTriageLlm(createOpenAi(apiKey), undefined, (client, meta) => observability.openai(client, meta)) : new RulesTriageLlm();
     this.log.log(`triage llm: ${this.impl.model}`);
   }
 

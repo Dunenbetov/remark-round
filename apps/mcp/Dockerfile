@@ -1,13 +1,15 @@
 FROM node:24-alpine
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+ENV COREPACK_HOME=/usr/local/share/corepack
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate && mkdir -p /app && chown node:node /app
+USER node
 WORKDIR /app
 
-COPY package.json pnpm-workspace.yaml .npmrc ./
-COPY apps/mcp ./apps/mcp
+COPY --chown=node:node package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY --chown=node:node apps/mcp ./apps/mcp
 # Prompt `uat-triage` отдаёт тот же Skill, что ноды графа
-COPY skills ./skills
+COPY --chown=node:node skills ./skills
 
-RUN pnpm install --filter @remarkround/mcp
+RUN pnpm install --frozen-lockfile --filter @remarkround/mcp
 RUN pnpm --filter @remarkround/mcp build
 
 WORKDIR /app/apps/mcp

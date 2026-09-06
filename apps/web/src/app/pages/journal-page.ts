@@ -80,6 +80,13 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
 
         @if (store.loading() && !store.remarks().length && !store.error()) {
           <rr-skeleton kind="table" [rows]="6" />
+        } @else if (!store.round() && !store.loading() && !store.error()) {
+          <!-- новый проект: раундов ещё нет (ADR 005) -->
+          <rr-empty-state [title]="journal.noRounds" [hint]="canOpenRound() ? journal.noRoundsHint : journal.noRoundsOther">
+            @if (canOpenRound()) {
+              <button cta type="button" class="btn btn--primary" [class.btn--busy]="creatingRound()" [disabled]="creatingRound()" (click)="newRound()">{{ nav.newRound }}</button>
+            }
+          </rr-empty-state>
         } @else if (store.total() === 0 && !store.loading()) {
           <rr-empty-state [title]="role() === 'business' ? empty.noRemarks : journal.waitingPm">
             @if (role() === 'business') {
@@ -384,6 +391,8 @@ export class JournalPage {
     return r === 'business' || r === 'pm' ? r : null;
   });
   protected readonly filter = signal<JournalChip>(this.ui.journalFilter() ?? 'Ждут меня');
+  protected readonly canOpenRound = computed(() => this.role() === 'pm' || this.role() === 'business' || this.role() === 'admin');
+  protected readonly creatingRound = signal(false);
 
   constructor() {
     effect(() => {
@@ -476,6 +485,18 @@ export class JournalPage {
 
   protected reload(): void {
     void this.store.enterRound(this.projectId(), this.round());
+  }
+
+  /** Первый раунд нового проекта. */
+  protected async newRound(): Promise<void> {
+    if (this.creatingRound()) return;
+    this.creatingRound.set(true);
+    try {
+      const round = await this.store.createRound(this.projectId());
+      if (round) await this.router.navigate(['/p', this.projectId(), 'r', round.number]);
+    } finally {
+      this.creatingRound.set(false);
+    }
   }
 
   /** «Начать разбор»: снимок очереди из «Ждут меня» в порядке показа → первая карточка. */

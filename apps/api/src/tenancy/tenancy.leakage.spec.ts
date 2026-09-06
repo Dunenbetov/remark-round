@@ -38,7 +38,7 @@ describe('tenancy leakage', () => {
     await app.init();
     http = request(app.getHttpServer());
 
-    const passwordHash = hashPassword(PASSWORD);
+    const passwordHash = await hashPassword(PASSWORD);
     const userA = await prisma.user.create({ data: { email: `a-${tag}@test.dev`, name: 'A', passwordHash } });
     const userB = await prisma.user.create({ data: { email: `b-${tag}@test.dev`, name: 'B', passwordHash } });
     const projectA = await prisma.project.create({ data: { name: `A-${tag}`, memberships: { create: { userId: userA.id, role: 'admin' } } } });
@@ -100,12 +100,33 @@ describe('tenancy leakage', () => {
     expect(docB.body.title).toBe('B.pdf');
   });
 
-  it('роль проверяется после membership: pm не читает список участников (403)', async () => {
-    await http.get(`/api/v1/projects/${ids.projectB}/members`).set(asB()).expect(403);
-    await http.get(`/api/v1/projects/${ids.projectA}/members`).set(asA()).expect(200);
+  it('роль проверяется после membership: business не читает список участников (403), admin и pm — читают', async () => {
+    const userC = await prisma.user.create({ data: { email: `c-${tag}@test.dev`, name: 'C', passwordHash: await hashPassword(PASSWORD) } });
+    await prisma.membership.create({ data: { userId: userC.id, projectId: ids.projectB, role: 'business' } });
+    const loginC = await http.post('/api/v1/auth/login').send({ email: userC.email, password: PASSWORD }).expect(200);
+    try {
+      await http.get(`/api/v1/projects/${ids.projectB}/members`).set({ Authorization: `Bearer ${loginC.body.accessToken as string}` }).expect(403);
+      await http.get(`/api/v1/projects/${ids.projectB}/members`).set(asB()).expect(200);
+      await http.get(`/api/v1/projects/${ids.projectA}/members`).set(asA()).expect(200);
+    } finally {
+      await prisma.membership.deleteMany({ where: { userId: userC.id } });
+      await prisma.user.delete({ where: { id: userC.id } });
+    }
   });
 
   it('валидация тела — 422', async () => {
     await http.post('/api/v1/auth/login').send({ email: 'not-an-email', password: '' }).expect(422);
+  });
+
+  it('токен MCP проекта A живёт только внутри A: список проектов, создание, чужой проект — 404', async () => {
+    const minted = await http.post(`/api/v1/projects/${ids.projectA}/mcp-token`).set(asA()).expect(200);
+    const scoped = { Authorization: `Bearer ${minted.body.token as string}` };
+    await http.get(`/api/v1/projects/${ids.projectA}`).set(scoped).expect(200);
+    await http.get(`/api/v1/projects/${ids.projectB}`).set(scoped).expect(404);
+    await http.get('/api/v1/projects').set(scoped).expect(404);
+    await http.post('/api/v1/projects').set(scoped).send({ name: 'через MCP нельзя' }).expect(404);
+    await http.get('/api/v1/auth/me').set(scoped).expect(404);
+    // Обычный токен того же пользователя список видит
+    await http.get('/api/v1/projects').set(asA()).expect(200);
   });
 });

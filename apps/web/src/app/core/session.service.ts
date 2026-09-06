@@ -3,8 +3,10 @@ import type { Membership, Role, Session, User } from './models';
 
 const STORAGE_KEY = 'rr.session';
 const PROJECT_KEY = 'rr.project';
+/** Что ещё чистим при выходе: чужой снимок очереди и фильтры не должны достаться следующему человеку на этой машине. */
+const SESSION_SCOPED_KEYS = ['rr.queue', 'rr.ui.filter', 'rr.ui.collapsed'];
 
-/** Сессия из POST /auth/login: токен, пользователь, его membership по проектам. */
+/** Сессия из POST /auth/login или /auth/register: токен, пользователь, его membership по проектам. Обновляется через GET /auth/me (AccountService). */
 @Injectable({ providedIn: 'root' })
 export class SessionService {
   private readonly _session = signal<Session | null>(readStored());
@@ -14,6 +16,8 @@ export class SessionService {
   readonly token = computed(() => this._session()?.accessToken ?? null);
   readonly memberships = computed<Membership[]>(() => this._session()?.memberships ?? []);
   readonly isLoggedIn = computed(() => this._session() !== null);
+  /** Сторона при регистрации: подсказка, а pm — ещё и право создавать проекты. */
+  readonly preferredRole = computed<Role | null>(() => this._session()?.user.preferredRole ?? null);
   private readonly preferred = signal<string | null>(readPreferred());
   /** Текущий проект: выбранный в шапке, иначе первый membership. */
   readonly currentProjectId = computed(() => {
@@ -32,17 +36,24 @@ export class SessionService {
 
   set(session: Session): void {
     this._session.set(session);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    } catch {
-      /* приватный режим */
-    }
+    this.persist();
+  }
+
+  /** Часть сессии (свежие membership из /auth/me, новый токен после смены пароля, имя из профиля). */
+  patch(partial: Partial<Session>): void {
+    const current = this._session();
+    if (!current) return;
+    this._session.set({ ...current, ...partial });
+    this.persist();
   }
 
   logout(): void {
     this._session.set(null);
+    this.preferred.set(null);
     try {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(PROJECT_KEY);
+      for (const key of SESSION_SCOPED_KEYS) sessionStorage.removeItem(key);
     } catch {
       /* приватный режим */
     }
@@ -59,6 +70,14 @@ export class SessionService {
 
   isMember(projectId: string): boolean {
     return this.membership(projectId) !== null;
+  }
+
+  private persist(): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this._session()));
+    } catch {
+      /* приватный режим */
+    }
   }
 }
 

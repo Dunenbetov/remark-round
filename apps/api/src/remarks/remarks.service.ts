@@ -1,8 +1,9 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Prisma, ProposedClass, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import type { Prisma, ProposedClass, Remark, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
 import type { LlmUsage } from '../llm/triage-llm';
 import { ObservabilityService } from '../observability/observability.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import { AdviceDto, ChunkInfo, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, quote, toRemarkView } from './remark.dto';
 
@@ -75,7 +76,31 @@ export class RemarksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly observability: ObservabilityService,
+    private readonly storage: StorageService,
   ) {}
+
+  /** Кадр из тела запроса — только ключ этого проекта той же формы, что выдаёт POST /media: чужой иначе ушёл бы в vision и pixel-diff (фаза 11). */
+  private async assertShot(ctx: ProjectContext, storageKey: string): Promise<void> {
+    if (!this.storage.belongsTo(ctx.projectId, storageKey)) throw new UnprocessableEntityException('Кадр не из этого проекта');
+  }
+
+  /**
+   * Номер в раунде под блокировкой строки раунда: два одновременных замечания иначе получали один номер
+   * (@@unique(roundId, number) → P2002). На всякий случай — повтор.
+   */
+  private async createNumbered(roundId: string, data: Omit<Prisma.RemarkUncheckedCreateInput, 'number' | 'roundId'>): Promise<Remark> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "id" FROM "Round" WHERE "id" = ${roundId} FOR UPDATE`;
+          const last = await tx.remark.findFirst({ where: { roundId }, orderBy: { number: 'desc' }, select: { number: true } });
+          return tx.remark.create({ data: { ...data, roundId, number: (last?.number ?? 0) + 1 } });
+        });
+      } catch (e) {
+        if ((e as { code?: string }).code !== 'P2002' || attempt >= 3) throw e;
+      }
+    }
+  }
 
   // ---------- чтение ----------
 
@@ -129,19 +154,15 @@ export class RemarksService {
     if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
     const round = await this.prisma.round.findFirst({ where: { id: roundId, projectId: ctx.projectId } });
     if (!round) throw new NotFoundException();
-    const last = await this.prisma.remark.findFirst({ where: { roundId }, orderBy: { number: 'desc' } });
-    const remark = await this.prisma.remark.create({
-      data: {
-        projectId: ctx.projectId,
-        roundId,
-        number: (last?.number ?? 0) + 1,
-        description: dto.description.trim(),
-        pageOrScreen: dto.pageOrScreen?.trim() || null,
-        expected: dto.expected?.trim() || null,
-        status: 'imported',
-        authorId: ctx.userId,
-        screenshots: dto.screenshotKey ? { create: { kind: 'original', storageKey: dto.screenshotKey } } : undefined,
-      },
+    if (dto.screenshotKey) await this.assertShot(ctx, dto.screenshotKey);
+    const remark = await this.createNumbered(roundId, {
+      projectId: ctx.projectId,
+      description: dto.description.trim(),
+      pageOrScreen: dto.pageOrScreen?.trim() || null,
+      expected: dto.expected?.trim() || null,
+      status: 'imported',
+      authorId: ctx.userId,
+      screenshots: dto.screenshotKey ? { create: { kind: 'original', storageKey: dto.screenshotKey } } : undefined,
     });
     return this.get(ctx, remark.id);
   }
@@ -154,23 +175,18 @@ export class RemarksService {
     if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
     const round = await this.prisma.round.findFirst({ where: { id: roundId, projectId: ctx.projectId } });
     if (!round) throw new NotFoundException();
-    const last = await this.prisma.remark.findFirst({ where: { roundId }, orderBy: { number: 'desc' } });
-    return this.prisma.remark.create({
-      data: {
-        projectId: ctx.projectId,
-        roundId,
-        number: (last?.number ?? 0) + 1,
-        externalId: input.externalId,
-        pageOrScreen: input.pageOrScreen,
-        description: input.description.trim(),
-        expected: input.expected,
-        severity: input.severity,
-        status: input.status,
-        authorId: ctx.userId,
-        screenshots: input.screenshot ? { create: { kind: 'original', ...input.screenshot } } : undefined,
-      },
-      select: { id: true, number: true, status: true },
+    const created = await this.createNumbered(roundId, {
+      projectId: ctx.projectId,
+      externalId: input.externalId,
+      pageOrScreen: input.pageOrScreen,
+      description: input.description.trim(),
+      expected: input.expected,
+      severity: input.severity,
+      status: input.status,
+      authorId: ctx.userId,
+      screenshots: input.screenshot ? { create: { kind: 'original', ...input.screenshot } } : undefined,
     });
+    return { id: created.id, number: created.number, status: created.status };
   }
 
   /** «Допишите строку журнала»: needs_human_parse → imported (человек починил строку). Дальше — граф. */
@@ -195,6 +211,7 @@ export class RemarksService {
     if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['cannot_tell', 'imported'], 'attach_screenshot');
+    await this.assertShot(ctx, screenshotKey);
     await this.prisma.$transaction([
       this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: 'original' } }),
       this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'original', storageKey: screenshotKey } }),
@@ -244,9 +261,14 @@ export class RemarksService {
     const duplicateOf = proposal.duplicateOfNumber
       ? await this.prisma.remark.findFirst({ where: { roundId: row.roundId, number: proposal.duplicateOfNumber } })
       : null;
+    // Чужой чанк в цитаты не попадёт, даже если модель его «вспомнила»: фильтр проекта стоит в SQL
+    const own = proposal.chunkIds.length
+      ? await this.prisma.documentChunk.findMany({ where: { id: { in: proposal.chunkIds }, projectId: ctx.projectId }, select: { id: true } })
+      : [];
+    const ownIds = new Set(own.map((c) => c.id));
     await this.prisma.$transaction([
       this.prisma.evidenceCitation.deleteMany({ where: { remarkId } }),
-      this.prisma.evidenceCitation.createMany({ data: proposal.chunkIds.map((chunkId) => ({ remarkId, chunkId })) }),
+      this.prisma.evidenceCitation.createMany({ data: proposal.chunkIds.filter((id) => ownIds.has(id)).map((chunkId) => ({ remarkId, chunkId })) }),
       this.prisma.remark.update({
         where: { id: remarkId },
         data: {
@@ -413,6 +435,7 @@ export class RemarksService {
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['ready_for_retest'], 'retest');
     if (row.runs.some((r) => r.mode === 'retest' && r.status === 'running')) throw new ConflictException('Кадры уже сравниваются');
+    await this.assertShot(ctx, screenshotKey);
     const [, , run] = await this.prisma.$transaction([
       this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } }),
       this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'retest', storageKey: screenshotKey } }),
@@ -499,7 +522,8 @@ export class RemarksService {
     const chunkIds = [...new Set(rows.flatMap((r) => r.citations.map((c) => c.chunkId)))];
     const chunkRows = chunkIds.length
       ? await this.prisma.documentChunk.findMany({
-          where: { id: { in: chunkIds } },
+          // Цитаты — только из пакета этого проекта: тенанси в SQL и здесь, а не только в retrieve
+          where: { id: { in: chunkIds }, projectId: rows[0]!.projectId },
           select: { id: true, section: true, content: true, document: { select: { kind: true, title: true, effectiveAt: true } } },
         })
       : [];

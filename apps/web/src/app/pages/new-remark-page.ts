@@ -241,8 +241,12 @@ export class NewRemarkPage {
 
   constructor() {
     if (!this.store.round()) {
-      // страница открыта напрямую: подтянем раунд, чтобы было куда сохранять
-      queueMicrotask(() => void this.store.enterRound(this.projectId(), this.round()));
+      // страница открыта напрямую: подтянем раунд, чтобы было куда сохранять; раундов нет — в журнал, там «Новый раунд»
+      queueMicrotask(() =>
+        void this.store.enterRound(this.projectId(), this.round()).then((r) => {
+          if (!r) void this.router.navigate(['/p', this.projectId(), 'r', 'latest']);
+        }),
+      );
     }
     afterNextRender(() => this.focusWhat());
     // objectURL превью живёт не дольше страницы

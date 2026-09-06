@@ -1,5 +1,6 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
+import { AccountService } from './account.service';
 import type { Membership, Role } from './models';
 import { SessionService } from './session.service';
 
@@ -8,11 +9,18 @@ export const authGuard: CanActivateFn = () => {
   return session.isLoggedIn() ? true : inject(Router).createUrlTree(['/login']);
 };
 
-/** Чужой проект → «Нет доступа», без объяснений. Сервер проверит ещё раз в SQL. */
-export const projectGuard: CanActivateFn = (route) => {
+/**
+ * Чужой проект → «Нет доступа», без объяснений. Сервер проверит ещё раз в SQL.
+ * Перед отказом один раз обновляем membership: человек мог прийти по ссылке сразу после того, как его добавили.
+ */
+export const projectGuard: CanActivateFn = async (route) => {
   const session = inject(SessionService);
+  const router = inject(Router);
+  const account = inject(AccountService);
   const projectId = route.paramMap.get('projectId') ?? '';
-  return session.isMember(projectId) ? true : inject(Router).createUrlTree(['/no-access']);
+  if (session.isMember(projectId)) return true;
+  await account.refresh();
+  return session.isMember(projectId) ? true : router.createUrlTree(['/no-access']);
 };
 
 export function roleGuard(...roles: Role[]): CanActivateFn {
@@ -25,10 +33,11 @@ export function roleGuard(...roles: Role[]): CanActivateFn {
   };
 }
 
-/** Корень: разработчика ведём в очередь, остальных — в последний раунд. */
+/** Корень: разработчика ведём в очередь, остальных — в последний раунд; без проекта — на страницу проектов (ожидание или создание). */
 export function homeUrl(session: SessionService): string {
+  if (!session.isLoggedIn()) return '/login';
   const membership = session.membership(session.currentProjectId());
-  return membership ? homeUrlFor(membership) : '/login';
+  return membership ? homeUrlFor(membership) : '/projects';
 }
 
 export function homeUrlFor(membership: Membership): string {

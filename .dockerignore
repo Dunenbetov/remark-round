@@ -15,3 +15,7 @@ langfuse-data
 .vscode
 uploads
 .cursor
+# Локальные загрузки и отчёты не должны попадать в образ (COPY apps/api)
+apps/api/storage
+apps/api/dist-evals
+evals/results

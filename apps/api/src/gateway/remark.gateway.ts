@@ -45,6 +45,7 @@ export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModu
   private readonly log = new Logger(RemarkGateway.name);
   private readonly presence = new Map<string, Map<string, Presence>>();
   private off: (() => void) | null = null;
+  private offRevoke: (() => void) | null = null;
 
   constructor(
     private readonly auth: AuthService,
@@ -56,10 +57,28 @@ export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModu
 
   onModuleInit(): void {
     this.off = this.events.on((remarkId, event) => this.server?.to(room(remarkId)).emit(event.type, event));
+    // Участника убрали из проекта (или он сменил пароль): контекст на join закеширован, поэтому выкидываем
+    // его сокеты из комнат этого проекта; без projectId — рвём соединение, токен всё равно уже недействителен.
+    this.offRevoke = this.tenancy.onRevoke((userId, projectId) => this.revoke(userId, projectId));
   }
 
   onModuleDestroy(): void {
     this.off?.();
+    this.offRevoke?.();
+  }
+
+  private revoke(userId: string, projectId?: string): void {
+    for (const socket of this.server?.sockets.sockets.values() ?? []) {
+      const data = socket.data as Partial<SocketData>;
+      if (data.user?.id !== userId) continue;
+      if (!projectId) {
+        socket.disconnect(true);
+        continue;
+      }
+      for (const [remarkId, ctx] of data.rooms ?? []) {
+        if (ctx.projectId === projectId) this.leaveRoom(socket, remarkId);
+      }
+    }
   }
 
   /**

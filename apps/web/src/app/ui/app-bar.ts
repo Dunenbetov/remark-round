@@ -6,6 +6,7 @@ import { APP_NAME, NAV, ROLE_TITLE, ROUND } from '../core/copy';
 import { homeUrlFor } from '../core/guards';
 import { filterRemarks } from '../core/journal-filter';
 import type { Role } from '../core/models';
+import { AccountService } from '../core/account.service';
 import { OnboardingService } from '../core/onboarding.service';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
@@ -15,7 +16,7 @@ import { Menu, MenuItem } from './menu';
 import { SegmentItem, Segmented } from './segmented';
 import { ThemeToggle } from './theme-toggle';
 
-type Section = 'journal' | 'documents' | 'import' | 'dev';
+type Section = 'journal' | 'documents' | 'import' | 'team' | 'dev';
 
 const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', admin: 'accent', business: 'wait', developer: 'work' };
 
@@ -74,6 +75,9 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
         <a class="tabs__link" [class.tabs__link--on]="section() === 'journal'" [attr.aria-current]="section() === 'journal' ? 'page' : null" [routerLink]="link('r', roundParam())">{{ nav.journal }}</a>
         <a class="tabs__link" [class.tabs__link--on]="section() === 'documents'" [attr.aria-current]="section() === 'documents' ? 'page' : null" [routerLink]="link('documents')">{{ nav.documents }}</a>
         <a class="tabs__link" [class.tabs__link--on]="section() === 'import'" [attr.aria-current]="section() === 'import' ? 'page' : null" [routerLink]="link('r', roundParam(), 'import')">{{ nav.import }}</a>
+        @if (canManage()) {
+          <a class="tabs__link" [class.tabs__link--on]="section() === 'team'" [attr.aria-current]="section() === 'team' ? 'page' : null" [routerLink]="link('team')">{{ nav.team }}</a>
+        }
       </nav>
     }
   `,
@@ -213,6 +217,7 @@ export class AppBar {
   private readonly store = inject(RemarksStore);
   private readonly router = inject(Router);
   private readonly onboarding = inject(OnboardingService);
+  private readonly account = inject(AccountService);
 
   protected readonly appName = APP_NAME;
   protected readonly nav = NAV;
@@ -220,6 +225,9 @@ export class AppBar {
   protected readonly user = this.session.user;
   protected readonly projectId = computed(() => this.store.projectId() ?? this.session.currentProjectId());
   protected readonly role = computed<Role | null>(() => this.session.roleIn(this.projectId()));
+  /** Участников ведут руководитель приёмки и admin (ADR 005). */
+  protected readonly canManage = computed(() => this.role() === 'pm' || this.role() === 'admin');
+  private readonly canOpenRound = computed(() => this.role() === 'pm' || this.role() === 'business' || this.role() === 'admin');
   protected readonly tone = computed(() => (this.role() ? TONE_BY_ROLE[this.role()!] : 'accent'));
   protected readonly initial = computed(() => (this.user()?.name ?? '?').charAt(0).toUpperCase());
   protected readonly roundParam = computed(() => this.store.roundNumber() ?? 'latest');
@@ -233,7 +241,7 @@ export class AppBar {
     return parts.filter(Boolean).join(' · ');
   });
 
-  /** Одно меню с двумя группами: проекты (если их больше одного) и раунды. Пусто → текст без шеврона. */
+  /** Одно меню с двумя группами: проекты (список, «Все проекты», «Создать проект» у стороны pm) и раунды (+ «Новый раунд»). */
   protected readonly contextItems = computed<MenuItem[]>(() => {
     const items: MenuItem[] = [];
     const memberships = this.session.memberships();
@@ -242,17 +250,20 @@ export class AppBar {
         items.push({ id: `project:${m.projectId}`, label: m.projectName, hint: ROLE_TITLE[m.role], selected: m.projectId === this.projectId(), group: i === 0 ? NAV.project : undefined }),
       );
     }
+    items.push({ id: 'projects:all', label: NAV.allProjects, group: memberships.length > 1 ? undefined : NAV.project, separatorBefore: memberships.length > 1 });
+    if (this.session.preferredRole() === 'pm') items.push({ id: 'projects:new', label: NAV.newProject });
     const rounds = this.store.rounds();
-    if (this.role() !== 'developer' && this.store.roundNumber() && rounds.length > 1) {
+    if (this.role() !== 'developer' && this.store.roundNumber()) {
       rounds.forEach((r, i) =>
         items.push({
           id: `round:${r.number}`,
           label: ROUND.item(r.number, r.status, r.remarks),
           selected: r.number === this.store.roundNumber(),
           group: i === 0 ? NAV.round : undefined,
-          separatorBefore: i === 0 && items.length > 0,
+          separatorBefore: i === 0,
         }),
       );
+      if (this.canOpenRound()) items.push({ id: 'round:new', label: NAV.newRound });
     }
     return items;
   });
@@ -265,18 +276,20 @@ export class AppBar {
       return [{ id: 'dev', label: NAV.dev, count, link: this.link('dev') }];
     }
     const count = filterRemarks(this.store.remarks(), 'Ждут меня', role).length;
-    return [
+    const items: SegmentItem[] = [
       { id: 'journal', label: NAV.journal, count, link: this.link('r', this.roundParam()) },
       { id: 'documents', label: NAV.documents, link: this.link('documents') },
       { id: 'import', label: NAV.import, link: this.link('r', this.roundParam(), 'import') },
     ];
+    if (this.canManage()) items.push({ id: 'team', label: NAV.team, link: this.link('team') });
+    return items;
   });
 
-  /** Меню аватара: «Как это работает» (бизнес и PM) и «Выйти» — тема живёт тумблером в шапке. */
+  /** Меню аватара: «Профиль», «Как это работает» (бизнес и PM) и «Выйти» — тема живёт тумблером в шапке. */
   protected readonly userItems = computed<MenuItem[]>(() => {
     const role = this.role();
-    const items: MenuItem[] = [];
-    if (role === 'business' || role === 'pm') items.push({ id: 'how', label: NAV.howItWorks, separatorBefore: true });
+    const items: MenuItem[] = [{ id: 'profile', label: NAV.profile, separatorBefore: true }];
+    if (role === 'business' || role === 'pm') items.push({ id: 'how', label: NAV.howItWorks });
     items.push({ id: 'logout', label: NAV.logout, separatorBefore: true });
     return items;
   });
@@ -298,6 +311,7 @@ export class AppBar {
     const url = this.url();
     if (url.includes('/documents')) return 'documents';
     if (url.includes('/import')) return 'import';
+    if (url.includes('/team')) return 'team';
     if (url.includes('/dev')) return 'dev';
     return 'journal';
   });
@@ -307,6 +321,14 @@ export class AppBar {
   }
 
   protected onContextPick(id: string): void {
+    if (id === 'projects:all' || id === 'projects:new') {
+      void this.router.navigateByUrl('/projects');
+      return;
+    }
+    if (id === 'round:new') {
+      void this.newRound();
+      return;
+    }
     if (id.startsWith('project:')) {
       const projectId = id.slice('project:'.length);
       const m = this.session.membership(projectId);
@@ -326,10 +348,19 @@ export class AppBar {
       if (role === 'business' || role === 'pm') this.onboarding.open(role);
       return;
     }
-    if (id === 'logout') {
-      this.session.logout();
-      void this.router.navigateByUrl('/login');
+    if (id === 'profile') {
+      void this.router.navigateByUrl('/profile');
+      return;
     }
+    if (id === 'logout') this.account.logout();
+  }
+
+  /** «Новый раунд»: следующий номер, журнал открывается пустым. */
+  private async newRound(): Promise<void> {
+    const projectId = this.projectId();
+    if (!projectId) return;
+    const round = await this.store.createRound(projectId);
+    if (round) void this.router.navigate(['/p', projectId, 'r', round.number]);
   }
 
   protected skipToMain(e: Event): void {

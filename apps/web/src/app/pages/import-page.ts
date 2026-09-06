@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import type { ImportJob, ImportRow } from '../core/models';
 import { IMPORT, ROLE_TITLE, ROUND, STATUS_LABEL, STATUS_TONE } from '../core/copy';
 import { RemarksStore } from '../core/remarks.store';
@@ -408,6 +408,7 @@ export class ImportPage {
   protected readonly store = inject(RemarksStore);
   private readonly session = inject(SessionService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly router = inject(Router);
 
   protected readonly copy = IMPORT;
   protected readonly job = signal<ImportJob | null>(null);
@@ -439,7 +440,14 @@ export class ImportPage {
   protected readonly hasDrafts = computed(() => Object.values(this.drafts()).some((t) => t.trim()));
 
   constructor() {
-    if (!this.store.round()) queueMicrotask(() => void this.store.enterRound(this.projectId(), this.round()));
+    if (!this.store.round()) {
+      // раундов нет — в журнал, там «Новый раунд»
+      queueMicrotask(() =>
+        void this.store.enterRound(this.projectId(), this.round()).then((r) => {
+          if (!r) void this.router.navigate(['/p', this.projectId(), 'r', 'latest']);
+        }),
+      );
+    }
     this.destroyRef.onDestroy(() => this.pollWhileTriaging(false));
   }
 

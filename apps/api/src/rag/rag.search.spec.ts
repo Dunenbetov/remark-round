@@ -46,7 +46,7 @@ describe('rag search', () => {
     rag = app.get(RagService);
     documents = app.get(DocumentsService);
 
-    const passwordHash = hashPassword(PASSWORD);
+    const passwordHash = await hashPassword(PASSWORD);
     const userA = await prisma.user.create({ data: { email: `rag-a-${tag}@test.dev`, name: 'A', passwordHash } });
     const userB = await prisma.user.create({ data: { email: `rag-b-${tag}@test.dev`, name: 'B', passwordHash } });
     const projectA = await prisma.project.create({ data: { name: `RAG-A-${tag}`, memberships: { create: { userId: userA.id, role: 'pm' } } } });

@@ -1,6 +1,7 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { startActiveObservation } from '@langfuse/tracing';
 import OpenAI from 'openai';
+import { createOpenAi } from './openai-client';
 
 /** Одна модель на весь индекс (REMARKROUND.md §10). Размерность зашита в миграции vector(1536). */
 export const EMBEDDING_MODEL = 'text-embedding-3-small';
@@ -49,7 +50,7 @@ export class EmbeddingsService {
     if (!this.client) {
       const apiKey = process.env['OPENAI_API_KEY'];
       if (!apiKey) throw new ServiceUnavailableException('OPENAI_API_KEY не задан — индексация недоступна');
-      this.client = new OpenAI({ apiKey });
+      this.client = createOpenAi(apiKey);
     }
     return this.client;
   }

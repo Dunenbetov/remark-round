@@ -200,7 +200,7 @@ describe('MCP-фасад (apps/mcp по stdio)', () => {
   });
 
   it('незнакомый пользователь: чужой токен (не MCP) не запускает фасад', async () => {
-    const user = await h.prisma.user.create({ data: { email: `nobody-${Date.now()}@test.dev`, name: 'nobody', passwordHash: hashPassword(PASSWORD) } });
+    const user = await h.prisma.user.create({ data: { email: `nobody-${Date.now()}@test.dev`, name: 'nobody', passwordHash: await hashPassword(PASSWORD) } });
     try {
       const login = await h.http.post('/api/v1/auth/login').send({ email: user.email, password: PASSWORD }).expect(200);
       await expect(connect(login.body.accessToken)).rejects.toThrow();

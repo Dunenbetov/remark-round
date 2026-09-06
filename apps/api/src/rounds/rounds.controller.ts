@@ -37,9 +37,13 @@ export class RoundsController {
   @Post()
   @Roles('pm', 'business', 'admin')
   async create(@Ctx() ctx: ProjectContext, @Body() dto: CreateRoundDto): Promise<RoundSummary> {
-    const last = await this.prisma.round.findFirst({ where: { projectId: ctx.projectId }, orderBy: { number: 'desc' } });
-    const number = dto.number ?? (last ? last.number + 1 : 1);
-    const round = await this.prisma.round.create({ data: { projectId: ctx.projectId, number } });
+    // Номер под блокировкой строки проекта: два «Новых раунда» разом иначе спотыкались об @@unique(projectId, number)
+    const round = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${ctx.projectId} FOR UPDATE`;
+      const last = await tx.round.findFirst({ where: { projectId: ctx.projectId }, orderBy: { number: 'desc' } });
+      const number = dto.number ?? (last ? last.number + 1 : 1);
+      return tx.round.create({ data: { projectId: ctx.projectId, number } });
+    });
     return { id: round.id, number: round.number, status: round.status, remarks: 0 };
   }
 }

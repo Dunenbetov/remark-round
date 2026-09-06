@@ -57,6 +57,18 @@ export class RemarksStore {
     return round;
   }
 
+  /** Новый раунд (pm, business, admin): следующий номер; журнал открывается пустым. */
+  async createRound(projectId: string): Promise<Round | null> {
+    this.projectId.set(projectId);
+    const round = await this.guard(() => this.api.createRound(projectId));
+    if (round) {
+      this.rounds.update((list) => [...list, round]);
+      this.round.set(round);
+      this.remarks.set([]);
+    }
+    return round;
+  }
+
   async loadRemark(projectId: string, remarkId: string): Promise<Remark | null> {
     this.projectId.set(projectId);
     const remark = await this.guard(() => this.api.remark(projectId, remarkId));

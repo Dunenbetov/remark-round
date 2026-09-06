@@ -1,20 +1,19 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
+import { config } from '../config';
+import { TenancyModule } from '../tenancy/tenancy.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
-const secret = process.env['JWT_SECRET'];
-if (!secret && process.env['NODE_ENV'] === 'production') {
-  throw new Error('JWT_SECRET is required in production');
-}
-
 @Module({
   imports: [
+    TenancyModule,
+    // Секрет и срок — из config(): в production короткий или дефолтный секрет валит процесс на старте.
     JwtModule.register({
-      secret: secret ?? 'change-me',
-      signOptions: { expiresIn: Number(process.env['JWT_EXPIRES_SECONDS'] ?? 12 * 3600) },
+      secret: config().JWT_SECRET,
+      signOptions: { expiresIn: config().JWT_EXPIRES_SECONDS },
     }),
   ],
   controllers: [AuthController],

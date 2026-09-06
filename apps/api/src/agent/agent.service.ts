@@ -13,6 +13,7 @@ import type { ProjectContext } from '../tenancy/project-context';
 import type { GraphDeps } from './graph-deps';
 import type { HumanDecision, RetestDecision, RetestStrategy } from './graph-state';
 import { PrismaCheckpointSaver } from './prisma-checkpointer';
+import { Semaphore } from './semaphore';
 import { buildRetestGraph, retestStrategyFromEnv, type RetestGraph, type RetestInput } from './retest.graph';
 import { RunEvents, type Phase } from './run-events';
 import { buildTriageGraph, type TriageGraph, type TriageInput } from './triage.graph';
@@ -36,6 +37,10 @@ export class AgentService implements OnModuleInit {
   private retestGraph!: RetestGraph;
   private checkpointer!: PrismaCheckpointSaver;
   private readonly running = new Map<string, AbortController>();
+  /** Лимит параллельных прогонов (фаза 11): глобальный и на проект — импорт на 200 строк не съедает всё, REST уже ответил `triaging`. */
+  private readonly globalSlots = new Semaphore(Number(process.env['GRAPH_MAX_CONCURRENT'] ?? 4));
+  private readonly projectSlots = new Map<string, Semaphore>();
+  private readonly perProject = Number(process.env['GRAPH_MAX_PER_PROJECT'] ?? 2);
   /** Ветка ретеста (ADR 002 п.4): дефолт — победитель A/B; раннер evals переключает её, чтобы сравнить обе на одном коде. */
   retestStrategy: RetestStrategy = retestStrategyFromEnv();
 
@@ -160,7 +165,13 @@ export class AgentService implements OnModuleInit {
   private async run(graph: TriageGraph | RetestGraph, remarkId: string, runId: string, input: TriageInput | RetestInput | Command, trace: RunTrace): Promise<void> {
     const ac = new AbortController();
     this.running.set(runId, ac);
+    // Сначала слот проекта, потом общий: ожидание в очереди проекта не занимает общий слот
+    const project = this.projectSlots.get(trace.projectId) ?? new Semaphore(this.perProject);
+    this.projectSlots.set(trace.projectId, project);
+    const releaseProject = await project.acquire();
+    const releaseGlobal = await this.globalSlots.acquire();
     try {
+      if (ac.signal.aborted) return;
       await this.observability.run(trace, async (span) => {
         const state = await (graph as TriageGraph).invoke(input as TriageInput, {
           configurable: { thread_id: runId },
@@ -178,6 +189,9 @@ export class AgentService implements OnModuleInit {
       this.events.emit(remarkId, { type: 'run.failed', runId, message: 'Не получилось разобрать. Можно запустить снова' });
     } finally {
       this.running.delete(runId);
+      releaseGlobal();
+      releaseProject();
+      if (project.idle) this.projectSlots.delete(trace.projectId);
     }
   }
 

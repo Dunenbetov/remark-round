@@ -2,7 +2,7 @@
  * Все русские строки интерфейса. Источник — docs/ui/COPY.md (дословно) и дизайн RemarkRound.dc.html.
  * Синонимы запрещены: не Approve/Reject/Submit/Ticket.
  */
-import type { DocumentKind, DocumentStatus, Phase, RemarkStatus, Role, VerdictCode } from './models';
+import type { DocumentKind, DocumentStatus, Phase, RemarkStatus, Role, Side, VerdictCode } from './models';
 
 export const APP_NAME = 'RemarkRound';
 export const TAGLINE = 'Журнал замечаний как дело из улик';
@@ -249,6 +249,10 @@ export const JOURNAL = {
     pm: 'Слева — что заметил заказчик, справа — ваше решение.',
     business: 'Ваши замечания и то, что нужно закрыть после исправления.',
   },
+  /** Новый проект: раундов ещё нет (фаза 11). */
+  noRounds: 'Раундов пока нет.',
+  noRoundsHint: 'Раунд — одна сдача: журнал замечаний, решения и ретест. Создайте первый и загрузите ТЗ в «Документы».',
+  noRoundsOther: 'Раундов пока нет. Их создаёт руководитель приёмки или заказчик.',
 };
 
 export type JournalChip = (typeof JOURNAL.chips)[number];
@@ -270,6 +274,12 @@ export const NAV = {
   howItWorks: 'Как это работает',
   themeToDark: 'Включить тёмную тему',
   themeToLight: 'Включить светлую тему',
+  /** Аккаунты и участники (фаза 11) */
+  team: 'Участники',
+  profile: 'Профиль',
+  allProjects: 'Все проекты',
+  newProject: 'Создать проект',
+  newRound: 'Новый раунд',
 };
 
 /** Служебные подписи (добавлены при переработке UI, см. docs/ui/COPY.md). */
@@ -333,6 +343,7 @@ export const EMPTY = {
   noAccess: 'Нет доступа',
   noAccessHint: 'Этот проект не ваш. Попросите доступ у руководителя приёмки.',
   toMyProject: 'К моему проекту',
+  toMyProjects: 'К моим проектам',
   signedAs: (name: string, role: string) => `Вы вошли как ${name} · ${role}`,
 };
 
@@ -611,6 +622,104 @@ export const LOGIN = {
     { email: 'developer@remarkround.dev', name: 'Developer', role: 'developer', does: 'видит только принятые поломки' },
   ] satisfies ReadonlyArray<{ email: string; name: string; role: Role; does: string }>,
   steps: ['Замечание', 'Цитата из ТЗ', 'Решение человека'],
+  noAccount: 'Нет аккаунта?',
+  toRegister: 'Зарегистрироваться',
+};
+
+// ---------- Аккаунты и участники (фаза 11, ADR 005) ----------
+
+/** Сторона при регистрации и в приглашении; в проекте роль ставит руководитель приёмки. */
+export const ROLE_SIDE: Record<Side, string> = { business: 'Заказчик', pm: 'Руководитель приёмки', developer: 'Разработчик' };
+export const SIDES: readonly Side[] = ['business', 'pm', 'developer'];
+export const SIDE_DOES: Record<Side, string> = {
+  business: 'добавляет замечания, закрывает ретест',
+  pm: 'решает, работа ли это; создаёт проекты и зовёт участников',
+  developer: 'видит только принятые поломки',
+};
+
+export const REGISTER = {
+  pageTitle: 'Регистрация',
+  name: 'Имя',
+  email: 'E-mail',
+  password: 'Пароль',
+  passwordHint: 'Не короче 8 знаков',
+  who: 'Кто вы',
+  submit: 'Зарегистрироваться',
+  haveAccount: 'Уже есть аккаунт?',
+  toLogin: 'Войти',
+  taken: 'Этот e-mail уже зарегистрирован — войдите.',
+  invalid: 'Проверьте поля: имя, e-mail и пароль не короче 8 знаков.',
+  invited: (project: string, role: string) => `Вас пригласили в проект «${project}» — ${role.toLowerCase()}`,
+  invitedBy: (name: string) => `Пригласил: ${name}`,
+  inviteGone: 'Ссылка приглашения не действует — зарегистрируйтесь, а руководитель приёмки добавит вас по e-mail.',
+  lead: ['Заказчик замечает.', 'Мы находим место в ТЗ.', 'Человек решает, работа ли это.'],
+};
+
+export const PROJECTS = {
+  title: 'Ваши проекты',
+  open: 'Открыть',
+  waitingTitle: 'Вас ещё не добавили в проект',
+  waitingHint: (email: string) => `Попросите руководителя приёмки добавить вас по e-mail ${email}. Как только добавят — откроем проект сами.`,
+  refresh: 'Проверить сейчас',
+  createTitle: 'Создать проект',
+  nameLabel: 'Название проекта',
+  namePlaceholder: 'Например: Клиентский кабинет',
+  create: 'Создать проект',
+  createHint: 'Вы станете руководителем приёмки этого проекта. Участников добавите на странице «Участники».',
+  onlyPm: 'Проекты создаёт руководитель приёмки.',
+};
+
+export const TEAM = {
+  title: 'Участники',
+  subtitle: 'Роль — на проект: один человек в разных проектах может быть на разных сторонах.',
+  columns: ['Имя', 'E-mail', 'Роль'] as const,
+  addTitle: 'Добавить участника',
+  emailLabel: 'E-mail',
+  roleLabel: 'Кто в этом проекте',
+  add: 'Добавить',
+  addedMember: (name: string) => `${name} — в проекте`,
+  addedInvitation: (email: string) => `Приглашение для ${email} создано — отправьте ссылку`,
+  invitationsTitle: 'Приглашения',
+  invitationsHint: 'Ссылку отправьте сами — писем мы не шлём. Человек зарегистрируется по ней и сразу попадёт в проект. Или зарегистрируется на этот e-mail — проект появится у него сам.',
+  copyLink: 'Скопировать ссылку',
+  copied: 'Скопировано',
+  revoke: 'Отозвать',
+  changeRole: 'Сменить роль',
+  remove: 'Убрать из проекта',
+  removed: (name: string) => `Убрали ${name} из проекта`,
+  lastPm: 'Единственный руководитель приёмки — сначала назначьте другого.',
+  you: 'это вы',
+  empty: 'Пока только вы. Добавьте заказчика и разработчика по e-mail.',
+  expires: (date: string) => `ссылка до ${date}`,
+};
+
+export const PROFILE = {
+  title: 'Профиль',
+  name: 'Имя',
+  save: 'Сохранить',
+  saved: 'Сохранено',
+  who: 'Кто вы',
+  whoHint: 'Подсказка для приглашений. Роль в каждом проекте назначает руководитель приёмки.',
+  passwordTitle: 'Сменить пароль',
+  current: 'Текущий пароль',
+  next: 'Новый пароль',
+  repeat: 'Ещё раз',
+  change: 'Сменить пароль',
+  changed: 'Пароль изменён. На других устройствах нужно войти заново.',
+  wrongCurrent: 'Текущий пароль не подходит',
+  mismatch: 'Пароли не совпадают',
+};
+
+export const JOIN = {
+  title: 'Приглашение в проект',
+  lead: (project: string, role: string) => `Вас зовут в проект «${project}» — ${role.toLowerCase()}`,
+  by: (name: string) => `Пригласил: ${name}`,
+  accept: 'Войти в проект',
+  accepting: 'Добавляем вас в проект…',
+  gone: 'Ссылка не действует. Попросите новую у руководителя приёмки.',
+  signedAs: (email: string) => `Вы вошли как ${email}`,
+  register: 'Зарегистрироваться',
+  login: 'Уже есть аккаунт? Войти',
 };
 
 export function plural(n: number, one: string, few: string, many: string): string {

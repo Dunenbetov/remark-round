@@ -36,6 +36,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
       - run: pnpm db:migrate:deploy
+      - name: Типы API (спеки и evals тоже)
+        run: pnpm --filter @remarkround/api exec tsc --noEmit -p tsconfig.json
       - name: Тесты API (включая evals.spec офлайн)
         run: pnpm --filter @remarkround/api test
       - name: Evals офлайн — golden через продуктовые сервисы, отчёт в артефакт
@@ -47,3 +49,11 @@ jobs:
         with:
           name: evals-report
           path: evals/results/ci-offline.*
+      - name: Сборка фронта (web-тестов нет: сборка ловит ошибки шаблонов и типов)
+        run: pnpm --filter @remarkround/web build
+      - name: Прод-override compose валиден
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
+        env:
+          JWT_SECRET: 0123456789abcdef0123456789abcdef
+          POSTGRES_PASSWORD: ci-only
+          PUBLIC_HOST: rr.example.com

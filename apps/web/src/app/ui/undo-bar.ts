@@ -17,12 +17,12 @@ const LEAVE_MS = 140;
   template: `
     <div class="visually-hidden" aria-live="polite">
       @if (actions.pending(); as p) {
-        {{ decision.record }} {{ p.label }}
+        {{ p.record ?? decision.record }} {{ p.label }}
       }
     </div>
     @if (shown(); as p) {
       <div class="undo glass glass--pill" [class.is-leaving]="leaving()">
-        <span class="undo__text">{{ decision.record }} {{ p.label }}</span>
+        <span class="undo__text">{{ p.record ?? decision.record }} {{ p.label }}</span>
         <button type="button" class="btn btn--text undo__btn" [disabled]="actions.committing() || leaving()" (click)="actions.cancel()">{{ common.undo }}</button>
         <span class="undo__sec num" aria-hidden="true">{{ seconds() }}</span>
         <span class="undo__line" aria-hidden="true"><span class="undo__fill"></span></span>

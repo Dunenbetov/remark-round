@@ -1,0 +1,10 @@
+# TLS-фронт прода (docs/PROD.md): Let's Encrypt для PUBLIC_HOST, внутренний CA для localhost.
+# Дальше всё в nginx контейнера web: SPA, /api → api, /api/v1/ws → WebSocket.
+{$PUBLIC_HOST} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	reverse_proxy web:80
+}

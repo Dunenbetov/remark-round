@@ -28,6 +28,10 @@ docker compose up
 
 Контейнер API сам применяет миграции и кладёт демо-данные (проект «Клиентский кабинет», ТЗ + протокол, раунд 2 с 13 замечаниями и кадрами). Если на машине уже занят порт 5432, поставьте `POSTGRES_PORT=5434` и тот же порт в `DATABASE_URL`. Сюжет демо на 10 минут — [`docs/DEMO.md`](docs/DEMO.md).
 
+## Прод
+
+Тот же compose плюс override: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` — Caddy с TLS наружу, `NODE_ENV=production` (API не стартует без настоящего `JWT_SECRET`), без seed и демо-входов, ежедневный `pg_dump` в том, кадры и документы в томе `api-storage`. Пользователи регистрируются сами, руководитель приёмки создаёт проект и приглашает участников ссылкой. Пошагово, бэкап и восстановление — [`docs/PROD.md`](docs/PROD.md). Порты Postgres, ClickHouse, MinIO и Langfuse и в демо опубликованы только на `127.0.0.1`.
+
 ## Что внутри
 
 | | |
@@ -83,6 +87,7 @@ docker compose up
 - `gpt-4.1-mini` при `temperature: 0` не детерминирован между прогонами; цифры — из полного прогона golden.
 - Не открывает стенд заказчика, не кликает UI, не сравнивает «исправлено ли» силами LLM по двум кадрам. Не парсер любого Excel. Не Jira.
 - Синтетические фикстуры: боевые скрины и персональные данные в облачную модель без договора не слать.
+- Один инстанс API: комнаты WebSocket, файлы и прогоны графа живут в одном процессе на одном сервере. Второй инстанс потребует Redis, S3 и очередь — отдельный этап после пилота.
 
 ## Разработка
 
@@ -90,7 +95,7 @@ docker compose up
 
 ```bash
 pnpm install && pnpm db:generate && pnpm db:migrate:deploy
-pnpm --filter @remarkround/api test          # 15 спеков, включая leakage, injection, evals офлайн
+pnpm --filter @remarkround/api test          # спеки: leakage, injection, evals офлайн, аккаунты, конфиг
 pnpm evals                                   # live с OPENAI_API_KEY; pnpm evals -- --offline без ключа
 pnpm --filter @remarkround/api seed          # демо-данные с хоста
 pnpm api:dev && pnpm web:dev                 # :3001 и :4200 без Docker

@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, extname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve, sep } from 'node:path';
+
+/** `<projectId>/<uuid>.<ext>` — единственная форма ключа, которую выдаёт save(). */
+const KEY = /^[a-f0-9-]{36}\/[a-f0-9-]{36}\.[a-z0-9]{1,5}$/;
 
 /**
  * Файлы пакета документов и скринов на диске. Ключ — путь относительно STORAGE_DIR,
@@ -21,8 +24,18 @@ export class StorageService {
   }
 
   async read(storageKey: string): Promise<Buffer> {
+    return readFile(this.path(storageKey));
+  }
+
+  /** Ключ из тела запроса (screenshotKey) принимается, только если он этого проекта и той же формы, что даёт save(). */
+  belongsTo(projectId: string, storageKey: string): boolean {
+    return KEY.test(storageKey) && storageKey.startsWith(`${projectId}/`);
+  }
+
+  /** Корень с разделителем: `../storage-secrets/x` начинается с `.../storage`, но не с `.../storage/`. */
+  private path(storageKey: string): string {
     const path = resolve(this.root, storageKey);
-    if (!path.startsWith(this.root)) throw new Error('storage: ключ вне корня');
-    return readFile(path);
+    if (!path.startsWith(this.root + sep)) throw new Error('storage: ключ вне корня');
+    return path;
   }
 }

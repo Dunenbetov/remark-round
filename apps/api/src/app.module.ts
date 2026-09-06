@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AgentModule } from './agent/agent.module';
 import { AuthModule } from './auth/auth.module';
+import { config } from './config';
 import { DocumentsModule } from './documents/documents.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { HealthModule } from './health/health.module';
@@ -18,6 +21,12 @@ import { TenancyModule } from './tenancy/tenancy.module';
 
 @Module({
   imports: [
+    // Лимит запросов с одного IP (фаза 11): общий — здесь, строгий на вход/регистрацию — @Throttle на маршрутах.
+    // В тестах выключен: харнесс опрашивает карточку каждые 100 мс.
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: config().THROTTLE_LIMIT }],
+      skipIf: () => config().NODE_ENV === 'test',
+    }),
     ObservabilityModule,
     PrismaModule,
     AuthModule,
@@ -35,5 +44,6 @@ import { TenancyModule } from './tenancy/tenancy.module';
     GatewayModule,
     ImportsModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

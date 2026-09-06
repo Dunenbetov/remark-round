@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Header,
   HttpCode,
   NotFoundException,
   Param,
@@ -54,12 +55,16 @@ export class MediaController {
   async upload(@Ctx() ctx: ProjectContext, @UploadedFile() file: Express.Multer.File | undefined): Promise<MediaUploadResult> {
     if (!file || !file.buffer.length) throw new UnprocessableEntityException('Нужен файл в поле file');
     const ext = extname(file.originalname).toLowerCase();
-    if (!IMAGE_MIME[ext]) throw new UnprocessableEntityException('Скрин: PNG, JPG, WebP, GIF или SVG');
+    // SVG больше не принимаем: pixelmatch его не сравнивает, а скрипт внутри — лишний риск (фаза 11)
+    if (!IMAGE_MIME[ext] || ext === '.svg') throw new UnprocessableEntityException('Скрин: PNG, JPG, WebP или GIF');
     const storageKey = await this.storage.save(ctx.projectId, file.originalname, file.buffer);
     return { storageKey, url: mediaUrl(ctx.projectId, storageKey) };
   }
 
+  /** Кадр отдаётся как картинка, не как документ: скрипту внутри старого SVG негде выполниться. */
   @Get(':fileName')
+  @Header('Content-Security-Policy', "default-src 'none'; sandbox")
+  @Header('X-Content-Type-Options', 'nosniff')
   async get(@Ctx() ctx: ProjectContext, @Param('fileName') fileName: string): Promise<StreamableFile> {
     if (!FILE_NAME.test(fileName)) throw new NotFoundException();
     const path = join(this.storage.root, ctx.projectId, fileName);
@@ -68,7 +73,8 @@ export class MediaController {
     } catch {
       throw new NotFoundException();
     }
-    const type = IMAGE_MIME[extname(fileName)] ?? 'application/octet-stream';
-    return new StreamableFile(createReadStream(path), { type });
+    const ext = extname(fileName);
+    const type = IMAGE_MIME[ext] ?? 'application/octet-stream';
+    return new StreamableFile(createReadStream(path), { type, disposition: ext === '.svg' ? 'attachment' : undefined });
   }
 }

@@ -11,15 +11,26 @@
 
 | Метод | Путь | Роли | Смысл |
 |---|---|---|---|
-| POST | `/auth/login` | — | JWT |
+| POST | `/auth/login` | — | JWT + `user` (с `preferredRole`) + `memberships`; приглашения на этот e-mail принимаются при входе. Лимит `THROTTLE_AUTH_LIMIT`/мин с IP |
+| POST | `/auth/register` | — | Регистрация открыта (ADR 005): `{ name, email, password ≥ 8, preferredRole: business \| pm \| developer, inviteToken? }` → 201, ответ как у входа; дубликат e-mail — 409 |
+| GET | `/auth/me` | any | Свежие `{ user, memberships }` без перелогина; принимает ожидающие приглашения на e-mail — страница ожидания опрашивает это |
+| PATCH | `/auth/profile` | any | `{ name?, preferredRole? }` |
+| POST | `/auth/password` | any | `{ current, next ≥ 8 }` → `{ accessToken }`; неверный текущий — 422; все прежние токены (и MCP) недействительны |
+| GET | `/auth/options` | — | `{ demoLogins }` — показывать ли карточки демо-персон на входе (в production выключены) |
 | GET | `/projects` | any | Список membership |
-| POST | `/projects` | — | Создать (пилот: любой залогиненный / admin) |
+| POST | `/projects` | сторона pm | Создать: только `preferredRole = pm` (иначе 403); создатель становится `pm` проекта |
 | GET | `/projects/:projectId` | member | Карточка |
-| GET/POST | `/projects/:projectId/members` | admin | Membership |
-| POST | `/projects/:projectId/mcp-token` | member | Токен для MCP-фасада (`apps/mcp`): JWT с `projectId` из membership, срок `MCP_TOKEN_EXPIRES_SECONDS` (30 дней). С ним любой другой проект — 404, даже при membership |
+| GET | `/projects/:projectId/members` | pm, admin | `{ members[], invitations[] }` — участники и ещё не зарегистрированные приглашённые (с `token` для ссылки `/join/<token>`) |
+| POST | `/projects/:projectId/members` | pm, admin | `{ email, role }`: зарегистрированный → `{ kind: 'member', member }` сразу (повтор меняет роль); незнакомый e-mail → `{ kind: 'invitation', invitation }` |
+| PATCH | `/projects/:projectId/members/:userId` | pm, admin | `{ role }`; единственный pm не понижается — 409 |
+| DELETE | `/projects/:projectId/members/:userId` | pm, admin | 204; единственный pm — 409; сокеты удалённого выкидываются из комнат проекта |
+| DELETE | `/projects/:projectId/invitations/:invitationId` | pm, admin | Отозвать ссылку |
+| GET | `/invitations/:token` | — | Что за приглашение: `{ projectName, role, email, inviterName, expiresAt }`; принятое — 410, неизвестное или истёкшее (30 дней) — 404 |
+| POST | `/invitations/:token/accept` | any | Принять по ссылке вошедшим пользователем (e-mail может отличаться) → `{ user, memberships }` |
+| POST | `/projects/:projectId/mcp-token` | member | Токен для MCP-фасада (`apps/mcp`): JWT с `projectId` из membership, срок `MCP_TOKEN_EXPIRES_SECONDS` (30 дней). С ним существует только `/projects/:projectId/*` этого проекта: другой проект, `/projects`, `/auth/*`, `/invitations/*` — 404, даже при membership. Смена пароля отзывает и его |
 | GET/POST | `/projects/:projectId/documents` | admin, pm | Пакет документов |
 | GET | `/projects/:projectId/documents/:id` | member | Мета + статус индекса |
-| POST | `/projects/:projectId/documents/:id/reindex` | admin | |
+| POST | `/projects/:projectId/documents/:id/reindex` | admin, pm | |
 | GET/POST | `/projects/:projectId/rounds` | member POST: pm/business | Раунды |
 | GET | `/projects/:projectId/rounds/:roundId/remarks` | по роли фильтр | Список. Developer — только defect+ |
 | POST | `/projects/:projectId/rounds/:roundId/remarks` | business, pm | Ручное замечание + upload screenshot |
@@ -39,7 +50,7 @@
 | POST | `/projects/:projectId/remarks/:id/close` | business | Только после ретест-улик |
 | GET | `/projects/:projectId/dev-queue` | developer | defect + ready_for_retest |
 | GET | `/projects/:projectId/search?q=&k=` | member | Поиск по пакету документов с цитатой (раздел, фрагмент, score). То же, что MCP `search_spec` |
-| POST | `/projects/:projectId/media` | member | Скрин: multipart `file` (PNG, JPG, WebP, GIF, SVG, до 10 МБ) → `{ storageKey, url }` |
+| POST | `/projects/:projectId/media` | member | Скрин: multipart `file` (PNG, JPG, WebP, GIF, до 10 МБ; SVG не принимается) → `{ storageKey, url }`. `screenshotKey` в телах замечания/ретеста принимается только своего проекта и существующий — иначе 422 |
 | GET | `/projects/:projectId/media/:fileName` | member | Отдача кадра; путь всегда внутри проекта |
 | POST | `/projects/:projectId/remarks/:id/screenshot` | business, pm | Кадр по «Не хватает скрина» → новый разбор |
 | POST | `/projects/:projectId/remarks/:id/not-fixed` | business | «Не исправлено» → обратно в defect |
@@ -50,6 +61,10 @@
 Импорт журнала: `POST /projects/:projectId/imports` принимает только официальный шаблон (шапка по-русски: `№ · Где · Что не так · Как должно быть · Важность · Скрин`; внутренние ключи `external_id, page_or_screen, description, expected, severity, screenshot` — `apps/api/src/imports/journal-template.ts`; прежняя английская шапка тоже принимается; порядок любой, регистр, «ё» и пробелы не важны, CSV с `,` или `;`, UTF-8 (с BOM или без) или windows-1251). `GET .../imports/template.xlsx|csv` отдают шаблон с русской шапкой (csv — BOM + `;`, чтобы Excel открыл по колонкам). Другая шапка — 422 с перечнем недостающих и лишних колонок, ни одной строки не создаётся. Каждая строка становится замечанием: с описанием — `imported` и разбор в фоне (статус виден в `GET .../imports/:jobId` и в журнале), без описания — `needs_human_parse` с причиной в `reason`; ячейки хранятся как есть в `ImportRow.rawJson`. Картинка в ячейке xlsx становится кадром замечания; ссылка в колонке `screenshot` CSV не загружается — кадр прикрепляют на карточке. Ответ 201 — `ImportJobView` (`apps/api/src/imports/import.dto.ts`).
 
 Документы: `POST /projects/:projectId/documents` — поля `file` (PDF, DOCX, Markdown, текст, до 20 МБ), `kind` (`spec | protocol | addendum | journal_source`), необязательный `effectiveAt` (ISO-дата). Ответ 201 со статусом `uploaded`; индексация идёт в фоне: `parsed` → `indexed` | `failed`, статус и число чанков видны в `GET .../documents`.
+
+## Аккаунты (фаза 11, ADR 005)
+
+Регистрация открыта: без проекта человек видит экран ожидания и опрашивает `GET /auth/me` — как только руководитель приёмки добавит его по e-mail, проект появится. Сторона `preferredRole` — подсказка (и право создавать проекты для `pm`); роль в проекте — всегда `Membership.role`, её ставит PM. Приглашение — ссылка `/join/<token>`, письма не отправляются: PM копирует и шлёт сам; регистрация или вход с приглашённым e-mail принимает приглашение автоматически. Ошибки: 409 — e-mail занят или единственный pm; 410 — ссылка уже принята; 422 — неверный текущий пароль или валидация.
 
 ## Тело вердикта
 

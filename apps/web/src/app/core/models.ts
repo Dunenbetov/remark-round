@@ -70,6 +70,8 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  /** Сторона при регистрации (ADR 005): подсказка; право создавать проекты — только pm. Роль в проекте — Membership.role. */
+  preferredRole?: Role | null;
 }
 
 export interface Session {
@@ -77,6 +79,60 @@ export interface Session {
   user: User;
   memberships: Membership[];
 }
+
+/** Стороны при регистрации: admin — роль проекта, её не выбирают. */
+export type Side = Exclude<Role, 'admin'>;
+
+/** GET /auth/me — свежие пользователь и membership без перелогина. */
+export interface MeResult {
+  user: User;
+  memberships: Membership[];
+}
+
+export interface AuthOptions {
+  /** Карточки демо-персон на входе: только на демо-стенде. */
+  demoLogins: boolean;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  role: Role;
+  createdAt: string;
+}
+
+export interface MemberSummary {
+  userId: string;
+  email: string;
+  name: string;
+  role: Role;
+  createdAt: string;
+}
+
+/** Приглашённый, который ещё не зарегистрировался: ссылка `${origin}/join/${token}`. */
+export interface InvitationSummary {
+  id: string;
+  email: string;
+  role: Role;
+  token: string;
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+export interface InvitationPeek {
+  projectName: string;
+  role: Role;
+  email: string;
+  inviterName: string;
+  expiresAt: string | null;
+}
+
+export interface MembersView {
+  members: MemberSummary[];
+  invitations: InvitationSummary[];
+}
+
+export type AddMemberResult = { kind: 'member'; member: MemberSummary } | { kind: 'invitation'; invitation: InvitationSummary };
 
 export interface Round {
   id: string;

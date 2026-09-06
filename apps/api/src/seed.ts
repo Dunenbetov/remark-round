@@ -35,7 +35,7 @@ export const SEED = {
 };
 
 export async function seed(prisma: PrismaClient, options: { index?: boolean } = {}): Promise<void> {
-  const passwordHash = hashPassword(SEED.password);
+  const passwordHash = await hashPassword(SEED.password);
   const storage = new StorageService();
 
   await prisma.project.upsert({
@@ -53,8 +53,8 @@ export async function seed(prisma: PrismaClient, options: { index?: boolean } = 
     // upsert по id: e-mail и имя демо-персон менялись, на существующей БД запись обновляется на месте
     await prisma.user.upsert({
       where: { id: u.id },
-      create: { id: u.id, email: u.email, name: u.name, passwordHash },
-      update: { email: u.email, name: u.name, passwordHash },
+      create: { id: u.id, email: u.email, name: u.name, passwordHash, preferredRole: u.role },
+      update: { email: u.email, name: u.name, passwordHash, preferredRole: u.role },
     });
     await prisma.membership.upsert({
       where: { userId_projectId: { userId: u.id, projectId: SEED.projectId } },
@@ -107,12 +107,19 @@ export async function seed(prisma: PrismaClient, options: { index?: boolean } = 
 }
 
 if (require.main === module) {
-  const prisma = new PrismaService();
-  seed(prisma)
-    .then(() => console.log('seed: ok'))
-    .catch((e: unknown) => {
-      console.error(e);
-      process.exitCode = 1;
-    })
-    .finally(() => prisma.$disconnect());
+  // Демо-данные и пароль `remarkround` — не для прода (фаза 11): в production seed отказывается,
+  // если это не сделано осознанно через SEED_FORCE=1.
+  if (process.env['NODE_ENV'] === 'production' && process.env['SEED_FORCE'] !== '1') {
+    console.error('seed: отказ — NODE_ENV=production. Демо-персоны с известным паролем не для прода; SEED_FORCE=1, если осознанно.');
+    process.exitCode = 2;
+  } else {
+    const prisma = new PrismaService();
+    seed(prisma)
+      .then(() => console.log('seed: ok'))
+      .catch((e: unknown) => {
+        console.error(e);
+        process.exitCode = 1;
+      })
+      .finally(() => prisma.$disconnect());
+  }
 }

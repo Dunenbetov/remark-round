@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Role } from '@remarkround/db';
+import type { AuthUser } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectContext } from '../tenancy/project-context';
 
@@ -8,13 +9,6 @@ export interface ProjectSummary {
   name: string;
   role: Role;
   createdAt: Date;
-}
-
-export interface MemberSummary {
-  userId: string;
-  email: string;
-  name: string;
-  role: Role;
 }
 
 @Injectable()
@@ -36,38 +30,18 @@ export class ProjectsService {
     }));
   }
 
-  /** Пилот: любой залогиненный создаёт проект и становится его admin. */
-  async create(userId: string, name: string): Promise<ProjectSummary> {
+  /** Проект создаёт тот, кто при регистрации выбрал сторону pm (ADR 005); он же становится pm проекта — решает и зовёт людей. */
+  async create(user: AuthUser, name: string): Promise<ProjectSummary> {
+    if (user.preferredRole !== 'pm') throw new ForbiddenException('Проекты создаёт руководитель приёмки');
     const project = await this.prisma.project.create({
-      data: { name, memberships: { create: { userId, role: 'admin' } } },
+      data: { name, memberships: { create: { userId: user.id, role: 'pm' } } },
     });
-    return { id: project.id, name: project.name, role: 'admin', createdAt: project.createdAt };
+    return { id: project.id, name: project.name, role: 'pm', createdAt: project.createdAt };
   }
 
   async get(ctx: ProjectContext): Promise<ProjectSummary> {
     const project = await this.prisma.project.findFirst({ where: { id: ctx.projectId } });
     if (!project) throw new NotFoundException();
     return { id: project.id, name: project.name, role: ctx.role, createdAt: project.createdAt };
-  }
-
-  async members(ctx: ProjectContext): Promise<MemberSummary[]> {
-    const rows = await this.prisma.membership.findMany({
-      where: { projectId: ctx.projectId },
-      include: { user: true },
-      orderBy: { user: { name: 'asc' } },
-    });
-    return rows.map((m) => ({ userId: m.userId, email: m.user.email, name: m.user.name, role: m.role }));
-  }
-
-  /** Добавить существующего пользователя или сменить ему роль. Пользователей не создаём. */
-  async addMember(ctx: ProjectContext, email: string, role: Role): Promise<MemberSummary> {
-    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
-    if (!user) throw new NotFoundException('Пользователь не найден');
-    const membership = await this.prisma.membership.upsert({
-      where: { userId_projectId: { userId: user.id, projectId: ctx.projectId } },
-      create: { userId: user.id, projectId: ctx.projectId, role },
-      update: { role },
-    });
-    return { userId: user.id, email: user.email, name: user.name, role: membership.role };
   }
 }

@@ -1,5 +1,6 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import type { JournalChip } from './copy';
+import { SessionService } from './session.service';
 
 const FILTER_KEY = 'rr.ui.filter';
 const GROUPS_KEY = 'rr.ui.collapsed';
@@ -9,9 +10,11 @@ const BAND_PREFIX = 'rr.ui.band.';
 /**
  * UI-состояние, которое не должно теряться при переходах: фильтр журнала и свёрнутые группы (на сессию),
  * последняя открытая строка (для перетекания номера), закрытые подсказки (навсегда). Логики данных здесь нет.
+ * Подсказки и полосы — на пользователя (rr.hint.<userId>.<key>): второй человек на той же машине увидит тур сам.
  */
 @Injectable({ providedIn: 'root' })
 export class UiStateService {
+  private readonly session = inject(SessionService);
   readonly journalFilter = signal<JournalChip | null>(readSession(FILTER_KEY) as JournalChip | null);
   readonly collapsedGroups = signal<ReadonlySet<string>>(new Set(readSession(GROUPS_KEY)?.split(',').filter(Boolean) ?? []));
   /** Строка, по которой ушли на карточку: только у неё view-transition-name номера. */
@@ -40,7 +43,7 @@ export class UiStateService {
   hintSeen(key: string): boolean {
     if (this.hintsSeen().has(key)) return true;
     try {
-      return localStorage.getItem(HINT_PREFIX + key) === '1';
+      return localStorage.getItem(HINT_PREFIX + this.scoped(key)) === '1';
     } catch {
       return false;
     }
@@ -49,7 +52,7 @@ export class UiStateService {
   dismissHint(key: string): void {
     this.hintsSeen.update((s) => new Set(s).add(key));
     try {
-      localStorage.setItem(HINT_PREFIX + key, '1');
+      localStorage.setItem(HINT_PREFIX + this.scoped(key), '1');
     } catch {
       /* приватный режим */
     }
@@ -59,7 +62,7 @@ export class UiStateService {
     const known = this.bands().get(key);
     if (known !== undefined) return known;
     try {
-      return localStorage.getItem(BAND_PREFIX + key) === '1';
+      return localStorage.getItem(BAND_PREFIX + this.scoped(key)) === '1';
     } catch {
       return false;
     }
@@ -69,11 +72,15 @@ export class UiStateService {
     const next = !this.bandCollapsed(key);
     this.bands.update((m) => new Map(m).set(key, next));
     try {
-      if (next) localStorage.setItem(BAND_PREFIX + key, '1');
-      else localStorage.removeItem(BAND_PREFIX + key);
+      if (next) localStorage.setItem(BAND_PREFIX + this.scoped(key), '1');
+      else localStorage.removeItem(BAND_PREFIX + this.scoped(key));
     } catch {
       /* приватный режим */
     }
+  }
+
+  private scoped(key: string): string {
+    return `${this.session.user()?.id ?? 'anon'}.${key}`;
   }
 }
 

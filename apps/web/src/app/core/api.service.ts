@@ -2,7 +2,25 @@ import { HttpClient, HttpErrorResponse, HttpInterceptorFn, HttpParams } from '@a
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, firstValueFrom } from 'rxjs';
-import type { DocumentKind, ImportJob, Remark, Round, SearchHit, Session, VerdictCode } from './models';
+import type {
+  AddMemberResult,
+  AuthOptions,
+  DocumentKind,
+  ImportJob,
+  InvitationPeek,
+  MeResult,
+  MemberSummary,
+  MembersView,
+  ProjectSummary,
+  Remark,
+  Role,
+  Round,
+  SearchHit,
+  Session,
+  Side,
+  User,
+  VerdictCode,
+} from './models';
 import { SessionService } from './session.service';
 
 export const API_BASE = '/api/v1';
@@ -44,6 +62,66 @@ export class ApiService {
 
   login(email: string, password: string): Promise<Session> {
     return this.run(this.http.post<Session>(`${API_BASE}/auth/login`, { email, password }));
+  }
+
+  // ---------- аккаунт (фаза 11, ADR 005) ----------
+
+  register(body: { name: string; email: string; password: string; preferredRole: Side; inviteToken?: string }): Promise<Session> {
+    return this.run(this.http.post<Session>(`${API_BASE}/auth/register`, body));
+  }
+
+  /** Свежие user + memberships; ожидающие приглашения на e-mail принимаются на сервере. */
+  me(): Promise<MeResult> {
+    return this.run(this.http.get<MeResult>(`${API_BASE}/auth/me`));
+  }
+
+  authOptions(): Promise<AuthOptions> {
+    return this.run(this.http.get<AuthOptions>(`${API_BASE}/auth/options`));
+  }
+
+  updateProfile(body: { name?: string; preferredRole?: Side }): Promise<User> {
+    return this.run(this.http.patch<User>(`${API_BASE}/auth/profile`, body));
+  }
+
+  /** Неверный текущий пароль — 422 (не 401: 401 разлогинивает). */
+  changePassword(body: { current: string; next: string }): Promise<{ accessToken: string }> {
+    return this.run(this.http.post<{ accessToken: string }>(`${API_BASE}/auth/password`, body));
+  }
+
+  createProject(name: string): Promise<ProjectSummary> {
+    return this.run(this.http.post<ProjectSummary>(`${API_BASE}/projects`, { name }));
+  }
+
+  createRound(projectId: string): Promise<Round> {
+    return this.run(this.http.post<Round>(`${API_BASE}/projects/${projectId}/rounds`, {}));
+  }
+
+  members(projectId: string): Promise<MembersView> {
+    return this.run(this.http.get<MembersView>(`${API_BASE}/projects/${projectId}/members`));
+  }
+
+  addMember(projectId: string, body: { email: string; role: Role }): Promise<AddMemberResult> {
+    return this.run(this.http.post<AddMemberResult>(`${API_BASE}/projects/${projectId}/members`, body));
+  }
+
+  updateMember(projectId: string, userId: string, role: Role): Promise<MemberSummary> {
+    return this.run(this.http.patch<MemberSummary>(`${API_BASE}/projects/${projectId}/members/${userId}`, { role }));
+  }
+
+  removeMember(projectId: string, userId: string): Promise<void> {
+    return this.run(this.http.delete<void>(`${API_BASE}/projects/${projectId}/members/${userId}`));
+  }
+
+  revokeInvitation(projectId: string, invitationId: string): Promise<void> {
+    return this.run(this.http.delete<void>(`${API_BASE}/projects/${projectId}/invitations/${invitationId}`));
+  }
+
+  invitation(token: string): Promise<InvitationPeek> {
+    return this.run(this.http.get<InvitationPeek>(`${API_BASE}/invitations/${encodeURIComponent(token)}`));
+  }
+
+  acceptInvitation(token: string): Promise<MeResult> {
+    return this.run(this.http.post<MeResult>(`${API_BASE}/invitations/${encodeURIComponent(token)}/accept`, {}));
   }
 
   rounds(projectId: string): Promise<Round[]> {

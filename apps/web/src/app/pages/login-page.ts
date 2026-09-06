@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { AccountService } from '../core/account.service';
 import { ApiService } from '../core/api.service';
 import { APP_NAME, LOGIN, LOGIN_EXTRA, ROLE_TITLE } from '../core/copy';
 import { homeUrl } from '../core/guards';
@@ -16,7 +17,7 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
 @Component({
   selector: 'rr-login-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BrandMark],
+  imports: [BrandMark, RouterLink],
   template: `
     <main id="main" class="login">
       <svg class="login__ring" width="560" height="560" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.12" stroke-linecap="round" aria-hidden="true">
@@ -33,6 +34,7 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
               <span class="login__lead-line">{{ line }}</span>
             }
           </p>
+          @if (demo()) {
           <div class="login__roles rise" style="--i: 2">
             <div class="eyebrow">{{ copy.tryAs }}</div>
             @for (r of copy.roles; track r.email; let i = $index) {
@@ -57,6 +59,7 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
               </button>
             }
           </div>
+          }
           <ol class="login__steps rise" style="--i: 3" aria-label="Как это работает">
             @for (s of copy.steps; track s; let last = $last) {
               <li class="login__step">
@@ -115,7 +118,10 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
             <div class="login__error" role="alert">{{ copy.unknown }}</div>
           }
           <button type="submit" class="btn btn--primary btn--lg login__submit" [class.btn--busy]="busy()" [disabled]="busy()">{{ copy.submit }}</button>
-          <span class="meta login__demo">{{ demoPassword }}</span>
+          @if (demo()) {
+            <span class="meta login__demo">{{ demoPassword }}</span>
+          }
+          <p class="meta login__switch">{{ copy.noAccount }} <a class="link" routerLink="/register" [queryParams]="registerParams()">{{ copy.toRegister }}</a></p>
         </form>
       </div>
     </main>
@@ -309,6 +315,10 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
     .login__demo {
       text-align: center;
     }
+    .login__switch {
+      margin: 0;
+      text-align: center;
+    }
     @media (max-width: 900px) {
       .login {
         padding: var(--sp-6) var(--sp-4);
@@ -337,8 +347,10 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
 })
 export class LoginPage {
   private readonly session = inject(SessionService);
+  private readonly account = inject(AccountService);
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   protected readonly appName = APP_NAME;
@@ -351,10 +363,29 @@ export class LoginPage {
   protected readonly busy = signal(false);
   protected readonly shake = signal(false);
   protected readonly showPassword = signal(false);
+  /** Карточки демо-персон — только на демо-стенде (GET /auth/options); в проде их нет. */
+  protected readonly demo = signal(false);
 
   constructor() {
-    if (this.session.isLoggedIn()) void this.router.navigateByUrl(homeUrl(this.session));
+    if (this.session.isLoggedIn()) void this.router.navigateByUrl(this.afterLogin());
+    void this.api
+      .authOptions()
+      .then((o) => this.demo.set(o.demoLogins))
+      .catch(() => this.demo.set(false));
     afterNextRender(() => this.host.nativeElement.querySelector<HTMLInputElement>('input[name=email]')?.focus());
+  }
+
+  /** ?next=/join/<token> — после входа принять приглашение; иначе домой. */
+  private afterLogin(): string {
+    const next = this.route.snapshot.queryParamMap.get('next');
+    return next && next.startsWith('/') && !next.startsWith('//') ? next : homeUrl(this.session);
+  }
+
+  /** Регистрация по той же ссылке приглашения, если пришли через /join. */
+  protected registerParams(): Record<string, string> {
+    const next = this.route.snapshot.queryParamMap.get('next') ?? '';
+    const token = next.startsWith('/join/') ? next.slice('/join/'.length) : '';
+    return token ? { invite: token } : {};
   }
 
   protected value(e: Event): string {
@@ -390,8 +421,8 @@ export class LoginPage {
     this.error.set(false);
     try {
       const session = await this.api.login(this.email(), this.password());
-      this.session.set(session);
-      await this.router.navigateByUrl(homeUrl(this.session));
+      this.account.applyLogin(session);
+      await this.router.navigateByUrl(this.afterLogin());
     } catch {
       this.error.set(true);
       this.shake.set(true);

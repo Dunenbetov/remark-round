@@ -134,7 +134,7 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
   const observability = app.get(ObservabilityService);
 
   const tag = randomUUID().slice(0, 8);
-  const passwordHash = hashPassword(PASSWORD);
+  const passwordHash = await hashPassword(PASSWORD);
   const project = await prisma.project.create({ data: { name: `Evals ${tag}` } });
   const foreign = await prisma.project.create({ data: { name: `Evals other-tenant ${tag}` } });
   const users: Record<Role | 'other', { id: string; token: string }> = {} as never;

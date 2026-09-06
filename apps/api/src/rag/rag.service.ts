@@ -85,6 +85,27 @@ export class RagService {
    * Поиск по пакету документов проекта. Чужой projectId сюда не попадёт: guard уже отдал 404.
    * Retriever-span Langfuse: запрос, projectId и найденные разделы с близостью — по нему видно, что чужого проекта в выдаче нет.
    */
+  /**
+   * pgvector ≥ 0.8: iterative_scan дочитывает индекс, пока не наберёт k строк проекта — иначе маленький проект
+   * на общем HNSW получает пустую выдачу после фильтра. Старый pgvector параметра не знает: запоминаем и идём без него.
+   */
+  private iterativeScan = true;
+
+  private async nearest(projectId: string, vector: string, k: number): Promise<NearestRow[]> {
+    if (this.iterativeScan) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe("SET LOCAL hnsw.iterative_scan = 'relaxed_order'");
+          return nearestSql(tx, projectId, vector, k);
+        });
+      } catch (e) {
+        if (!/iterative_scan/.test((e as Error).message)) throw e;
+        this.iterativeScan = false;
+      }
+    }
+    return nearestSql(this.prisma, projectId, vector, k);
+  }
+
   async search(ctx: ProjectContext, query: string, topK = DEFAULT_TOP_K): Promise<SearchHit[]> {
     const q = query.trim();
     if (!q) return [];
@@ -94,18 +115,7 @@ export class RagService {
       async (span) => {
         span.update({ input: { query: q, topK: k }, metadata: { projectId: ctx.projectId } });
         const [vector] = await this.embeddings.embed([q]);
-        const rows = await this.prisma.$queryRaw<
-          Array<{ chunkId: string; documentId: string; documentTitle: string; documentKind: DocumentKind; section: string | null; page: number | null; content: string; score: number }>
-        >`
-          SELECT c."id" AS "chunkId", c."documentId", d."title" AS "documentTitle", d."kind" AS "documentKind",
-                 c."section", c."page", c."content",
-                 1 - (c."embedding" <=> ${toVector(vector!)}::vector) AS "score"
-          FROM "DocumentChunk" c
-          JOIN "Document" d ON d."id" = c."documentId"
-          WHERE c."projectId" = ${ctx.projectId} AND c."embedding" IS NOT NULL
-          ORDER BY c."embedding" <=> ${toVector(vector!)}::vector
-          LIMIT ${k}
-        `;
+        const rows = await this.nearest(ctx.projectId, toVector(vector!), k);
         const hits = rows.map((r) => ({ ...r, score: Number(r.score) }));
         span.update({ output: hits.map((h) => ({ chunkId: h.chunkId, document: h.documentTitle, kind: h.documentKind, section: h.section, score: Number(h.score.toFixed(3)) })) });
         return hits;
@@ -117,6 +127,22 @@ export class RagService {
   async chunkCount(projectId: string, documentId: string): Promise<number> {
     return this.prisma.documentChunk.count({ where: { projectId, documentId } });
   }
+}
+
+type NearestRow = { chunkId: string; documentId: string; documentTitle: string; documentKind: DocumentKind; section: string | null; page: number | null; content: string; score: number };
+
+/** Один и тот же SQL на клиенте и в транзакции: фильтр проекта — в WHERE, не в промпте. */
+function nearestSql(db: Pick<PrismaService, '$queryRaw'>, projectId: string, vector: string, k: number): Promise<NearestRow[]> {
+  return db.$queryRaw<NearestRow[]>`
+    SELECT c."id" AS "chunkId", c."documentId", d."title" AS "documentTitle", d."kind" AS "documentKind",
+           c."section", c."page", c."content",
+           1 - (c."embedding" <=> ${vector}::vector) AS "score"
+    FROM "DocumentChunk" c
+    JOIN "Document" d ON d."id" = c."documentId"
+    WHERE c."projectId" = ${projectId} AND c."embedding" IS NOT NULL
+    ORDER BY c."embedding" <=> ${vector}::vector
+    LIMIT ${k}
+  `;
 }
 
 function toVector(v: number[]): string {
