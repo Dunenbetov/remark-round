@@ -252,10 +252,28 @@ export interface ViewExtra {
   traceUrl?: (runId: string) => string | undefined;
 }
 
-export function toRemarkView(r: RemarkRow, extra: ViewExtra): RemarkView {
+/**
+ * Кому собираем карточку (ADR 007). `customer` — роль business, заказчик на том же проекте, что и подрядчик:
+ * он не видит советы разработчиков, комментарий вердикта PM, ссылку на трейс и предложение модели, а черновик
+ * разбора и факты кадра — только после решения человека. Фильтр стоит здесь, а не в UI: REST, WS и MCP собирают
+ * карточку одной функцией.
+ */
+export type Audience = 'internal' | 'customer';
+
+export function audienceFor(role: Role): Audience {
+  return role === 'business' ? 'customer' : 'internal';
+}
+
+/** События комнаты, которые заказчику не отдаются: сырьё черновика и совет разработчика (ADR 007). */
+export const INTERNAL_EVENT_TYPES: ReadonlySet<string> = new Set(['run.token', 'run.citations', 'run.proposal', 'remark.advice']);
+
+export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience = 'internal'): RemarkView {
   const verdict = [...r.verdicts].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
   const run = [...r.runs].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
-  const draft = r.rationale ? r.rationale.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean) : [];
+  const customer = audience === 'customer';
+  // Заказчику черновик показываем, только когда человек уже поставил точку: до вердикта это рабочий документ PM
+  const draftAllowed = !customer || r.verdicts.length > 0;
+  const draft = draftAllowed && r.rationale ? r.rationale.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean) : [];
   const first = draft[0];
   return {
     id: r.id,
@@ -284,16 +302,25 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra): RemarkView {
       const chunk = extra.chunks.get(c.chunkId);
       return chunk ? [toCitation(c.id, chunk)] : [];
     }),
-    seen: r.visionFacts ?? undefined,
+    seen: draftAllowed ? (r.visionFacts ?? undefined) : undefined,
     draft,
     draftShort: first ? first.replace(/\.$/, '') : undefined,
-    proposedClass: r.proposedClass ?? undefined,
+    proposedClass: customer ? undefined : (r.proposedClass ?? undefined),
     verdict: verdict
-      ? { code: verdict.code, userId: verdict.userId, userName: extra.names.get(verdict.userId), userRole: extra.roles?.get(verdict.userId), at: hhmm(verdict.createdAt), comment: verdict.comment ?? undefined }
+      ? {
+          code: verdict.code,
+          userId: verdict.userId,
+          userName: extra.names.get(verdict.userId),
+          userRole: extra.roles?.get(verdict.userId),
+          at: hhmm(verdict.createdAt),
+          comment: customer ? undefined : (verdict.comment ?? undefined),
+        }
       : undefined,
-    advice: [...r.advices]
-      .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
-      .map((a) => ({ code: a.code, userId: a.userId, userName: extra.names.get(a.userId), role: extra.roles?.get(a.userId) ?? 'developer', at: hhmm(a.updatedAt), comment: a.comment ?? undefined })),
+    advice: customer
+      ? []
+      : [...r.advices]
+          .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
+          .map((a) => ({ code: a.code, userId: a.userId, userName: extra.names.get(a.userId), role: extra.roles?.get(a.userId) ?? 'developer', at: hhmm(a.updatedAt), comment: a.comment ?? undefined })),
     retest: r.retestOutcome ? { outcome: r.retestOutcome, explanation: r.retestExplanation ?? '' } : undefined,
     duplicateOfNumber: extra.duplicateOfNumber,
     devNote: r.expected ?? undefined,
@@ -303,7 +330,7 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra): RemarkView {
     runId: run?.id,
     runStatus: run?.status,
     runMode: run ? (run.mode === 'retest' ? 'retest' : 'triage') : undefined,
-    traceUrl: run ? extra.traceUrl?.(run.id) : undefined,
+    traceUrl: run && !customer ? extra.traceUrl?.(run.id) : undefined,
     createdAt: r.createdAt.toISOString(),
   };
 }

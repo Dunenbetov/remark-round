@@ -68,3 +68,7 @@ type ClientEvent =
 - `remark.advice` — не прогон: его шлёт `RemarksController` после `PUT/DELETE .../advice`, клиент патчит `advice[]` на месте (без перечитывания). Разработчик входит в комнату `awaiting_pm` — чтобы советовать; вердикт из комнаты у него по-прежнему 403.
 
 Пины на скрине / курсоры — stretch, в MVP не делать.
+
+## Кому что приходит (ADR 007)
+
+`run.phase`, `run.persisted`, `run.failed`, `run.cancelled`, `presence` — всей комнате. `run.token`, `run.citations`, `run.proposal`, `remark.advice` — только сокетам с ролью ≠ `business`: заказчик не видит сырьё черновика и советы разработчиков, пока человек не поставил точку (роль сокета — из presence на join). Ответы команд (`remark` в ack) собираются той же функцией, что REST, и для заказчика урезаны так же.

@@ -39,7 +39,7 @@
 | GET/POST | `/projects/:projectId/rounds` | member POST: pm/business | Раунды |
 | GET | `/projects/:projectId/rounds/:roundId/remarks` | по роли фильтр | Список. Developer — только defect+ |
 | POST | `/projects/:projectId/rounds/:roundId/remarks` | business, pm | Ручное замечание + upload screenshot |
-| GET | `/projects/:projectId/remarks/:remarkId` | member + ACL очереди | Карточка. Developer — defect+ и `awaiting_pm` (чтобы посоветовать); в ответе `advice[]` — советы разработчиков |
+| GET | `/projects/:projectId/remarks/:remarkId` | member + ACL очереди | Карточка. Developer — defect+ и `awaiting_pm` (чтобы посоветовать); в ответе `advice[]` — советы разработчиков. Заказчику (business) карточка собирается без `advice`, `verdict.comment`, `traceUrl`, `proposedClass`, а `draft`/`seen` — только после вердикта (ADR 007); то же для списков |
 | GET | `/projects/:projectId/advisory-queue` | developer | Что сейчас на приёмке у PM (`awaiting_pm`) — можно посоветовать; не очередь работы |
 | PUT | `/projects/:projectId/remarks/:id/advice` | developer | `{ code, comment? }` — совет PM (`code` — те же пять кнопок, без `duplicate`; ≤ 500 символов). Один на человека: повтор меняет. Только для `awaiting_pm`, иначе 409. Статус не меняет; в комнату уходит `remark.advice` |
 | DELETE | `/projects/:projectId/remarks/:id/advice` | developer | Снять свой совет; тоже `remark.advice` |

@@ -5,7 +5,7 @@ import { ObservabilityService } from '../observability/observability.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
-import { AdviceDto, ChunkInfo, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, quote, toRemarkView } from './remark.dto';
+import { AdviceDto, ChunkInfo, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, audienceFor, quote, toRemarkView } from './remark.dto';
 
 const REMARK_INCLUDE = {
   round: { select: { number: true } },
@@ -112,7 +112,7 @@ export class RemarksService {
       include: REMARK_INCLUDE,
       orderBy: { number: 'desc' },
     });
-    return this.views(rows);
+    return this.views(rows, ctx);
   }
 
   async devQueue(ctx: ProjectContext): Promise<RemarkView[]> {
@@ -121,7 +121,7 @@ export class RemarksService {
       include: REMARK_INCLUDE,
       orderBy: [{ status: 'asc' }, { number: 'asc' }],
     });
-    return this.views(rows);
+    return this.views(rows, ctx);
   }
 
   /** Разработчику: что сейчас на приёмке у PM — можно посоветовать решение. Не очередь работы (docs/STATUS.md). */
@@ -132,13 +132,13 @@ export class RemarksService {
       include: REMARK_INCLUDE,
       orderBy: { number: 'asc' },
     });
-    return this.views(rows);
+    return this.views(rows, ctx);
   }
 
   async get(ctx: ProjectContext, remarkId: string): Promise<RemarkView> {
     const row = await this.load(ctx, remarkId);
     if (ctx.role === 'developer' && !DEVELOPER_READ_STATUSES.includes(row.status)) throw new NotFoundException();
-    return (await this.views([row]))[0]!;
+    return (await this.views([row], ctx))[0]!;
   }
 
   async statusOf(ctx: ProjectContext, remarkId: string): Promise<RemarkStatus> {
@@ -514,7 +514,9 @@ export class RemarksService {
     return row;
   }
 
-  private async views(rows: RemarkRow[]): Promise<RemarkView[]> {
+  /** Карточки для читателя `ctx`: заказчик (business) получает урезанный вид — ADR 007, `audienceFor`. */
+  private async views(rows: RemarkRow[], ctx: ProjectContext): Promise<RemarkView[]> {
+    const audience = audienceFor(ctx.role);
     const dupIds = rows.map((r) => r.duplicateOfId).filter((x): x is string => Boolean(x));
     const originals = dupIds.length ? await this.prisma.remark.findMany({ where: { id: { in: dupIds } }, select: { id: true, number: true } }) : [];
     const numberById = new Map(originals.map((o) => [o.id, o.number]));
@@ -539,7 +541,7 @@ export class RemarksService {
     const roles = new Map(memberships.map((m) => [m.userId, m.role]));
 
     const traceUrl = (runId: string) => this.observability.traceUrl(runId);
-    return rows.map((r) => toRemarkView(r, { duplicateOfNumber: r.duplicateOfId ? numberById.get(r.duplicateOfId) : undefined, chunks, names, roles, traceUrl }));
+    return rows.map((r) => toRemarkView(r, { duplicateOfNumber: r.duplicateOfId ? numberById.get(r.duplicateOfId) : undefined, chunks, names, roles, traceUrl }, audience));
   }
 }
 

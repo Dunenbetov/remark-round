@@ -127,5 +127,5 @@ docs/             ARCHITECTURE, EVALS, GRAPH, API, WS, STATUS, DEMO, ADR, UI-к�
 | [`docs/GRAPH.md`](docs/GRAPH.md) · [`docs/WS.md`](docs/WS.md) · [`docs/API.md`](docs/API.md) · [`docs/STATUS.md`](docs/STATUS.md) | Контракты |
 | [`docs/ENGINEERING.md`](docs/ENGINEERING.md) | Паттерны Nest, тесты-ворота |
 | [`docs/PHASES.md`](docs/PHASES.md) | Что и когда сделано |
-| [`docs/adr/`](docs/adr/) | Не Jira · pixel-diff · MCP-фасад · совет разработчика · аккаунты · контур доступа |
+| [`docs/adr/`](docs/adr/) | Не Jira · pixel-diff · MCP-фасад · совет разработчика · аккаунты · контур доступа · что видит заказчик |
 | [`docs/ui/`](docs/ui/) | COPY, эталон, антипаттерны |

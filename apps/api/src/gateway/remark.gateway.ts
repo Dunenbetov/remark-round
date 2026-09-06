@@ -6,7 +6,7 @@ import type { Server, Socket } from 'socket.io';
 import { AgentService } from '../agent/agent.service';
 import { RunEvents, type Phase, type ServerEvent } from '../agent/run-events';
 import { AuthService, type AuthUser } from '../auth/auth.service';
-import { CancelRunDto, RemarkView, VerdictDto } from '../remarks/remark.dto';
+import { CancelRunDto, INTERNAL_EVENT_TYPES, RemarkView, VerdictDto } from '../remarks/remark.dto';
 import { RemarksService } from '../remarks/remarks.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import { TenancyService } from '../tenancy/tenancy.service';
@@ -56,7 +56,7 @@ export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModu
   ) {}
 
   onModuleInit(): void {
-    this.off = this.events.on((remarkId, event) => this.server?.to(room(remarkId)).emit(event.type, event));
+    this.off = this.events.on((remarkId, event) => this.broadcast(remarkId, event));
     // Участника убрали из проекта (или он сменил пароль): контекст на join закеширован, поэтому выкидываем
     // его сокеты из комнат этого проекта; без projectId — рвём соединение, токен всё равно уже недействителен.
     this.offRevoke = this.tenancy.onRevoke((userId, projectId) => this.revoke(userId, projectId));
@@ -65,6 +65,22 @@ export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModu
   onModuleDestroy(): void {
     this.off?.();
     this.offRevoke?.();
+  }
+
+  /**
+   * Фазы и итог прогона — всей комнате; сырьё черновика (токены, цитаты, предложение) и советы разработчиков —
+   * только не-заказчикам (ADR 007): роль сокета известна из presence, записанной на join.
+   */
+  private broadcast(remarkId: string, event: ServerEvent): void {
+    if (!this.server) return;
+    if (!INTERNAL_EVENT_TYPES.has(event.type)) {
+      this.server.to(room(remarkId)).emit(event.type, event);
+      return;
+    }
+    for (const [socketId, presence] of this.presence.get(remarkId) ?? []) {
+      if (presence.role === 'business') continue;
+      this.server.sockets.sockets.get(socketId)?.emit(event.type, event);
+    }
   }
 
   private revoke(userId: string, projectId?: string): void {
