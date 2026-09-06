@@ -10,6 +10,9 @@ WORKDIR /app/apps/web
 RUN pnpm build
 
 FROM nginx:alpine
+ARG GIT_SHA=dev
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist/web/browser /usr/share/nginx/html
+# /version.txt — какая сборка фронта на сервере (API отдаёт свою в /health)
+RUN echo "$GIT_SHA" > /usr/share/nginx/html/version.txt
 EXPOSE 80

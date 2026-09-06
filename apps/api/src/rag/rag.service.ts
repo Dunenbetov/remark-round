@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { startActiveObservation } from '@langfuse/tracing';
 import { Prisma, type DocumentKind } from '@remarkround/db';
 import { randomUUID } from 'node:crypto';
@@ -34,14 +34,31 @@ const MAX_TOP_K = 20;
  * Тенанси только в SQL: projectId приходит из ProjectContext, не из тела запроса.
  */
 @Injectable()
-export class RagService {
+export class RagService implements OnModuleInit {
   private readonly log = new Logger(RagService.name);
+  /** HNSW-индекс создан вручную вне Prisma (миграция 20260903000000): его отсутствие видно только по латентности — проверяем на старте. */
+  private vectorIndex: 'ok' | 'missing' | 'unknown' = 'unknown';
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly embeddings: EmbeddingsService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ indexname: string }>>`SELECT indexname FROM pg_indexes WHERE tablename = 'DocumentChunk' AND indexdef ILIKE '%USING hnsw%'`;
+      this.vectorIndex = rows.length ? 'ok' : 'missing';
+      if (!rows.length) this.log.error('HNSW-индекс DocumentChunk.embedding не найден: retrieve будет полным сканом. См. packages/db/README.md');
+    } catch (e) {
+      this.log.warn(`не удалось проверить HNSW-индекс: ${(e as Error).message}`);
+    }
+  }
+
+  /** Для /health: есть ли векторный индекс. */
+  get vectorIndexStatus(): 'ok' | 'missing' | 'unknown' {
+    return this.vectorIndex;
+  }
 
   /** Полная переиндексация документа: статус parsed → indexed, при ошибке failed. Свой trace Langfuse `index_document`. */
   async indexDocument(documentId: string): Promise<IndexResult> {

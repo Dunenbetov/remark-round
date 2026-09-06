@@ -20,6 +20,9 @@ RUN pnpm --filter @remarkround/api build
 RUN mkdir -p /app/apps/api/storage
 
 WORKDIR /app/apps/api
+# Версия сборки (аудит: «какая версия на сервере»): CI передаёт короткий SHA, локальная сборка — dev; отдаётся в /health
+ARG GIT_SHA=dev
+ENV APP_VERSION=$GIT_SHA
 ENV NODE_ENV=production
 EXPOSE 3000
 # migrate deploy → seed (SEED_ON_START, не в production) → сервер: `docker compose up` на чистой машине даёт рабочий стенд

@@ -1,7 +1,9 @@
 # RemarkRound — прод на одном сервере (фаза 11, runbook: docs/PROD.md).
 # Запуск: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 # Порты инфраструктуры в базовом файле уже на 127.0.0.1; наружу смотрит только caddy (80/443 → web).
-# Обязательные переменные .env: JWT_SECRET, POSTGRES_PASSWORD, PUBLIC_HOST, ADMIN_EMAILS (без них compose не стартует).
+# Обязательные переменные .env: JWT_SECRET, POSTGRES_PASSWORD, PUBLIC_HOST, ADMIN_EMAILS и все секреты Langfuse
+# (LANGFUSE_DB_PASSWORD, CLICKHOUSE_PASSWORD, MINIO_ROOT_PASSWORD, REDIS_AUTH, SALT, ENCRYPTION_KEY, NEXTAUTH_SECRET,
+# LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_INIT_USER_PASSWORD) — без них compose не стартует.
 services:
   postgres:
     restart: always
@@ -16,6 +18,8 @@ services:
       JWT_EXPIRES_SECONDS: ${JWT_EXPIRES_SECONDS:-86400}
       SEED_ON_START: 'false'
       DEMO_LOGINS: 'false'
+      # Миграции в проде — отдельным шагом перед up (docs/PROD.md): при старте только проверка, что они применены
+      MIGRATE_ON_START: 'false'
       # Контур доступа (ADR 006): без администратора в пустой системе некому зарегистрироваться первым
       ADMIN_EMAILS: ${ADMIN_EMAILS:?задайте ADMIN_EMAILS в .env — e-mail администраторов инстанса через запятую}
       REGISTRATION_MODE: ${REGISTRATION_MODE:-invite_only}
@@ -44,6 +48,64 @@ services:
 
   mcp:
     restart: always
+    logging: *logging
+
+  # Секреты Langfuse-стека обязательны (аудит: дефолты change-me-local-dev поднимались молча даже под прод-оверлеем)
+  langfuse-postgres:
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:?задайте LANGFUSE_DB_PASSWORD в .env}
+    logging: *logging
+
+  clickhouse:
+    restart: always
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?задайте CLICKHOUSE_PASSWORD в .env}
+    logging: *logging
+
+  minio:
+    restart: always
+    environment:
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?задайте MINIO_ROOT_PASSWORD в .env}
+    logging: *logging
+
+  redis:
+    restart: always
+    command: >
+      --requirepass ${REDIS_AUTH:?задайте REDIS_AUTH в .env}
+      --maxmemory-policy noeviction
+    environment:
+      REDIS_PASSWORD: ${REDIS_AUTH}
+    logging: *logging
+
+  langfuse-worker:
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD}@langfuse-postgres:5432/langfuse
+      SALT: ${SALT:?задайте SALT в .env}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?задайте ENCRYPTION_KEY в .env — openssl rand -hex 32}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      REDIS_AUTH: ${REDIS_AUTH}
+      TELEMETRY_ENABLED: 'false'
+    logging: *logging
+
+  langfuse-web:
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD}@langfuse-postgres:5432/langfuse
+      SALT: ${SALT}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      REDIS_AUTH: ${REDIS_AUTH}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?задайте NEXTAUTH_SECRET в .env}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:?задайте LANGFUSE_PUBLIC_KEY в .env}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:?задайте LANGFUSE_SECRET_KEY в .env}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:?задайте LANGFUSE_INIT_USER_PASSWORD в .env}
+      TELEMETRY_ENABLED: 'false'
     logging: *logging
 
   caddy:

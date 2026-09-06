@@ -17,20 +17,34 @@ describe('config', () => {
     expect(() => parseConfig({ ...base, NODE_ENV: 'production', JWT_SECRET: 'short-secret' })).toThrow(/JWT_SECRET/);
   });
 
+  it('production: демо-пароль БД, плейсхолдер Langfuse и отсутствие ключа модели без LLM_MODE=rules — ошибки с именем переменной', () => {
+    const secret = 'a'.repeat(32);
+    const prodBase = { DATABASE_URL: 'postgresql://remarkround:s3cret@postgres:5432/remarkround', JWT_SECRET: secret, NODE_ENV: 'production', OPENAI_API_KEY: 'sk-x' };
+    expect(() => parseConfig({ ...prodBase, DATABASE_URL: 'postgresql://remarkround:remarkround@postgres:5432/remarkround' })).toThrow(/DATABASE_URL/);
+    expect(() => parseConfig({ ...prodBase, LANGFUSE_SECRET_KEY: 'sk-lf-remarkround-local' })).toThrow(/LANGFUSE_SECRET_KEY/);
+    expect(parseConfig({ ...prodBase, LANGFUSE_SECRET_KEY: 'sk-lf-remarkround-local', LANGFUSE_TRACING_ENABLED: 'false' }).isProduction).toBe(true);
+    expect(() => parseConfig({ ...prodBase, OPENAI_API_KEY: '' })).toThrow(/OPENAI_API_KEY/);
+    expect(parseConfig({ ...prodBase, OPENAI_API_KEY: '', LLM_MODE: 'rules' }).llmMode).toBe('rules');
+    expect(parseConfig(prodBase).llmMode).toBe('openai');
+    expect(parseConfig({ ...base, NODE_ENV: 'development' }).llmMode).toBe('rules');
+    expect(parseConfig({ ...base, APP_VERSION: 'sha-abc' }).APP_VERSION).toBe('sha-abc');
+  });
+
   it('production с настоящим секретом: демо-входов нет; DEMO_LOGINS переопределяет в любую сторону', () => {
     const secret = 'a'.repeat(32);
-    const prod = parseConfig({ ...base, NODE_ENV: 'production', JWT_SECRET: secret, WEB_ORIGIN: 'https://rr.example' });
+    const prod = parseConfig({ ...base, NODE_ENV: 'production', JWT_SECRET: secret, WEB_ORIGIN: 'https://rr.example', OPENAI_API_KEY: 'sk-x', DATABASE_URL: 'postgresql://remarkround:s3cret@postgres/remarkround' });
     expect(prod.isProduction).toBe(true);
     expect(prod.demoLogins).toBe(false);
     expect(parseConfig({ ...base, NODE_ENV: 'development', DEMO_LOGINS: 'false' }).demoLogins).toBe(false);
-    expect(parseConfig({ ...base, NODE_ENV: 'production', JWT_SECRET: secret, DEMO_LOGINS: 'true' }).demoLogins).toBe(true);
+    expect(parseConfig({ ...base, NODE_ENV: 'production', JWT_SECRET: secret, DEMO_LOGINS: 'true', OPENAI_API_KEY: 'sk-x', DATABASE_URL: 'postgresql://remarkround:s3cret@postgres/remarkround' }).demoLogins).toBe(true);
   });
 
   it('контур доступа (ADR 006): режим регистрации по NODE_ENV, домены и администраторы нормализуются', () => {
     const secret = 'a'.repeat(32);
     expect(parseConfig({ ...base, NODE_ENV: 'development' }).registrationMode).toBe('open');
-    expect(parseConfig({ ...base, NODE_ENV: 'production', JWT_SECRET: secret }).registrationMode).toBe('invite_only');
-    expect(parseConfig({ ...base, NODE_ENV: 'production', JWT_SECRET: secret, REGISTRATION_MODE: 'open' }).registrationMode).toBe('open');
+    const prod = { ...base, NODE_ENV: 'production', JWT_SECRET: secret, OPENAI_API_KEY: 'sk-x', DATABASE_URL: 'postgresql://remarkround:s3cret@postgres/remarkround' };
+    expect(parseConfig(prod).registrationMode).toBe('invite_only');
+    expect(parseConfig({ ...prod, REGISTRATION_MODE: 'open' }).registrationMode).toBe('open');
     expect(() => parseConfig({ ...base, REGISTRATION_MODE: 'closed' })).toThrow(/REGISTRATION_MODE/);
     const c = parseConfig({ ...base, REGISTRATION_DOMAINS: ' @Company.KZ, partner.ru,, ', ADMIN_EMAILS: 'CTO@Company.kz , it@company.kz' });
     expect(c.registrationDomains).toEqual(['company.kz', 'partner.ru']);

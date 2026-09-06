@@ -33,22 +33,49 @@ const Schema = z
     REGISTRATION_DOMAINS: z.string().optional(),
     /** Администраторы инстанса по e-mail через запятую: отключают людей, выдают право создавать проекты. */
     ADMIN_EMAILS: z.string().optional(),
+    /** Версия сборки из образа (ARG GIT_SHA → ENV APP_VERSION); отдаётся в /health. */
+    APP_VERSION: z.string().default('dev'),
+    /**
+     * Ключ модели читается в LlmModule на месте, здесь — только для fail-fast: в production без ключа процесс не стартует,
+     * если владелец не подтвердил режим правил явно (LLM_MODE=rules). Тихий переход на правила — аудит «silent-rules-fallback».
+     */
+    OPENAI_API_KEY: z.string().optional(),
+    LLM_MODE: z.enum(['openai', 'rules']).optional(),
+    LANGFUSE_SECRET_KEY: z.string().optional(),
+    LANGFUSE_TRACING_ENABLED: z.string().optional(),
   })
   .superRefine((c, ctx) => {
     if (c.NODE_ENV !== 'production') return;
-    if (c.JWT_SECRET.length < 32 || c.JWT_SECRET === 'change-me') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['JWT_SECRET'],
-        message: 'в production нужен секрет не короче 32 символов (openssl rand -hex 32)',
-      });
+    const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    if (c.JWT_SECRET.length < 32 || PLACEHOLDERS.has(c.JWT_SECRET)) issue('JWT_SECRET', 'в production нужен секрет не короче 32 символов (openssl rand -hex 32)');
+    // Пароль БД из демо-compose (remarkround:remarkround) в проде — забытый .env, а не выбор
+    if (/:\/\/[^:\/]+:(remarkround|postgres|change-me[^@]*)@/.test(c.DATABASE_URL)) issue('DATABASE_URL', 'в production пароль БД не может быть демо-значением');
+    if (c.LANGFUSE_TRACING_ENABLED !== 'false' && c.LANGFUSE_SECRET_KEY && PLACEHOLDERS.has(c.LANGFUSE_SECRET_KEY)) {
+      issue('LANGFUSE_SECRET_KEY', 'в production ключи Langfuse не могут быть локальными плейсхолдерами');
+    }
+    if (!c.OPENAI_API_KEY && c.LLM_MODE !== 'rules') {
+      issue('OPENAI_API_KEY', 'в production нужен ключ модели; режим правил без модели включается только явно: LLM_MODE=rules');
     }
   });
 
+/** Значения из .env.example и docker-compose.yml, которые никогда не должны доехать до прода. */
+const PLACEHOLDERS: ReadonlySet<string> = new Set([
+  'change-me',
+  'change-me-local-dev',
+  'remarkround',
+  'sk-lf-remarkround-local',
+  'pk-lf-remarkround-local',
+  '0000000000000000000000000000000000000000000000000000000000000000',
+]);
+
 export type RegistrationMode = 'open' | 'invite_only';
+
+export type LlmMode = 'openai' | 'rules';
 
 export type AppConfig = z.infer<typeof Schema> & {
   readonly isProduction: boolean;
+  /** Чем работает граф: ключ есть — модель, иначе правила по retrieve (в production — только с LLM_MODE=rules). */
+  readonly llmMode: LlmMode;
   readonly demoLogins: boolean;
   readonly registrationMode: RegistrationMode;
   /** Нормализованные (lower-case) домены без `@`. */
@@ -74,6 +101,7 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ...c,
     isProduction: c.NODE_ENV === 'production',
     demoLogins: c.DEMO_LOGINS ? c.DEMO_LOGINS === 'true' : c.NODE_ENV !== 'production',
+    llmMode: c.OPENAI_API_KEY && c.LLM_MODE !== 'rules' ? 'openai' : 'rules',
     registrationMode: c.REGISTRATION_MODE ?? (c.NODE_ENV === 'production' ? 'invite_only' : 'open'),
     registrationDomains: splitList(c.REGISTRATION_DOMAINS).map((d) => d.replace(/^@/, '')),
     adminEmails: new Set(splitList(c.ADMIN_EMAILS)),

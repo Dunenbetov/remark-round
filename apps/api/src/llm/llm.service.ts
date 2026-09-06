@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { config } from '../config';
 import { createOpenAi } from './openai-client';
 import { ObservabilityService } from '../observability/observability.service';
 import { OpenAiTriageLlm } from './openai-triage-llm';
@@ -17,13 +18,20 @@ export class LlmService implements TriageLlm {
 
   constructor(observability: ObservabilityService) {
     const apiKey = process.env['OPENAI_API_KEY'];
+    // Режим — из config(): в production без ключа процесс не стартует, пока владелец не скажет LLM_MODE=rules явно (аудит: тихий fallback).
     // Каждый вызов OpenAI — generation-span Langfuse с именем ноды (фаза 8); без ключей Langfuse клиент отдаётся как есть.
-    this.impl = apiKey ? new OpenAiTriageLlm(createOpenAi(apiKey), undefined, (client, meta) => observability.openai(client, meta)) : new RulesTriageLlm();
-    this.log.log(`triage llm: ${this.impl.model}`);
+    this.impl = config().llmMode === 'openai' && apiKey ? new OpenAiTriageLlm(createOpenAi(apiKey), undefined, (client, meta) => observability.openai(client, meta)) : new RulesTriageLlm();
+    if (this.impl instanceof RulesTriageLlm) this.log.warn(`triage llm: ${this.impl.model} — черновики по правилам без модели (грубее; см. /health.llm)`);
+    else this.log.log(`triage llm: ${this.impl.model}`);
   }
 
   get model(): string {
     return this.impl.model;
+  }
+
+  /** Что сейчас за черновиками: модель или правила. Отдаётся в /health и на карточке. */
+  get mode(): 'openai' | 'rules' {
+    return this.impl instanceof RulesTriageLlm ? 'rules' : 'openai';
   }
 
   get canSee(): boolean {

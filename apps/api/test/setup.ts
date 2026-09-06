@@ -20,4 +20,6 @@ process.env['JWT_SECRET'] ??= 'test-secret';
 // admin.spec входит вторым; спеки идут параллельно и не должны трогать одного и того же человека
 process.env['ADMIN_EMAILS'] ??= 'instance-admin@test.dev,instance-admin-2@test.dev';
 // Спеки офлайн: LLM и эмбеддинги подменены, span'ы Langfuse не шлём (observability.spec ставит свой экспортёр в памяти).
+// Ключ модели из корневого .env в jest не нужен и не должен случайно тратиться: health.spec ждёт llm: 'rules'.
+delete process.env['OPENAI_API_KEY'];
 process.env['LANGFUSE_TRACING_ENABLED'] ??= 'false';

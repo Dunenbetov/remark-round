@@ -21,6 +21,7 @@ describe('health', () => {
 
   it('GET /health без токена: процесс жив и база на связи', async () => {
     const res = await request(app.getHttpServer()).get('/api/v1/health').expect(200);
-    expect(res.body).toEqual({ ok: true, db: 'ok' });
+    // В тестах ключа модели нет — правила; HNSW-индекс на тестовой БД есть (миграции применены)
+    expect(res.body).toEqual({ ok: true, db: 'ok', version: 'dev', llm: 'rules', vectorIndex: 'ok' });
   });
 });

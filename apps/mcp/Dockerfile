@@ -13,6 +13,8 @@ RUN pnpm install --frozen-lockfile --filter @remarkround/mcp
 RUN pnpm --filter @remarkround/mcp build
 
 WORKDIR /app/apps/mcp
+ARG GIT_SHA=dev
+ENV APP_VERSION=$GIT_SHA
 ENV NODE_ENV=production
 ENV MCP_TRANSPORT=http
 ENV MCP_PORT=3002
