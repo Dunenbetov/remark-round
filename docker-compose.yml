@@ -7,6 +7,8 @@ services:
   postgres:
     image: pgvector/pgvector:pg17
     restart: unless-stopped
+    # pg_stat_statements — «какие запросы едят базу» (docs/PROD.md «Обслуживание БД»); расширение создаёт миграция
+    command: ['postgres', '-c', 'shared_preload_libraries=pg_stat_statements', '-c', 'pg_stat_statements.track=all']
     environment:
       POSTGRES_USER: remarkround
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-remarkround}
@@ -26,6 +28,8 @@ services:
     # Имя образа = реестр релизов (docs/PROD.md): CI публикует ghcr.io/…:<sha>, прод делает pull по RR_TAG;
     # демо и dev собирают локально под тем же именем (RR_TAG=local)
     image: ghcr.io/dunenbetov/remark-round-api:${RR_TAG:-local}
+    # Прогон графа длится 5–30 с, вызов модели — до 60 с: даём дописать перед SIGKILL при деплое (аудит: deploy-kills-inflight)
+    stop_grace_period: 90s
     build:
       context: .
       dockerfile: apps/api/Dockerfile

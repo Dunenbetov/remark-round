@@ -1,10 +1,10 @@
 # Прод на одном сервере — runbook
 
-Фаза 11 (сентябрь 2026). Одна машина, docker compose, наружу смотрит только Caddy (80/443). Тысячи зарегистрированных пользователей одна нода держит; узкое место — прогоны модели, их ограничивает лимит параллельных прогонов (PR 3). Второй инстанс API — отдельный этап (Redis для socket.io, S3 вместо тома, очередь), см. `docs/ARCHITECTURE.md`.
+Фаза 11 (сентябрь 2026). Одна машина, docker compose, наружу смотрит только Caddy (80/443). Ёмкость нагрузочно не тестировалась: узкое место — прогоны модели (лимит `GRAPH_MAX_CONCURRENT` / `GRAPH_MAX_PER_PROJECT`) и pixel-diff с разбором файлов в одном процессе API; список замечаний отдаётся без пагинации. Перед обещанием SLA нескольким командам — прогнать `autocannon`/`k6` по журналу на 300 строк и параллельным ретестам. Второй инстанс API — отдельный этап (Redis для socket.io, S3 вместо тома, очередь), см. `docs/ARCHITECTURE.md`.
 
 ## Что нужно
 
-- Сервер Linux (2 vCPU / 4 ГБ хватает на пилот; Langfuse со своими ClickHouse/MinIO/Redis добавляет ~2 ГБ), Docker ≥ 24 с compose ≥ 2.24.
+- Сервер Linux **4 vCPU / 8 ГБ**: лимиты памяти в `docker-compose.prod.yml` в сумме ≈ 7 ГБ (api 1.5, postgres 1, ClickHouse 1.5, langfuse-web 1, worker 0.75, остальное по мелочи); на 4 ГБ Langfuse-стек и база начнут вытеснять друг друга. Docker ≥ 24 с compose ≥ 2.24.
 - DNS: `PUBLIC_HOST` (например `rr.company.kz`) → IP сервера. Caddy сам получит сертификат Let's Encrypt.
 - `OPENAI_API_KEY` и решение, можно ли слать тексты замечаний и кадры заказчика во внешнюю модель (`REMARKROUND.md` §12: без договора — нельзя; альтернатива — локальная модель за `LlmModule`).
 
@@ -85,6 +85,13 @@ docker compose ps && curl -s https://$PUBLIC_HOST/api/v1/health   # version = RR
   echo '0 * * * * ALERT_TELEGRAM_BOT_TOKEN=… ALERT_TELEGRAM_CHAT_ID=… /opt/remark-round/deploy/alerts.sh' | crontab -
   ```
 - **Что делать, если** OpenAI лежит или ключ протух: карточки показывают «сервис модели недоступен» / «ключ не принят», прогоны можно запускать снова кнопкой; ключ меняется в `.env` и `docker compose up -d api`. Диск кончился: `docker system prune`, затем проверить `docker compose ps` и `/health`; кадры и дампы — самые крупные тома (`docker system df -v`). Postgres не отвечает: `docker compose logs postgres`, `docker compose restart postgres`, затем `/health` → `db: ok`.
+
+## Обслуживание БД
+
+- Роль приложения получает `statement_timeout = 120s` и `idle_in_transaction_session_timeout = 60s` (миграция `20260907130000`): зависший запрос или брошенная транзакция не держат пул из 10 соединений и не блокируют autovacuum. Тяжёлая миграция начинается с `SET statement_timeout = 0;`.
+- «Почему всё висит»: `docker compose exec postgres psql -U remarkround -c "SELECT pid, now()-query_start AS age, state, left(query,80) FROM pg_stat_activity WHERE datname='remarkround' AND state<>'idle' ORDER BY age DESC;"`. Самые дорогие запросы за всё время: `… -c "SELECT calls, round(total_exec_time) AS ms, left(query,100) FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 15;"` (расширение включено в образе через `shared_preload_libraries`).
+- Память базы задана командой контейнера в `docker-compose.prod.yml` (`shared_buffers=256MB`, `work_mem=16MB`): при переезде на сервер с другой памятью пересчитать (shared_buffers ≈ 25 % от лимита контейнера).
+- Рост таблиц: `GraphCheckpoint` (чекпоинты графа, растут с каждым прогоном) и `DocumentChunk` — смотреть `docker compose exec postgres psql -U remarkround -c "\dt+"` раз в месяц; ретеншн чекпоинтов — отдельная задача аудита (graph-checkpoint-growth).
 
 ## Langfuse в проде
 

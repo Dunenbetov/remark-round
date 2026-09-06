@@ -7,11 +7,38 @@
 services:
   postgres:
     restart: always
+    # Память под сервер 8 ГБ (docs/PROD.md): база — до 1 ГБ, из них shared_buffers 256 МБ; дефолт образа (128 МБ / 4 МБ work_mem)
+    # лил бы векторный поиск и агрегаты журнала на диск при первом росте пакета ТЗ
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - effective_cache_size=768MB
+    shm_size: 256m
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env до первого запуска (потом менять только ALTER USER)}
 
   api:
     restart: always
+    # Лимиты памяти (аудит: langfuse-colocated-no-limits): без них OOM-killer снимает произвольный контейнер —
+    # в худшем случае api или postgres — ровно в момент, когда ClickHouse Langfuse разросся. Сумма лимитов ≈ 7 ГБ → сервер 8 ГБ.
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
     environment:
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET в .env — openssl rand -hex 32}
@@ -44,42 +71,73 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128m
     logging: *logging
 
   mcp:
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
     logging: *logging
 
   # Секреты Langfuse-стека обязательны (аудит: дефолты change-me-local-dev поднимались молча даже под прод-оверлеем)
   langfuse-postgres:
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
     environment:
       POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:?задайте LANGFUSE_DB_PASSWORD в .env}
     logging: *logging
 
   clickhouse:
     restart: always
+    # ClickHouse читает лимит cgroup как объём RAM и держится в 90 % от него
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
     environment:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?задайте CLICKHOUSE_PASSWORD в .env}
     logging: *logging
 
   minio:
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
     environment:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?задайте MINIO_ROOT_PASSWORD в .env}
     logging: *logging
 
   redis:
     restart: always
+    # maxmemory + noeviction: при переполнении очередь Langfuse отказывает в записи, а не роняет сервер по OOM
     command: >
       --requirepass ${REDIS_AUTH:?задайте REDIS_AUTH в .env}
+      --maxmemory 192mb
       --maxmemory-policy noeviction
+    deploy:
+      resources:
+        limits:
+          memory: 256m
     environment:
       REDIS_PASSWORD: ${REDIS_AUTH}
     logging: *logging
 
   langfuse-worker:
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 768m
     environment:
       DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD}@langfuse-postgres:5432/langfuse
       SALT: ${SALT:?задайте SALT в .env}
@@ -93,6 +151,10 @@ services:
 
   langfuse-web:
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     environment:
       DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD}@langfuse-postgres:5432/langfuse
       SALT: ${SALT}
