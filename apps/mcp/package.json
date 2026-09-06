@@ -2,6 +2,7 @@
   "name": "@remarkround/mcp",
   "version": "0.0.0",
   "private": true,
+  "license": "UNLICENSED",
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/main.ts",

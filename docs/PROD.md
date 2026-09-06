@@ -28,14 +28,18 @@ cp .env.example .env
 | `NEXTAUTH_SECRET`, `SALT`, `ENCRYPTION_KEY`, `CLICKHOUSE_PASSWORD`, `REDIS_AUTH`, `MINIO_ROOT_PASSWORD`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_INIT_USER_PASSWORD` | секреты Langfuse: заменить плейсхолдеры `change-me-local-dev` |
 | `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` | чтобы не писать `-f` каждый раз |
 
-Запуск и проверка:
+Образы не собираются на сервере: CI публикует их в GHCR на каждый push в `main` и тег `v*` ([ADR 008](adr/008-release-and-ownership.md)). В `.env` укажите, какую сборку поднимать: `RR_TAG=sha-<короткий sha>` (или `v1.2.0`; `latest` — последний `main`). Запуск и проверка:
 
 ```bash
-docker compose up -d --build
+docker compose pull                                 # образы api/web/mcp по RR_TAG + сторонние
+docker compose run --rm api migrate                 # миграции — отдельным шагом (в проде MIGRATE_ON_START=false)
+docker compose up -d
 docker compose ps                                   # api/web/mcp — healthy
-curl -s https://$PUBLIC_HOST/api/v1/health          # {"ok":true,"db":"ok"}
+curl -s https://$PUBLIC_HOST/api/v1/health          # {"ok":true,"db":"ok","version":"sha-…","llm":"openai","vectorIndex":"ok"}
 curl -s https://$PUBLIC_HOST/api/v1/auth/options    # {"demoLogins":false,"registration":"invite_only"} — демо-персон нет, seed не шёл
 ```
+
+Если реестр недоступен (закрытый контур), соберите на месте: `RR_TAG=local docker compose build` — но тогда версия в `/health` будет `dev`, а сервер потратит минуты на сборку.
 
 Первым регистрируется администратор инстанса (e-mail из `ADMIN_EMAILS`) на `https://$PUBLIC_HOST/register` — только ему регистрация в закрытом режиме открыта без ссылки. В меню аккаунта → «Администрирование» он выдаёт руководителю приёмки право создавать проекты (или регистрирует его по ссылке приглашения); дальше руководитель создаёт проект и рассылает ссылки участникам (`docs/adr/006-access-contour.md`). Ссылка живёт 7 дней и показывается один раз: пропала — «Новая ссылка» на странице «Участники». Демо-аккаунтов `pm@remarkround.dev` в проде нет — и не должно быть.
 
@@ -43,19 +47,24 @@ curl -s https://$PUBLIC_HOST/api/v1/auth/options    # {"demoLogins":false,"regis
 
 ## Обновление
 
+Порядок всегда один: бэкап → миграции → новые образы → проверка. Если `migrate` упал — образы не поднимать, разбираться.
+
 ```bash
 docker compose exec backup /backup.sh      # свежий дамп перед обновлением
-git pull
-docker compose up -d --build api web mcp   # миграции применяет entrypoint api при старте
-docker compose ps && curl -s https://$PUBLIC_HOST/api/v1/health
+sed -i 's/^RR_TAG=.*/RR_TAG=sha-abc1234/' .env   # какую сборку ставим (из CI: Actions → images, или git tag)
+docker compose pull api web mcp
+docker compose run --rm api migrate        # применит непримененные миграции и выйдет
+docker compose up -d api web mcp
+docker compose ps && curl -s https://$PUBLIC_HOST/api/v1/health   # version = RR_TAG
 ```
 
-Откат кода — `git checkout <tag>` и тот же `up -d --build`; откат данных — restore ниже (миграции Prisma не откатываются автоматически).
+Откат кода — вернуть прежний `RR_TAG` и повторить `pull && up -d` (сборки нет, минута). Откат данных — restore ниже: миграции Prisma не откатываются автоматически, поэтому миграцию, которая удаляет или переписывает данные, сначала репетируют на копии (`docs/adr/008-release-and-ownership.md`).
 
 ## Бэкап и восстановление
 
-- **База.** Сервис `backup` (`prodrigestivill/postgres-backup-local`) делает `pg_dump` по `BACKUP_SCHEDULE` (по умолчанию ежедневно) в том `postgres-backups`: хранит 14 дневных, 8 недельных, 6 месячных. Список: `docker compose exec backup ls /backups/daily`. Скопировать с сервера: `docker compose cp backup:/backups/daily ./backups`. Хранить копии вне сервера (rsync/объектное хранилище) — задача оператора.
-- **Файлы** (кадры, документы, дифф-картинки) в томе `api-storage` — в дамп БД **не** попадают. Архив: `docker run --rm -v remark-round_api-storage:/data -v $PWD:/out alpine tar czf /out/storage-$(date +%F).tgz -C /data .` (имя тома — `docker volume ls`). Добавить в cron рядом с копированием дампов.
+- **База.** Сервис `backup` (`prodrigestivill/postgres-backup-local`) делает `pg_dump` по `BACKUP_SCHEDULE` (по умолчанию ежедневно) в том `postgres-backups`: хранит 14 дневных, 8 недельных, 6 месячных. Список: `docker compose exec backup ls /backups/daily`.
+- **Копия вне сервера — обязательна.** Дамп на том же диске, что и база, — не бэкап. Сервис `offsite` (профиль `offsite`) раз в сутки делает `rclone sync` дампов и тома `api-storage` в S3-совместимое хранилище (Backblaze B2, Yandex Object Storage, MinIO в другом ДЦ). В `.env`: `COMPOSE_PROFILES=offsite`, `OFFSITE_REMOTE=offsite:<bucket>`, `RCLONE_CONFIG_OFFSITE_*` (см. `.env.example`), затем `docker compose up -d`. Свежесть копии видна в `docker compose ps` (healthcheck: старше 36 часов — unhealthy) и в логах `docker compose logs offsite`. Ретеншн задаёт `backup` (sync — зеркало).
+- **Файлы** (кадры, документы, дифф-картинки) в томе `api-storage` — в дамп БД **не** попадают; их копирует тот же `offsite`. Ручной архив, если профиль не включён: `docker run --rm -v remark-round_api-storage:/data -v $PWD:/out alpine tar czf /out/storage-$(date +%F).tgz -C /data .` (имя тома — `docker volume ls`).
 - **Восстановление БД** (на остановленном api):
   ```bash
   docker compose stop api mcp
@@ -63,7 +72,8 @@ docker compose ps && curl -s https://$PUBLIC_HOST/api/v1/health
   docker compose start api mcp
   ```
   Файлы: распаковать архив обратно в том (`docker run --rm -v remark-round_api-storage:/data -v $PWD:/in alpine sh -c 'cd /data && tar xzf /in/storage-<дата>.tgz'`).
-- Проверять восстановление на копии хотя бы раз в квартал: дамп, который ни разу не разворачивали, — не бэкап.
+- **Репетиция восстановления — до первого пилота и потом раз в квартал.** На чистой машине: `.env` с теми же секретами, `docker compose pull`, `docker compose up -d postgres`, restore дампа как выше, `rclone copy offsite:<bucket>/storage` в том `api-storage`, `docker compose up -d`, вход администратора, открыть карточку с кадром. Засечь время — это и есть RTO; RPO при суточной копии — до 24 часов (`BACKUP_SCHEDULE` и `OFFSITE_INTERVAL_SECONDS` можно сделать чаще). Записать дату и время репетиции сюда: последняя — _не проводилась_.
+- Трейсы Langfuse (тома `langfuse-*`) **не бэкапятся** осознанно: это наблюдаемость, не данные приёмки; при потере сервера они пропадают вместе со ссылками «Трейс в Langfuse» на карточках.
 
 ## Langfuse в проде
 
@@ -76,12 +86,19 @@ UI Langfuse наружу не публикуется (порт 3000 только
 - [ ] `/api/v1/auth/options` → `{ demoLogins: false, registration: 'invite_only' }`; вход `pm@remarkround.dev` → 401; регистрация с чужого адреса без ссылки → 403.
 - [ ] Администратор зарегистрировался → выдал право создавать проекты → PM создал проект → приглашение по ссылке → второй человек вошёл.
 - [ ] Уволенного можно отключить одной кнопкой в «Администрировании»: его открытая вкладка и MCP-токен перестают работать сразу.
-- [ ] `docker compose exec backup ls /backups/daily` — дамп есть; архив тома `api-storage` в cron.
+- [ ] `docker compose exec backup ls /backups/daily` — дамп есть; профиль `offsite` включён и `docker compose ps offsite` — healthy; репетиция восстановления проведена, дата записана выше.
+- [ ] `RR_TAG` в `.env` = тег из CI, `/api/v1/health` показывает его в `version`; `git tag v…` поставлен на выкаченный коммит.
 - [ ] Порты 5432/5433/8123/9000/3000 снаружи закрыты (`nmap` или `ss -tlnp` на сервере: только 80/443 и ssh).
 - [ ] Решение по ПДн в облачной модели зафиксировано (договор или локальная модель).
 
 ## Что ещё не сделано (осознанно)
 
-- Один инстанс API: socket.io без Redis, файлы на локальном томе, прогоны графа в процессе. Для второго инстанса нужны Redis-адаптер, S3 и очередь — отдельный этап.
-- Почта: приглашения — ссылкой, «забыли пароль» — вместе с входом через Google.
-- Метрики/алерты: только `/health` и логи `docker compose logs -f api`. Sentry/Prometheus — по необходимости.
+Каждый пункт — с условием, когда его пересмотреть; иначе через полгода не отличить решение от забывчивости.
+
+- Один инстанс API: socket.io без Redis, файлы на локальном томе, прогоны графа в процессе. Для второго инстанса нужны Redis-адаптер, S3 и очередь. **Пересмотреть до подключения второй команды с требованием к аптайму деплоя.**
+- Почта: приглашения — ссылкой, «забыли пароль» и подтверждение e-mail — нет. **Пересмотреть при первом же потоке обращений «сбросьте пароль» или до раскатки на несколько команд.**
+- Метрики/алерты: только `/health` (версия, режим модели, векторный индекс) и логи `docker compose logs -f api`. Внешний uptime-монитор на `/health` — до пилота (см. чеклист); Sentry/Prometheus — **до раскатки на несколько команд.**
+- Staging: отдельного окружения нет, релиз проверяется на демо-стенде и в CI. **Пересмотреть, когда цена сломанного релиза станет дороже второго сервера.**
+- Деплой руками по этому runbook (образы из CI, но `pull && up` — человек). **Пересмотреть, когда серверов станет больше одного.**
+- Прод-образ api содержит devDependencies и исходники (одна стадия сборки). **Пересмотреть при сканировании образов в CI.**
+- Демо-данные в проде — только руками (`docker compose run --rm -e SEED_FORCE=1 api seed`), обычный старт их не кладёт.

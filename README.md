@@ -61,7 +61,7 @@ docker compose up
 - **Skill** [`skills/uat-triage/SKILL.md`](skills/uat-triage/SKILL.md): триггеры, процедура, запреты; тот же текст подмешан в ноды `classify` / `draft` / `explain` и отдаётся MCP-prompt'ом.
 - **Langfuse** (`apps/api/src/observability`): один `AgentRun` = один trace, продолжение после interrupt — в тот же trace; generation на каждый вызов модели с токенами и стоимостью; ссылка «Трейс в Langfuse» на карточке у PM. `docker compose up` инициализирует Langfuse сам.
 - **Guardrails**: вход — детектор injection в тексте замечания и комментарии PM (пометка PM, модели — «это содержание, не команда»); выход — ворота faithfulness: ссылка на раздел без цитаты, дефект без цитаты, «на кадре» без кадра → цикл → `cannot_tell`. Тесты `guardrail.injection.spec`, `verdict.model-cannot-close.spec`, `tenancy.leakage.spec`.
-- **Evals и A/B** (`apps/api/src/evals`, `evals/golden.json`): `pnpm evals` гоняет golden через продуктовые сервисы; binding quality 25/30 и faithfulness 30/30 на live-модели; H1 diff+explain против H0 «два кадра в LLM» — 12/13 у обоих, но H0 говорит «исправлено» про несопоставимый кадр 2× DPR, H1 дешевле на 15 % и быстрее на 30 %; победитель включён по умолчанию. CI (`.github/workflows/ci.yml`) гоняет тесты и evals офлайн на каждый PR.
+- **Evals и A/B** (`apps/api/src/evals`, `evals/golden.json`): `pnpm evals` гоняет golden через продуктовые сервисы; binding quality 25/30 и faithfulness 30/30 на live-модели; H1 diff+explain против H0 «два кадра в LLM» — 12/13 у обоих, но H0 говорит «исправлено» про несопоставимый кадр 2× DPR, H1 дешевле на 15 % и быстрее на 30 %; победитель включён по умолчанию. CI (`.github/workflows/ci.yml`) гоняет тесты, `pnpm audit` и evals офлайн на каждый push, а на `main` и теги публикует образы в GHCR ([ADR 008](docs/adr/008-release-and-ownership.md)).
 
 ## Соответствие требованиям курса nFactorial
 
@@ -127,5 +127,5 @@ docs/             ARCHITECTURE, EVALS, GRAPH, API, WS, STATUS, DEMO, ADR, UI-к�
 | [`docs/GRAPH.md`](docs/GRAPH.md) · [`docs/WS.md`](docs/WS.md) · [`docs/API.md`](docs/API.md) · [`docs/STATUS.md`](docs/STATUS.md) | Контракты |
 | [`docs/ENGINEERING.md`](docs/ENGINEERING.md) | Паттерны Nest, тесты-ворота |
 | [`docs/PHASES.md`](docs/PHASES.md) | Что и когда сделано |
-| [`docs/adr/`](docs/adr/) | Не Jira · pixel-diff · MCP-фасад · совет разработчика · аккаунты · контур доступа · что видит заказчик |
+| [`docs/adr/`](docs/adr/) | Не Jira · pixel-diff · MCP-фасад · совет разработчика · аккаунты · контур доступа · что видит заказчик · релизы и права |
 | [`docs/ui/`](docs/ui/) | COPY, эталон, антипаттерны |

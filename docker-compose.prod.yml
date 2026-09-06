@@ -146,6 +146,40 @@ services:
       - postgres-backups:/backups
     logging: *logging
 
+  # Копия вне сервера (аудит: backups-dr): rclone sync дампов и файлов в S3-совместимое хранилище раз в сутки.
+  # Включается профилем: `docker compose --profile offsite up -d` (или COMPOSE_PROFILES=offsite в .env)
+  # после того, как в .env заданы RCLONE_CONFIG_OFFSITE_* и OFFSITE_REMOTE (docs/PROD.md «Бэкап»).
+  offsite:
+    image: rclone/rclone:1
+    restart: always
+    profiles: [offsite]
+    depends_on:
+      backup:
+        condition: service_started
+    entrypoint: ['sh', '/offsite-backup.sh']
+    environment:
+      # Переменные без :? — профиль необязательный, а compose проверяет их даже у выключенных сервисов; скрипт сам откажет без OFFSITE_REMOTE
+      OFFSITE_REMOTE: ${OFFSITE_REMOTE:-}
+      OFFSITE_INTERVAL_SECONDS: ${OFFSITE_INTERVAL_SECONDS:-86400}
+      RCLONE_CONFIG_OFFSITE_TYPE: ${RCLONE_CONFIG_OFFSITE_TYPE:-s3}
+      RCLONE_CONFIG_OFFSITE_PROVIDER: ${RCLONE_CONFIG_OFFSITE_PROVIDER:-Other}
+      RCLONE_CONFIG_OFFSITE_ENDPOINT: ${RCLONE_CONFIG_OFFSITE_ENDPOINT:-}
+      RCLONE_CONFIG_OFFSITE_REGION: ${RCLONE_CONFIG_OFFSITE_REGION:-}
+      RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID: ${RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID:-}
+      RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY: ${RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY:-}
+    volumes:
+      - ./deploy/offsite-backup.sh:/offsite-backup.sh:ro
+      - postgres-backups:/backups:ro
+      - api-storage:/storage:ro
+    healthcheck:
+      # Копия старше 36 часов — unhealthy: видно в docker compose ps и внешнему монитору
+      test: ['CMD-SHELL', 'test -f /tmp/offsite-last-run && test $(( $(date +%s) - $(date -d "$(cat /tmp/offsite-last-run)" +%s 2>/dev/null || echo 0) )) -lt 129600']
+      interval: 10m
+      timeout: 10s
+      retries: 3
+      start_period: 1h
+    logging: *logging
+
 volumes:
   api-storage:
   postgres-backups:
