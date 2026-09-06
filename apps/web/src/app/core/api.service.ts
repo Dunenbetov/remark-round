@@ -154,6 +154,25 @@ export class ApiService {
     return this.run(this.http.get<Round[]>(`${API_BASE}/projects/${projectId}/rounds`));
   }
 
+  /** Закрыть раунд (pm, business): 409 — есть нерешённые замечания, в тексте перечень. */
+  closeRound(projectId: string, roundId: string): Promise<Round> {
+    return this.run(this.http.post<Round>(`${API_BASE}/projects/${projectId}/rounds/${roundId}/close`, {}));
+  }
+
+  reopenRound(projectId: string, roundId: string): Promise<Round> {
+    return this.run(this.http.post<Round>(`${API_BASE}/projects/${projectId}/rounds/${roundId}/reopen`, {}));
+  }
+
+  /** Итог раунда xlsx: файл приходит с Bearer, поэтому не ссылка, а blob (скачать — MediaService/AppBar). */
+  exportRound(projectId: string, roundId: string): Promise<Blob> {
+    return this.run(this.http.get(`${API_BASE}/projects/${projectId}/rounds/${roundId}/export.xlsx`, { responseType: 'blob' }));
+  }
+
+  /** Повтор претензии (business): новое замечание в открытом раунде со ссылкой на закрытый оригинал. */
+  reopenRemark(projectId: string, remarkId: string, body: { roundId: string; screenshotKey?: string }): Promise<Remark> {
+    return this.run(this.http.post<Remark>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}/reopen`, body));
+  }
+
   remarks(projectId: string, roundId: string): Promise<Remark[]> {
     return this.run(this.http.get<Remark[]>(`${API_BASE}/projects/${projectId}/rounds/${roundId}/remarks`));
   }

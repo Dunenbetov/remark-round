@@ -202,6 +202,11 @@ export const CARD = {
   specRequires: 'Что требует ТЗ',
   /** Бейдж у черновика, когда прогон шёл правилами без модели (LLM_MODE=rules или ключ не задан). */
   draftByRules: 'по правилам, без модели',
+  /** Повтор претензии: подпись у карточки и кнопка у закрытого замечания (business). */
+  originOf: (number: number, round: number) => `Повтор претензии №${number} из раунда ${round}`,
+  reopenedIn: (number: number, round: number) => `Открыто снова: №${number} в раунде ${round}`,
+  reopenIn: (round: number) => `Открыть снова в раунде ${round}`,
+  reopenNoRound: 'Чтобы открыть снова, сначала создайте новый раунд',
   whatToDo: 'Что сделать',
   showFullDraft: 'Показать разбор целиком',
   hideFullDraft: 'Свернуть',
@@ -283,6 +288,11 @@ export const NAV = {
   allProjects: 'Все проекты',
   newProject: 'Создать проект',
   newRound: 'Новый раунд',
+  closeRound: (n: number) => `Закрыть раунд ${n}`,
+  reopenRound: (n: number) => `Открыть раунд ${n} снова`,
+  exportRound: (n: number) => `Выгрузить раунд ${n} (.xlsx)`,
+  roundClosedNow: (n: number) => `Раунд ${n} закрыт`,
+  roundReopenedNow: (n: number) => `Раунд ${n} снова открыт`,
 };
 
 /** Служебные подписи (добавлены при переработке UI, см. docs/ui/COPY.md). */

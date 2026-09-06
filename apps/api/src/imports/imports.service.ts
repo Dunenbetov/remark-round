@@ -1,8 +1,8 @@
-import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { ImportRowStatus, RemarkStatus } from '@remarkround/db';
 import { AgentService } from '../agent/agent.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { RemarksService } from '../remarks/remarks.service';
+import { ROUND_CLOSED, RemarksService } from '../remarks/remarks.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import { ImportJobView, ImportRowView } from './import.dto';
@@ -33,6 +33,7 @@ export class ImportService {
   async create(ctx: ProjectContext, input: ImportInput): Promise<ImportJobView> {
     const round = await this.prisma.round.findFirst({ where: { id: input.roundId, projectId: ctx.projectId } });
     if (!round) throw new NotFoundException();
+    if (round.status === 'closed') throw new ConflictException(ROUND_CLOSED);
     if (!input.data.length) throw new UnprocessableEntityException('Пустой файл');
 
     let rows;

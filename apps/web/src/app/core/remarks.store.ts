@@ -70,6 +70,35 @@ export class RemarksStore {
     return round;
   }
 
+  async closeRound(projectId: string, roundId: string): Promise<Round | null> {
+    const round = await this.guard(() => this.api.closeRound(projectId, roundId));
+    if (round) this.replaceRound(round);
+    return round;
+  }
+
+  async reopenRound(projectId: string, roundId: string): Promise<Round | null> {
+    const round = await this.guard(() => this.api.reopenRound(projectId, roundId));
+    if (round) this.replaceRound(round);
+    return round;
+  }
+
+  private replaceRound(round: Round): void {
+    this.rounds.update((list) => list.map((r) => (r.id === round.id ? round : r)));
+    if (this.round()?.id === round.id) this.round.set(round);
+  }
+
+  /** Повтор закрытой претензии в открытом раунде: новое замечание, статус reopened; дальше — «Запустить разбор». */
+  async reopenRemark(remarkId: string, roundId: string): Promise<Remark | null> {
+    const remark = this.byId(remarkId);
+    if (!remark) return null;
+    const created = await this.guard(() => this.api.reopenRemark(remark.projectId, remarkId, { roundId }), remarkId);
+    if (created) {
+      this.upsert(created);
+      this.patch(remarkId, { reopenedBy: { remarkId: created.id, number: created.number, roundNumber: created.roundNumber } });
+    }
+    return created;
+  }
+
   async loadRemark(projectId: string, remarkId: string): Promise<Remark | null> {
     this.projectId.set(projectId);
     const remark = await this.guard(() => this.api.remark(projectId, remarkId));

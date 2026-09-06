@@ -4,7 +4,7 @@ import { RunEvents } from '../agent/run-events';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
-import { AdviceDto, CancelRunDto, CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ScreenshotDto, VerdictDto } from './remark.dto';
+import { AdviceDto, CancelRunDto, CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ReopenDto, ScreenshotDto, VerdictDto } from './remark.dto';
 import { RemarksService } from './remarks.service';
 
 /**
@@ -59,6 +59,14 @@ export class RemarksController {
     const view = await this.remarks.advise(ctx, remarkId, dto);
     this.events.emit(remarkId, { type: 'remark.advice', remarkId, advice: view.advice });
     return view;
+  }
+
+  /** Повтор претензии (business): новое замечание в открытом раунде со ссылкой на закрытый оригинал → `reopened`. */
+  @Post('remarks/:remarkId/reopen')
+  @Roles('business')
+  @HttpCode(201)
+  reopen(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: ReopenDto): Promise<RemarkView> {
+    return this.remarks.reopen(ctx, remarkId, dto.roundId, dto.screenshotKey ?? null);
   }
 
   @Delete('remarks/:remarkId/advice')

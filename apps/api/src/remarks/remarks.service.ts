@@ -14,7 +14,11 @@ const REMARK_INCLUDE = {
   verdicts: { select: { code: true, userId: true, comment: true, createdAt: true } },
   advices: { select: { code: true, userId: true, comment: true, updatedAt: true } },
   runs: { select: { id: true, createdAt: true, status: true, mode: true, failureMessage: true, model: true } },
+  origin: { select: { id: true, number: true, round: { select: { number: true } } } },
+  reopenedBy: { select: { id: true, number: true, round: { select: { number: true } } }, orderBy: { createdAt: 'desc' }, take: 1 },
 } satisfies Prisma.RemarkInclude;
+
+export const ROUND_CLOSED = 'Раунд закрыт — добавляйте в открытый раунд';
 
 /** Разработчик видит только принятые поломки и то, что сам отдал на ретест. */
 const DEVELOPER_STATUSES: RemarkStatus[] = ['defect', 'ready_for_retest'];
@@ -154,8 +158,7 @@ export class RemarksService {
   /** Ручное замечание → `imported`. Разбор стартует AgentService (граф), не здесь. */
   async create(ctx: ProjectContext, roundId: string, dto: CreateRemarkDto): Promise<RemarkView> {
     if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
-    const round = await this.prisma.round.findFirst({ where: { id: roundId, projectId: ctx.projectId } });
-    if (!round) throw new NotFoundException();
+    const round = await this.openRound(ctx, roundId);
     if (dto.screenshotKey) await this.assertShot(ctx, dto.screenshotKey);
     const remark = await this.createNumbered(roundId, {
       projectId: ctx.projectId,
@@ -175,8 +178,7 @@ export class RemarksService {
    */
   async createImported(ctx: ProjectContext, roundId: string, input: ImportedRemarkInput): Promise<{ id: string; number: number; status: RemarkStatus }> {
     if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
-    const round = await this.prisma.round.findFirst({ where: { id: roundId, projectId: ctx.projectId } });
-    if (!round) throw new NotFoundException();
+    const round = await this.openRound(ctx, roundId);
     const created = await this.createNumbered(roundId, {
       projectId: ctx.projectId,
       externalId: input.externalId,
@@ -189,6 +191,42 @@ export class RemarksService {
       screenshots: input.screenshot ? { create: { kind: 'original', ...input.screenshot } } : undefined,
     });
     return { id: created.id, number: created.number, status: created.status };
+  }
+
+  /**
+   * Повтор претензии (docs/STATUS.md closed → reopened): заказчик говорит «в новом раунде это то же самое, что вы
+   * закрыли». Закрытое замечание не трогаем — оно остаётся записью с уликами и решением; в открытом раунде появляется
+   * новое со ссылкой на оригинал, тем же текстом и кадром (или новым), статус `reopened` → дальше обычный триаж.
+   */
+  async reopen(ctx: ProjectContext, remarkId: string, roundId: string, screenshotKey?: string | null): Promise<RemarkView> {
+    if (ctx.role !== 'business') throw new ForbiddenException('Открыть претензию снова может только тот, кто принимает работу');
+    const row = await this.load(ctx, remarkId);
+    this.assertTransition(row.status, ['closed'], 'reopen');
+    const target = await this.openRound(ctx, roundId);
+    if (screenshotKey) await this.assertShot(ctx, screenshotKey);
+    const original = row.screenshots.find((s) => s.kind === 'original');
+    const shot = screenshotKey ? { storageKey: screenshotKey } : original ? { storageKey: original.storageKey, width: original.width, height: original.height } : null;
+    const created = await this.createNumbered(target.id, {
+      projectId: ctx.projectId,
+      externalId: row.externalId,
+      pageOrScreen: row.pageOrScreen,
+      description: row.description,
+      expected: row.expected,
+      severity: row.severity,
+      status: 'reopened',
+      authorId: ctx.userId,
+      originRemarkId: row.id,
+      screenshots: shot ? { create: { kind: 'original', ...shot } } : undefined,
+    });
+    return this.get(ctx, created.id);
+  }
+
+  /** Раунд этого проекта, в который ещё можно писать: закрытый — 409 (RoundsService.close). */
+  private async openRound(ctx: ProjectContext, roundId: string): Promise<{ id: string; status: 'open' | 'closed' }> {
+    const round = await this.prisma.round.findFirst({ where: { id: roundId, projectId: ctx.projectId }, select: { id: true, status: true } });
+    if (!round) throw new NotFoundException();
+    if (round.status === 'closed') throw new ConflictException(ROUND_CLOSED);
+    return round;
   }
 
   /** «Допишите строку журнала»: needs_human_parse → imported (человек починил строку). Дальше — граф. */
@@ -322,11 +360,9 @@ export class RemarksService {
     if (!run) throw new ConflictException('runId не относится к этому замечанию');
     if (run.status !== 'running' && run.status !== 'awaiting_human') return this.get(ctx, remarkId);
     const latest = [...row.runs].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
-    // Статус меняется только из того, что прочитали: параллельный вердикт не будет перезаписан отменой
-    const ops: Prisma.PrismaPromise<unknown>[] = [
-      // Прогон, который параллельный вердикт уже перевёл в persisted, отменой не трогаем
-      this.prisma.agentRun.updateMany({ where: { id: runId, status: { in: ['running', 'awaiting_human'] } }, data: { status: 'cancelled' } }),
-    ];
+    // Статус меняется только из того, что прочитали: параллельный вердикт не будет перезаписан отменой.
+    // Порядок блокировок как у verdict(): сначала Remark, потом AgentRun — иначе две встречные транзакции ловят deadlock.
+    const ops: Prisma.PrismaPromise<unknown>[] = [];
     if (latest?.id === runId) {
       if (run.mode === 'triage' && (row.status === 'triaging' || row.status === 'awaiting_pm')) {
         ops.push(this.prisma.remark.updateMany({ where: { id: remarkId, status: { in: ['triaging', 'awaiting_pm'] } }, data: { status: 'imported' } }));
@@ -338,6 +374,8 @@ export class RemarksService {
         );
       }
     }
+    // Прогон, который параллельный вердикт уже перевёл в persisted, отменой не трогаем
+    ops.push(this.prisma.agentRun.updateMany({ where: { id: runId, status: { in: ['running', 'awaiting_human'] } }, data: { status: 'cancelled' } }));
     await this.prisma.$transaction(ops);
     return this.get(ctx, remarkId);
   }

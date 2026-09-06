@@ -97,11 +97,24 @@ export async function createHarness(): Promise<Harness> {
       throw new Error(`waitFor ${remarkId}: ждали ${statuses.join('|')}, сейчас ${last}`);
     },
     cleanup: async () => {
+      // Фоновые прогоны (импорт, triage без wait) должны дописать чекпоинты до того, как их строки исчезнут
+      for (let i = 0; i < 50 && (await prisma.agentRun.count({ where: { projectId: project.id, status: 'running' } })) > 0; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
       const remarkIds = (await prisma.remark.findMany({ where: { projectId: project.id }, select: { id: true } })).map((r) => r.id);
       await prisma.developerAdvice.deleteMany({ where: { remarkId: { in: remarkIds } } });
       await prisma.humanVerdict.deleteMany({ where: { remarkId: { in: remarkIds } } });
-      await prisma.agentRun.deleteMany({ where: { projectId: project.id } });
-      await prisma.remark.deleteMany({ where: { projectId: project.id } });
+      // Фоновый разбор (импорт, triage) мог создать AgentRun между двумя deleteMany: повторяем пару раз, пока FK не пропустит
+      for (let attempt = 1; ; attempt++) {
+        await prisma.agentRun.deleteMany({ where: { projectId: project.id } });
+        try {
+          await prisma.remark.deleteMany({ where: { projectId: project.id } });
+          break;
+        } catch (e) {
+          if ((e as { code?: string }).code !== 'P2003' || attempt >= 5) throw e;
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      }
       await prisma.importJob.deleteMany({ where: { projectId: project.id } });
       await prisma.round.deleteMany({ where: { projectId: project.id } });
       await prisma.documentChunk.deleteMany({ where: { projectId: project.id } });

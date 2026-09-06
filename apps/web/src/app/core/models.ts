@@ -173,6 +173,14 @@ export interface Round {
   number: number;
   status: 'open' | 'closed';
   remarks: number;
+  closedAt?: string | null;
+}
+
+/** Ссылка между закрытым замечанием и его повтором в новом раунде (docs/STATUS.md closed → reopened). */
+export interface RemarkLink {
+  remarkId: string;
+  number: number;
+  roundNumber: number;
 }
 
 export interface Citation {
@@ -277,6 +285,10 @@ export interface Remark {
   runFailure?: string;
   /** Чем шёл прогон: `openai/…` или `rules/retrieve-only` — бейдж «по правилам, без модели». */
   runModel?: string;
+  /** Это повтор закрытой претензии из прошлого раунда. */
+  origin?: RemarkLink;
+  /** Эту закрытую претензию открыли снова в другом раунде. */
+  reopenedBy?: RemarkLink;
   /** Trace прогона в Langfuse — только когда сервер его настроил; показываем PM. */
   traceUrl?: string;
   /** ISO-дата создания (RemarkView.createdAt). */

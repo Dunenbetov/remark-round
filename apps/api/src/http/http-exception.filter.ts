@@ -59,6 +59,8 @@ export class HttpExceptionsFilter implements ExceptionFilter {
       if (exception.code === 'P2002') return { statusCode: 409, code: 'conflict', message: 'Такая запись уже есть', requestId };
       if (exception.code === 'P2025') return { statusCode: 404, code: 'not_found', message: 'Не найдено', requestId };
       if (exception.code === 'P2003') return { statusCode: 409, code: 'conflict', message: 'Запись связана с другими данными', requestId };
+      // Deadlock / write conflict двух встречных транзакций: клиент перечитывает карточку и повторяет, как при 409 статуса
+      if (exception.code === 'P2034') return { statusCode: 409, code: 'conflict', message: 'Карточка изменилась параллельно — обновите её и повторите', requestId };
     }
     if (exception instanceof Prisma.PrismaClientValidationError) {
       return { statusCode: HttpStatus.UNPROCESSABLE_ENTITY, code: 'unprocessable', message: 'Неверные данные запроса', requestId };

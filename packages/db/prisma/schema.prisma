@@ -207,6 +207,9 @@ model Round {
   projectId String
   number    Int
   status    RoundStatus @default(open)
+  /// Закрыт заказчиком или руководителем приёмки, когда всё решено (RoundsService.close); reopen обнуляет
+  closedAt       DateTime?
+  closedByUserId String?
   project   Project     @relation(fields: [projectId], references: [id])
   remarks   Remark[]
   imports   ImportJob[]
@@ -225,6 +228,8 @@ model Remark {
   severity       String?
   status         RemarkStatus  @default(imported)
   duplicateOfId  String?
+  /// Повтор претензии (docs/STATUS.md closed → reopened): новое замечание в новом раунде помнит закрытый оригинал
+  originRemarkId String?
   /// Порядковый номер в раунде — «№ 12» на карточке
   number         Int
   authorId       String?
@@ -238,6 +243,8 @@ model Remark {
   closedByUserId String?
   closedAt       DateTime?
   round          Round         @relation(fields: [roundId], references: [id])
+  origin         Remark?       @relation("RemarkReopen", fields: [originRemarkId], references: [id], onDelete: SetNull)
+  reopenedBy     Remark[]      @relation("RemarkReopen")
   screenshots    RemarkScreenshot[]
   citations      EvidenceCitation[]
   runs           AgentRun[]
@@ -247,6 +254,7 @@ model Remark {
 
   @@index([projectId, status])
   @@index([roundId])
+  @@index([originRemarkId])
   @@unique([roundId, number])
 }
 

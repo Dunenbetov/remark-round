@@ -62,6 +62,9 @@ describe('uploads hygiene', () => {
     expect(remark.description.length).toBeLessThanOrEqual(2000);
     const stored = await h.prisma.importRow.findFirstOrThrow({ where: { jobId: job.body.id, rowNumber: 2 } });
     expect((stored.rawJson as { description: string }).description.length).toBe(long.trim().length);
-    expect(rows.find((r) => r.rowNumber === 3)!.status).toBe('parsed');
+    const parsed = rows.find((r) => r.rowNumber === 3)!;
+    expect(parsed.status).toBe('parsed');
+    // Импорт запускает разбор в фоне: дождаться, чтобы cleanup не догнал бегущий прогон
+    await h.waitFor(parsed.remarkId!, ['awaiting_pm', 'cannot_tell'], 'pm');
   });
 });

@@ -8,6 +8,8 @@ import { filterRemarks } from '../core/journal-filter';
 import type { Role } from '../core/models';
 import { AccountService } from '../core/account.service';
 import { OnboardingService } from '../core/onboarding.service';
+import { ApiService } from '../core/api.service';
+import { errorMessage } from '../core/errors';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { BrandMark } from './brand-mark';
@@ -215,6 +217,7 @@ export class AppBar {
 
   private readonly session = inject(SessionService);
   private readonly store = inject(RemarksStore);
+  private readonly api = inject(ApiService);
   private readonly router = inject(Router);
   private readonly onboarding = inject(OnboardingService);
   private readonly account = inject(AccountService);
@@ -264,6 +267,13 @@ export class AppBar {
         }),
       );
       if (this.canOpenRound()) items.push({ id: 'round:new', label: NAV.newRound });
+      const current = this.store.round();
+      if (current) {
+        items.push({ id: 'round:export', label: NAV.exportRound(current.number), separatorBefore: true });
+        if (this.role() === 'pm' || this.role() === 'business') {
+          items.push(current.status === 'closed' ? { id: 'round:reopen', label: NAV.reopenRound(current.number) } : { id: 'round:close', label: NAV.closeRound(current.number) });
+        }
+      }
     }
     return items;
   });
@@ -330,6 +340,10 @@ export class AppBar {
       void this.newRound();
       return;
     }
+    if (id === 'round:close' || id === 'round:reopen' || id === 'round:export') {
+      void this.roundAction(id);
+      return;
+    }
     if (id.startsWith('project:')) {
       const projectId = id.slice('project:'.length);
       const m = this.session.membership(projectId);
@@ -358,6 +372,35 @@ export class AppBar {
       return;
     }
     if (id === 'logout') this.account.logout();
+  }
+
+  /**
+   * Закрыть / открыть снова / выгрузить текущий раунд. Закрытие обратимо (reopen), поэтому без отсчёта;
+   * 409 с перечнем нерешённого покажет store.error. Выгрузка — blob с Bearer, скачивается ссылкой на object URL.
+   */
+  private async roundAction(id: 'round:close' | 'round:reopen' | 'round:export'): Promise<void> {
+    const projectId = this.projectId();
+    const round = this.store.round();
+    if (!projectId || !round) return;
+    if (id === 'round:close') {
+      await this.store.closeRound(projectId, round.id);
+      return;
+    }
+    if (id === 'round:reopen') {
+      await this.store.reopenRound(projectId, round.id);
+      return;
+    }
+    try {
+      const blob = await this.api.exportRound(projectId, round.id);
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `remarkround-round-${round.number}.xlsx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(href), 10_000);
+    } catch (err) {
+      this.store.error.set(errorMessage(err));
+    }
   }
 
   /** «Новый раунд»: следующий номер, журнал открывается пустым. */

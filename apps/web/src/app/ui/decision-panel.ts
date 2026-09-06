@@ -105,6 +105,9 @@ const UNDO_SECONDS = 5;
               @if (r.changeable) {
                 <button type="button" class="btn btn--text record__change" (click)="changeDecision.emit()">{{ copy.change }}</button>
               }
+              @if (reopenLabel(); as rl) {
+                <button type="button" class="btn btn--secondary record__change" [disabled]="busy()" (click)="reopen.emit()">{{ rl }}</button>
+              }
             }
             @if (next(); as nx) {
               <button type="button" class="btn btn--primary btn--left panel__next" (click)="goNext.emit()">
@@ -608,6 +611,9 @@ export class DecisionPanel {
   readonly myUserId = input<string | null>(null);
   /** Меняется при событии remark.advice — бейдж делает pop. */
   readonly adviceTick = input(0);
+  /** Заказчик на закрытом замечании: «Открыть снова в раунде N» (null — не показывать). */
+  readonly reopenLabel = input<string | null>(null);
+  readonly reopen = output<void>();
 
   readonly verdict = output<{ code: Exclude<VerdictCode, 'rejected_binding'>; comment: string }>();
   readonly rejectBinding = output<string>();

@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, Post, Res, UseGuards } from '@nestjs/common';
 import { IsInt, IsOptional, Min } from 'class-validator';
-import { PrismaService } from '../prisma/prisma.service';
+import type { Response } from 'express';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
+import { ROUND_XLSX_MIME } from './round-export';
+import { RoundsService, type RoundSummary } from './rounds.service';
 
 export class CreateRoundDto {
   @IsOptional()
@@ -12,38 +14,46 @@ export class CreateRoundDto {
   number?: number;
 }
 
-export interface RoundSummary {
-  id: string;
-  number: number;
-  status: 'open' | 'closed';
-  remarks: number;
-}
+export type { RoundSummary } from './rounds.service';
 
 @Controller('projects/:projectId/rounds')
 @UseGuards(MembershipGuard, RolesGuard)
 export class RoundsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly rounds: RoundsService) {}
 
   @Get()
-  async list(@Ctx() ctx: ProjectContext): Promise<RoundSummary[]> {
-    const rounds = await this.prisma.round.findMany({
-      where: { projectId: ctx.projectId },
-      orderBy: { number: 'asc' },
-      include: { _count: { select: { remarks: true } } },
-    });
-    return rounds.map((r) => ({ id: r.id, number: r.number, status: r.status, remarks: r._count.remarks }));
+  list(@Ctx() ctx: ProjectContext): Promise<RoundSummary[]> {
+    return this.rounds.list(ctx);
   }
 
   @Post()
   @Roles('pm', 'business', 'admin')
-  async create(@Ctx() ctx: ProjectContext, @Body() dto: CreateRoundDto): Promise<RoundSummary> {
-    // Номер под блокировкой строки проекта: два «Новых раунда» разом иначе спотыкались об @@unique(projectId, number)
-    const round = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${ctx.projectId} FOR UPDATE`;
-      const last = await tx.round.findFirst({ where: { projectId: ctx.projectId }, orderBy: { number: 'desc' } });
-      const number = dto.number ?? (last ? last.number + 1 : 1);
-      return tx.round.create({ data: { projectId: ctx.projectId, number } });
-    });
-    return { id: round.id, number: round.number, status: round.status, remarks: 0 };
+  create(@Ctx() ctx: ProjectContext, @Body() dto: CreateRoundDto): Promise<RoundSummary> {
+    return this.rounds.create(ctx, dto.number);
+  }
+
+  /** «Здесь мы остановились»: только когда все замечания решены (закрыто / новое желание / повтор), иначе 409 с перечнем. */
+  @Post(':roundId/close')
+  @Roles('pm', 'business')
+  @HttpCode(200)
+  close(@Ctx() ctx: ProjectContext, @Param('roundId') roundId: string): Promise<RoundSummary> {
+    return this.rounds.close(ctx, roundId);
+  }
+
+  @Post(':roundId/reopen')
+  @Roles('pm', 'business')
+  @HttpCode(200)
+  reopen(@Ctx() ctx: ProjectContext, @Param('roundId') roundId: string): Promise<RoundSummary> {
+    return this.rounds.reopen(ctx, roundId);
+  }
+
+  /** Итог раунда для акта: xlsx из карточек, которые видит читатель (заказчик — без внутренней кухни, ADR 007). */
+  @Get(':roundId/export.xlsx')
+  @Header('Cache-Control', 'no-store')
+  async exportXlsx(@Ctx() ctx: ProjectContext, @Param('roundId') roundId: string, @Res() res: Response): Promise<void> {
+    const { fileName, data } = await this.rounds.exportXlsx(ctx, roundId);
+    res.setHeader('Content-Type', ROUND_XLSX_MIME);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+    res.send(data);
   }
 }

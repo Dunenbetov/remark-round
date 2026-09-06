@@ -241,6 +241,8 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                           [mode]="mode"
                           [busy]="busy() || store.loading()"
                           [record]="recordView()"
+                          [reopenLabel]="reopenLabel()"
+                          (reopen)="onReopen()"
                           [pending]="pendingFor()"
                           [remarkId]="r.id"
                           [next]="panelNext()"
@@ -1046,6 +1048,23 @@ export class RemarkCardPage {
   protected readonly canFix = computed(() => this.role() === 'business' || this.role() === 'pm');
 
   /** Запись решения; разработчику, который советовал, — тихая строка «Совет совпал ✓» / «Ваш совет был: …». */
+  /** Заказчик на закрытом замечании: повтор претензии уходит в последний открытый раунд. */
+  protected readonly reopenTarget = computed(() => {
+    const r = this.remark();
+    if (!r || r.status !== 'closed' || this.role() !== 'business' || r.reopenedBy) return null;
+    const open = [...this.store.rounds()].reverse().find((x) => x.status === 'open' && x.id !== r.roundId);
+    return open ?? null;
+  });
+  protected readonly reopenLabel = computed(() => (this.reopenTarget() ? CARD.reopenIn(this.reopenTarget()!.number) : null));
+
+  protected async onReopen(): Promise<void> {
+    const r = this.remark();
+    const target = this.reopenTarget();
+    if (!r || !target) return;
+    const created = await this.store.reopenRemark(r.id, target.id);
+    if (created) await this.router.navigate(['/p', this.projectId(), 'r', created.roundNumber, 'remarks', created.id]);
+  }
+
   protected readonly recordView = computed<DecisionRecord | null>(() => {
     const base = this.recordBase();
     const r = this.remark()!;
@@ -1104,6 +1123,9 @@ export class RemarkCardPage {
     const description = r.description?.trim();
     if (description && description !== r.title.trim()) lines.push({ dt: CARD.whatWrong, dd: `«${description}»`, quote: true });
     if (r.pageOrScreen && r.pageOrScreen !== '—' && this.layout() !== 'draft') lines.push({ dt: CARD.where.replace(':', ''), dd: r.pageOrScreen });
+    // Повтор претензии: связь с закрытым оригиналом и обратно (docs/STATUS.md closed → reopened)
+    if (r.origin) lines.push({ dt: STATUS_LABEL.reopened, dd: CARD.originOf(r.origin.number, r.origin.roundNumber) });
+    if (r.reopenedBy) lines.push({ dt: STATUS_LABEL.closed, dd: CARD.reopenedIn(r.reopenedBy.number, r.reopenedBy.roundNumber) });
     if (r.expected) lines.push({ dt: NEW_REMARK.expected, dd: r.expected });
     if (r.severity) lines.push({ dt: CARD.severity.replace(':', ''), dd: r.severity });
     return lines;

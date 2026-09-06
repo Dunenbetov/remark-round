@@ -38,7 +38,11 @@
 | GET/POST | `/projects/:projectId/documents` | admin, pm | Пакет документов |
 | GET | `/projects/:projectId/documents/:id` | member | Мета + статус индекса |
 | POST | `/projects/:projectId/documents/:id/reindex` | admin, pm | |
-| GET/POST | `/projects/:projectId/rounds` | member POST: pm/business | Раунды |
+| GET/POST | `/projects/:projectId/rounds` | member POST: pm/business | Раунды: `{ id, number, status, remarks, closedAt }` |
+| POST | `/projects/:projectId/rounds/:roundId/close` | pm, business | «Здесь мы остановились»: только когда все замечания решены (`closed` / `change_request` / `duplicate`), иначе 409 с перечнем нерешённого. В закрытый раунд нельзя добавить замечание и импортировать журнал (409) |
+| POST | `/projects/:projectId/rounds/:roundId/reopen` | pm, business | Открыть раунд снова |
+| GET | `/projects/:projectId/rounds/:roundId/export.xlsx` | member | Итог раунда для акта: xlsx из тех же карточек, что видит читатель (заказчик — без комментариев решений и советов, ADR 007); кадры — ссылками |
+| POST | `/projects/:projectId/remarks/:id/reopen` | business | `{ roundId, screenshotKey? }` — повтор закрытой претензии в открытом раунде: новое замечание `reopened` с `origin` (оригинал получает `reopenedBy`); дальше обычный `triage` |
 | GET | `/projects/:projectId/rounds/:roundId/remarks` | по роли фильтр | Список. Developer — только defect+ |
 | POST | `/projects/:projectId/rounds/:roundId/remarks` | business, pm | Ручное замечание + upload screenshot |
 | GET | `/projects/:projectId/remarks/:remarkId` | member + ACL очереди | Карточка; `runFailure` — причина последнего сбоя прогона по-русски (модель перегружена, ключ не принят, файл не найден…). Developer — defect+ и `awaiting_pm` (чтобы посоветовать); в ответе `advice[]` — советы разработчиков. Заказчику (business) карточка собирается без `advice`, `verdict.comment`, `traceUrl`, `proposedClass`, а `draft`/`seen` — только после вердикта (ADR 007); то же для списков |

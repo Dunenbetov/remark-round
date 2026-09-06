@@ -87,6 +87,18 @@ export class LinkDuplicateDto {
 }
 
 /** «Допишите строку журнала»: человек дописывает то, чего парсер не выдумывает. */
+/** Повтор претензии: в какой открытый раунд и, если есть, новый кадр (ключ POST /media этого проекта). */
+export class ReopenDto {
+  @IsString()
+  @MinLength(1)
+  roundId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  screenshotKey?: string;
+}
+
 export class FixRowDto {
   @IsString()
   @MinLength(1)
@@ -201,6 +213,10 @@ export interface RemarkView {
   runFailure?: string;
   /** Чем шёл прогон: `openai/…` или `rules/retrieve-only` — фронт показывает «по правилам, без модели». */
   runModel?: string;
+  /** Повтор претензии (docs/STATUS.md): какое закрытое замечание из какого раунда это повторяет. */
+  origin?: { remarkId: string; number: number; roundNumber: number };
+  /** Это замечание открыли снова в другом раунде: ссылка на новую претензию. */
+  reopenedBy?: { remarkId: string; number: number; roundNumber: number };
   /** Trace этого прогона в Langfuse (фаза 8): есть только когда Langfuse настроен. */
   traceUrl?: string;
   createdAt: string;
@@ -236,6 +252,8 @@ export interface RemarkRow {
   verdicts: Array<{ code: VerdictCode; userId: string; comment: string | null; createdAt: Date }>;
   advices: Array<{ code: VerdictCode; userId: string; comment: string | null; updatedAt: Date }>;
   runs: Array<{ id: string; createdAt: Date; status: AgentRunStatus; mode: string; failureMessage?: string | null; model?: string | null }>;
+  origin?: { id: string; number: number; round: { number: number } } | null;
+  reopenedBy?: Array<{ id: string; number: number; round: { number: number } }>;
 }
 
 /** Чанк с документом — форма выдачи retrieve; в карточке цитаты теперь снимок (см. RemarkRow.citations). */
@@ -334,6 +352,8 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience 
     runMode: run ? (run.mode === 'retest' ? 'retest' : 'triage') : undefined,
     runFailure: run?.status === 'failed' ? (run.failureMessage ?? undefined) : undefined,
     runModel: run?.model ?? undefined,
+    origin: r.origin ? { remarkId: r.origin.id, number: r.origin.number, roundNumber: r.origin.round.number } : undefined,
+    reopenedBy: r.reopenedBy?.[0] ? { remarkId: r.reopenedBy[0].id, number: r.reopenedBy[0].number, roundNumber: r.reopenedBy[0].round.number } : undefined,
     traceUrl: run && !customer ? extra.traceUrl?.(run.id) : undefined,
     createdAt: r.createdAt.toISOString(),
   };
