@@ -10,7 +10,7 @@
 
 ## Паттерны, которые обязательны
 
-1. **Tenancy в SQL.** Каждый `findMany` чанков/remarks: `projectId: ctx.projectId`. Тест: чужой uuid → 0 рядов / 404.
+1. **Tenancy в SQL и в схеме.** Каждый `findMany` чанков/remarks: `projectId: ctx.projectId`. Тест: чужой uuid → 0 рядов / 404. Второй эшелон — внешние ключи: `projectId` → `Project` у Remark, AgentRun, DocumentChunk, ImportJob; составной `(roundId, projectId)` → `Round(id, projectId)`, так что замечание не попадёт в раунд чужого проекта даже ручным SQL; ссылки на людей — `ON DELETE SET NULL`; `HumanVerdict.runId` обязателен. Новая тенантная колонка без FK — ошибка ревью.
 2. **Один путь записи.** Graph node: `this.remarks.applyProposal(...)`. MCP tool: тот же метод. Не `prisma.remark.update` в двух местах.
 3. **LLM только в `LlmModule`.** Каждый вызов — span Langfuse (имя ноды, `runId`, `projectId`, model, tokens). Нет `console.log` вместо трейса.
 4. **`cannot_tell` — доменный исход.** Не Exception.
@@ -33,6 +33,7 @@
 | Тест | Смысл |
 |---|---|
 | `tenancy.leakage.spec` | retrieve/tool чужого projectId пустой |
+| `tenancy.sweep.spec` | таблично все проектные маршруты: путь чужого проекта — 404, свой проект + чужой ресурс — 404, чужой ключ кадра — 422; FK не дают записать замечание в раунд чужого проекта мимо сервисов |
 | `verdict.model-cannot-close.spec` | модель не переводит в `closed` |
 | `verdict.idempotent.spec` | двойной approve |
 | `status.illegal-transition.spec` | developer не закрывает |

@@ -32,8 +32,9 @@ describe('rounds: close, export, reopen', () => {
   });
 
   it('когда всё решено — закрывается; повтор — тот же ответ; в закрытый нельзя добавить и импортировать', async () => {
+    const run = await h.prisma.agentRun.create({ data: { remarkId: defectId, projectId: h.projectId, status: 'persisted', mode: 'triage' } });
     await h.prisma.$transaction([
-      h.prisma.humanVerdict.create({ data: { remarkId: defectId, userId: h.users.pm.id, code: 'defect', comment: 'Внутренняя пометка', idempotencyKey: randomUUID() } }),
+      h.prisma.humanVerdict.create({ data: { remarkId: defectId, runId: run.id, userId: h.users.pm.id, code: 'defect', comment: 'Внутренняя пометка', idempotencyKey: randomUUID() } }),
       h.prisma.remark.update({ where: { id: defectId }, data: { status: 'closed', closedByUserId: h.users.business.id, closedAt: new Date() } }),
     ]);
     const closed = await h.http.post(url(`/rounds/${roundId}/close`)).set(h.auth('business')).expect(200);

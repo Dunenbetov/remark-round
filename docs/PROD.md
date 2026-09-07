@@ -1,6 +1,6 @@
 # Прод на одном сервере — runbook
 
-Фаза 11 (сентябрь 2026). Одна машина, docker compose, наружу смотрит только Caddy (80/443). Ёмкость нагрузочно не тестировалась: узкое место — прогоны модели (лимит `GRAPH_MAX_CONCURRENT` / `GRAPH_MAX_PER_PROJECT`) и pixel-diff с разбором файлов в одном процессе API; список замечаний отдаётся без пагинации. Перед обещанием SLA нескольким командам — прогнать `autocannon`/`k6` по журналу на 300 строк и параллельным ретестам. Второй инстанс API — отдельный этап (Redis для socket.io, S3 вместо тома, очередь), см. `docs/ARCHITECTURE.md`.
+Фаза 11 (сентябрь 2026). Одна машина, docker compose, наружу смотрит только Caddy (80/443). Ёмкость нагрузочно не тестировалась: узкое место — прогоны модели (лимит `GRAPH_MAX_CONCURRENT` / `GRAPH_MAX_PER_PROJECT`) и pixel-diff с разбором файлов в одном процессе API; список замечаний отдаётся без пагинации. Перед обещанием SLA нескольким командам — прогнать `autocannon`/`k6` по журналу на 300 строк и параллельным ретестам. Второй инстанс API — отдельный этап (Redis для socket.io, S3 вместо тома; очередь задач уже в Postgres), см. `docs/ARCHITECTURE.md`.
 
 ## Что нужно
 
@@ -56,6 +56,12 @@ docker compose pull api web mcp
 docker compose run --rm api migrate        # применит непримененные миграции и выйдет
 docker compose up -d api web mcp
 docker compose ps && curl -s https://$PUBLIC_HOST/api/v1/health   # version = RR_TAG
+```
+
+Миграция `20260907180000_tenancy_fks` (внешние ключи) останавливается с понятной ошибкой, если в базе есть решения без прогона или замечания в раунде чужого проекта; необязательные сироты (автор, «кто закрыл», строка импорта без замечания) она обнуляет сама. Проверить до выката:
+
+```bash
+docker compose exec postgres psql -U remarkround -c "select count(*) as verdicts_without_run from \"HumanVerdict\" v left join \"AgentRun\" a on a.id = v.\"runId\" where a.id is null" -c "select count(*) as remarks_in_foreign_round from \"Remark\" r join \"Round\" ro on ro.id = r.\"roundId\" where ro.\"projectId\" <> r.\"projectId\""
 ```
 
 Во время `up -d` старый контейнер api получает SIGTERM: воркер очереди не берёт новых задач, даёт бегущим прогонам до 25 с и возвращает недоделанные в очередь; новый контейнер их подхватывает (задачи с протухшим `lockedAt` возвращаются в `queued` на старте). Карточки в «разбирается» доходят до вердикта сами, кнопку «запустить снова» нажимать не нужно. Перед обновлением можно глянуть `/health` → `jobs.running`: ноль — самый спокойный момент.

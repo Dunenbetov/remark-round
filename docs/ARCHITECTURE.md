@@ -32,7 +32,7 @@ flowchart LR
 
 | Модуль | Что делает | Где |
 |---|---|---|
-| Auth · Tenancy | JWT, membership → `ProjectContext`; чужой проект — 404, роль — 403 | `apps/api/src/{auth,tenancy}` |
+| Auth · Tenancy | JWT, membership → `ProjectContext`; чужой проект — 404, роль — 403; второй эшелон — FK тенантных колонок и составной `(roundId, projectId)` в Postgres | `apps/api/src/{auth,tenancy}` |
 | Documents · Rag | PDF / DOCX / MD → чанки по разделам → `text-embedding-3-small` → pgvector; retrieve только `WHERE projectId` | `apps/api/src/{documents,rag}` |
 | Imports | Только официальный шаблон журнала (CSV/XLSX, картинки из ячеек); пустое описание → `needs_human_parse` | `apps/api/src/imports` |
 | Remarks | Единственный путь записи: статусы по `STATUS.md`, вердикт человека, идемпотентность `(runId, idempotencyKey)`; история переходов `RemarkStatusChange` в той же транзакции; совет разработчика `DeveloperAdvice` (не вердикт, событие `remark.advice`) | `apps/api/src/remarks` |

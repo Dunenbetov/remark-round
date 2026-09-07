@@ -131,6 +131,13 @@ model User {
   advices      DeveloperAdvice[]
   notifications Notification[]
   statusChanges RemarkStatusChange[]
+  authoredRemarks Remark[]     @relation("RemarkAuthor")
+  fixedRemarks    Remark[]     @relation("RemarkFixedBy")
+  closedRemarks   Remark[]     @relation("RemarkClosedBy")
+  closedRounds    Round[]      @relation("RoundClosedBy")
+  invitedMemberships Membership[] @relation("MembershipInvitedBy")
+  sentInvitations Invitation[] @relation("InvitationInvitedBy")
+  acceptedInvitations Invitation[] @relation("InvitationAcceptedBy")
   createdAt    DateTime     @default(now())
 }
 
@@ -142,6 +149,11 @@ model Project {
   documents   Document[]
   rounds      Round[]
   notifications Notification[]
+  /// Прямые FK тенантных колонок (аудит: tenancy-not-enforced): Postgres не даст записать замечание, прогон или чанк в несуществующий проект
+  remarks     Remark[]
+  runs        AgentRun[]
+  chunks      DocumentChunk[]
+  importJobs  ImportJob[]
   createdAt   DateTime       @default(now())
 }
 
@@ -150,8 +162,9 @@ model Membership {
   userId    String
   projectId String
   role      Role
-  /// Кто добавил (без relation, как authorId у Remark); null — создатель проекта или seed
+  /// Кто добавил; null — создатель проекта, seed или удалённый пользователь (SetNull)
   invitedById String?
+  invitedBy User?    @relation("MembershipInvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
   user      User     @relation(fields: [userId], references: [id])
   project   Project  @relation(fields: [projectId], references: [id])
   createdAt DateTime @default(now())
@@ -178,6 +191,8 @@ model Invitation {
   acceptedAt       DateTime?
   acceptedByUserId String?
   project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedBy        User      @relation("InvitationInvitedBy", fields: [invitedById], references: [id])
+  acceptedBy       User?     @relation("InvitationAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, email])
   @@index([email])
@@ -209,6 +224,7 @@ model DocumentChunk {
   /// vector(N) — N = размерность выбранной embedding-модели, одна на индекс
   embedding  Unsupported("vector(1536)")?
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  project    Project  @relation(fields: [projectId], references: [id])
   citations  EvidenceCitation[]
 
   @@index([projectId])
@@ -224,10 +240,13 @@ model Round {
   closedAt       DateTime?
   closedByUserId String?
   project   Project     @relation(fields: [projectId], references: [id])
+  closedBy  User?       @relation("RoundClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
   remarks   Remark[]
   imports   ImportJob[]
 
   @@unique([projectId, number])
+  /// Составной ключ для FK (roundId, projectId) у Remark и ImportJob: замечание не попадёт в раунд чужого проекта даже ручным SQL
+  @@unique([id, projectId])
 }
 
 model Remark {
@@ -255,7 +274,15 @@ model Remark {
   fixedByUserId  String?
   closedByUserId String?
   closedAt       DateTime?
-  round          Round         @relation(fields: [roundId], references: [id])
+  project        Project       @relation(fields: [projectId], references: [id])
+  /// Составной FK: раунд обязан принадлежать тому же проекту, что и замечание (аудит: tenancy-not-enforced)
+  round          Round         @relation(fields: [roundId, projectId], references: [id, projectId])
+  author         User?         @relation("RemarkAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  fixedBy        User?         @relation("RemarkFixedBy", fields: [fixedByUserId], references: [id], onDelete: SetNull)
+  closedBy       User?         @relation("RemarkClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  duplicateOf    Remark?       @relation("RemarkDuplicate", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates     Remark[]      @relation("RemarkDuplicate")
+  importRows     ImportRow[]
   origin         Remark?       @relation("RemarkReopen", fields: [originRemarkId], references: [id], onDelete: SetNull)
   reopenedBy     Remark[]      @relation("RemarkReopen")
   screenshots    RemarkScreenshot[]
@@ -272,6 +299,7 @@ model Remark {
   @@index([projectId, status])
   @@index([roundId])
   @@index([originRemarkId])
+  @@index([duplicateOfId])
   @@unique([roundId, number])
 }
 
@@ -326,7 +354,9 @@ model AgentRun {
   failureCode    String?
   failureMessage String?
   remark    Remark         @relation(fields: [remarkId], references: [id])
+  project   Project        @relation(fields: [projectId], references: [id])
   checkpoints GraphCheckpoint[]
+  verdicts  HumanVerdict[]
   createdAt DateTime       @default(now())
 
   @@index([remarkId])
@@ -354,12 +384,14 @@ model GraphCheckpoint {
 model HumanVerdict {
   id        String      @id @default(uuid())
   remarkId  String
-  runId     String?
+  /// Прогон, к которому относится решение: обязателен, иначе @@unique([runId, idempotencyKey]) с NULL ничего не гарантирует
+  runId     String
   userId    String
   code      VerdictCode
   comment   String?
   idempotencyKey String
   remark    Remark      @relation(fields: [remarkId], references: [id])
+  run       AgentRun    @relation(fields: [runId], references: [id])
   user      User        @relation(fields: [userId], references: [id])
   createdAt DateTime    @default(now())
 
@@ -391,7 +423,8 @@ model ImportJob {
   roundId   String
   fileName  String
   storageKey String
-  round     Round       @relation(fields: [roundId], references: [id])
+  project   Project     @relation(fields: [projectId], references: [id])
+  round     Round       @relation(fields: [roundId, projectId], references: [id, projectId])
   rows      ImportRow[]
   createdAt DateTime    @default(now())
 
@@ -409,8 +442,10 @@ model ImportRow {
   reason     String?
   remarkId   String?
   job        ImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  remark     Remark?         @relation(fields: [remarkId], references: [id], onDelete: SetNull)
 
   @@index([jobId])
+  @@index([remarkId])
 }
 
 /// Фоновая задача (аудит: no-job-queue): прогон графа, индексация документа. Очередь живёт в той же Postgres —

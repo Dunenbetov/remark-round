@@ -9,6 +9,10 @@
 - **Настройки роли** (`20260907130000_pg_role_settings`): `statement_timeout = 120s`, `idle_in_transaction_session_timeout = 60s` для роли, под которой идут миграции и работает API. Тяжёлая миграция (индекс на большой таблице, backfill) начинается с `SET statement_timeout = 0;` — иначе её прервёт через две минуты.
 - **pg_stat_statements**: расширение создаётся миграцией, `shared_preload_libraries` — в команде контейнера postgres (`docker-compose.yml`). Для локального Postgres без preload расширение создаётся, но представление пустое.
 
+## Целостность ссылок
+
+С `20260907180000_tenancy_fks` тенантные колонки держат внешние ключи: `Remark/AgentRun/DocumentChunk/ImportJob.projectId → Project` (RESTRICT), `Remark/ImportJob (roundId, projectId) → Round (id, projectId)` — раунд обязан быть из того же проекта, ссылки на людей (`authorId`, `fixedByUserId`, `closedByUserId`, `invitedById`, `acceptedByUserId`) — `SET NULL`, `HumanVerdict.runId` обязателен и ссылается на `AgentRun`. Без FK остаются только `Job.projectId/runId` (очередь переживает удаление ресурсов) и `GraphCheckpoint` (каскад от прогона есть). Новая колонка с `projectId` или `*UserId` без `@relation` — ошибка ревью. Проверка сирот перед выкатом этой миграции — в `docs/PROD.md` («Обновление»).
+
 ## Новая миграция
 
 ```bash
