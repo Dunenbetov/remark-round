@@ -52,6 +52,17 @@ describe('config', () => {
     expect(parseConfig(base).adminEmails.size).toBe(0);
   });
 
+  it('пустая переменная = не задана: docker compose подставляет ${VAR:-} пустой строкой', () => {
+    // Так падал демо-стенд: REGISTRATION_MODE='' валило enum при каждом старте (docker-compose.yml)
+    const c = parseConfig({ ...base, NODE_ENV: 'development', REGISTRATION_MODE: '', LLM_MODE: '', DEMO_LOGINS: '', REGISTRATION_DOMAINS: '', ADMIN_EMAILS: '', SMTP_URL: '' });
+    expect(c.registrationMode).toBe('open');
+    expect(c.llmMode).toBe('rules');
+    expect(c.demoLogins).toBe(true);
+    expect(c.mailEnabled).toBe(false);
+    expect(c.adminEmails.size).toBe(0);
+    expect(c.SMTP_FROM).toBe('RemarkRound <no-reply@localhost>');
+  });
+
   it('несколько проблем перечисляются разом', () => {
     expect(() => parseConfig({ NODE_ENV: 'development', JWT_SECRET: '' })).toThrow(/DATABASE_URL[\s\S]*JWT_SECRET/);
   });

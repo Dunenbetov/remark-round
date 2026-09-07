@@ -93,9 +93,13 @@ export type AppConfig = z.infer<typeof Schema> & {
 
 let cached: AppConfig | null = null;
 
-/** Разбор env с понятной ошибкой: перечисляет все проблемные переменные разом, а не первую. */
+/**
+ * Разбор env с понятной ошибкой: перечисляет все проблемные переменные разом, а не первую.
+ * Пустая строка = переменная не задана: docker compose подставляет `${VAR:-}` именно так, и для zod
+ * `''` — не то же самое, что отсутствие ключа (enum на пустой строке падал бы при каждом старте стенда).
+ */
 export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const result = Schema.safeParse(env);
+  const result = Schema.safeParse(Object.fromEntries(Object.entries(env).filter(([, v]) => v !== '')));
   if (!result.success) {
     const lines = result.error.issues.map((i) => `  ${i.path.join('.') || '(env)'}: ${i.message}`);
     throw new Error(`Конфигурация API не прошла проверку:\n${lines.join('\n')}`);
