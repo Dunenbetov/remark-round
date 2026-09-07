@@ -164,7 +164,7 @@ const UNDO_SECONDS = 5;
                 <div class="record__comment">«{{ myAdvice()!.comment }}»</div>
               }
               <div class="advice-mine__actions">
-                <button type="button" class="btn btn--text" [disabled]="busy()" (click)="editing.set(true)">{{ copy.changeAdvice }}</button>
+                <button type="button" class="btn btn--text" [disabled]="busy()" (click)="startEditAdvice()">{{ copy.changeAdvice }}</button>
                 <button type="button" class="btn btn--text" [disabled]="busy()" (click)="retractAdvice.emit()">{{ copy.retractAdvice }}</button>
               </div>
               <div class="hint">{{ copy.adviseHint }}</div>
@@ -222,7 +222,7 @@ const UNDO_SECONDS = 5;
             }
           }
           @if (!commentOpen()) {
-            <button type="button" class="btn btn--text panel__toggle" [attr.aria-expanded]="false" [attr.aria-controls]="commentId" (click)="commentOpen.set(true)">
+            <button type="button" class="btn btn--text panel__toggle" [attr.aria-expanded]="false" [attr.aria-controls]="commentId" (click)="openComment()">
               <rr-icon name="plus" [size]="14" />
               {{ copy.addComment }}
             </button>
@@ -241,6 +241,8 @@ const UNDO_SECONDS = 5;
             @if (hint()) {
               <div class="meta panel__required" role="alert">{{ copy.commentRequired }}</div>
             }
+            <!-- Комментарий не отдельная запись: он уходит вместе с решением PM или советом разработчика -->
+            <div class="meta panel__comment-hint">{{ mode() === 'dev-advice' ? copy.commentWithAdvice : copy.commentWithVerdict }}</div>
           }
         }
       }
@@ -460,6 +462,9 @@ const UNDO_SECONDS = 5;
     }
     .panel__label {
       margin-top: var(--sp-2);
+    }
+    .panel__comment-hint {
+      margin-top: calc(var(--sp-1) * -1);
     }
     .panel__required {
       color: var(--rr-danger);
@@ -763,12 +768,26 @@ export class DecisionPanel {
     this.timer = null;
   }
 
-  /** Открыть комментарий и поставить фокус (клавиша C). */
+  /**
+   * Открыть комментарий и поставить фокус (клавиша C или «Добавить комментарий»). Комментарий уходит только
+   * вместе с решением или советом, поэтому у разработчика с уже данным советом заодно возвращаются варианты:
+   * иначе поле открывается, а отправить его нечем.
+   */
   openComment(): void {
     if (this.mode() !== 'pm-full' && this.mode() !== 'pm-two' && this.mode() !== 'dev-advice') return;
-    if (this.mode() === 'dev-advice' && this.myAdvice() && !this.editing()) this.editing.set(true);
+    if (this.mode() === 'dev-advice' && this.myAdvice() && !this.editing()) this.startEditAdvice();
     this.commentOpen.set(true);
     afterNextRender(() => this.host.nativeElement.querySelector<HTMLTextAreaElement>('.panel__comment')?.focus(), { injector: this.injector });
+  }
+
+  /** «Изменить» у своего совета: варианты снова доступны, а уже написанный комментарий не теряется. */
+  protected startEditAdvice(): void {
+    const mine = this.myAdvice();
+    if (mine?.comment && !this.comment().trim()) {
+      this.comment.set(mine.comment);
+      this.commentOpen.set(true);
+    }
+    this.editing.set(true);
   }
 
   /** Вердикт по номеру клавиши 1–5 (порядок канона); в pm-two — только 1–2. */
@@ -845,8 +864,10 @@ export class DecisionPanel {
     const comment = this.comment().trim();
     if (this.mode() === 'dev-advice') {
       // Совет — не решение: уходит сразу, без отсчёта; кнопки не гаснут — совет можно тут же изменить.
+      // Смена варианта с закрытым полем не стирает уже написанный комментарий: чтобы убрать его, поле открывают и чистят.
+      const keep = !comment && !this.commentOpen() ? (this.myAdvice()?.comment ?? '') : comment;
       this.clicked.set(code);
-      this.advise.emit({ code, comment });
+      this.advise.emit({ code, comment: keep });
       this.clearDraft();
       this.commentOpen.set(false);
       return;
