@@ -130,6 +130,7 @@ model User {
   verdicts     HumanVerdict[]
   advices      DeveloperAdvice[]
   notifications Notification[]
+  statusChanges RemarkStatusChange[]
   createdAt    DateTime     @default(now())
 }
 
@@ -261,9 +262,12 @@ model Remark {
   citations      EvidenceCitation[]
   runs           AgentRun[]
   notifications  Notification[]
+  /// История переходов (аудит: remark-history): строка на каждый переход, кто и когда
+  history        RemarkStatusChange[]
   verdicts       HumanVerdict[]
   advices        DeveloperAdvice[]
   createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([projectId, status])
   @@index([roundId])
@@ -311,6 +315,10 @@ model AgentRun {
   mode      String         @default("triage")
   status    AgentRunStatus @default(running)
   model     String?
+  /// Снимок предложения модели этого прогона (аудит: remark-history): новый прогон не затирает прежний разбор
+  proposedClass ProposedClass?
+  rationale     String?
+  visionFacts   String?
   inputTokens  Int?
   outputTokens Int?
   costUsd   Decimal?       @db.Decimal(10, 6)
@@ -469,4 +477,24 @@ model Notification {
 
   @@index([userId, status])
   @@index([projectId])
+}
+
+/// Строка на каждый переход замечания (аудит: remark-history): откуда, куда, кто (и в какой роли), каким прогоном,
+/// короткая человеческая пометка (что предложила модель, почему упал прогон). Пишется в той же транзакции, что и статус.
+model RemarkStatusChange {
+  id         String        @id @default(uuid())
+  remarkId   String
+  fromStatus RemarkStatus?
+  toStatus   RemarkStatus
+  /// create | import | reopen | fix_row | attach_screenshot | triage | proposal | rejected_binding | verdict | ready_for_retest | retest | retest_result | close | not_fixed | cancel | run_failed
+  action     String
+  userId     String?
+  role       Role?
+  runId      String?
+  detail     String?
+  createdAt  DateTime      @default(now())
+  remark     Remark        @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+  user       User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([remarkId, createdAt])
 }

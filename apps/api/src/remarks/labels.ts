@@ -1,4 +1,4 @@
-import type { RemarkStatus, VerdictCode } from '@remarkround/db';
+import type { ProposedClass, RemarkStatus, VerdictCode } from '@remarkround/db';
 
 /**
  * Русские подписи для выгрузки раунда (docs/ui/COPY.md, apps/web/src/app/core/copy.ts — те же слова, что видит человек
@@ -27,6 +27,15 @@ export const VERDICT_LABEL_RU: Record<VerdictCode, string> = {
   duplicate: 'Повтор',
   cannot_tell: 'Не хватает скрина',
   rejected_binding: 'Не та цитата из ТЗ',
+};
+
+/** Что предложила модель — для истории замечания. */
+export const PROPOSED_LABEL_RU: Record<ProposedClass, string> = {
+  defect_candidate: 'Похоже на дефект',
+  change_request_candidate: 'Похоже на новое желание',
+  unspecified: 'В документах нет ответа',
+  duplicate: 'Повтор',
+  cannot_tell: 'Не хватает скрина',
 };
 
 /** Статусы, в которых замечание больше ничего не ждёт: только с ними раунд можно закрыть. */

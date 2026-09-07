@@ -4,7 +4,7 @@ import { RunEvents } from '../agent/run-events';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
-import { AdviceDto, CancelRunDto, CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ReopenDto, ScreenshotDto, VerdictDto } from './remark.dto';
+import { AdviceDto, CancelRunDto, CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ReopenDto, ScreenshotDto, VerdictDto, type HistoryEntry } from './remark.dto';
 import { RemarksService } from './remarks.service';
 
 /**
@@ -49,6 +49,12 @@ export class RemarksController {
   @Get('remarks/:remarkId')
   get(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string): Promise<RemarkView> {
     return this.remarks.get(ctx, remarkId);
+  }
+
+  /** История переходов: кто, когда, из какого статуса в какой, каким прогоном (аудит: remark-history). Тот же ACL, что у карточки. */
+  @Get('remarks/:remarkId/history')
+  history(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string): Promise<HistoryEntry[]> {
+    return this.remarks.history(ctx, remarkId);
   }
 
   /** Совет разработчика по awaiting_pm: не вердикт, статус не меняет; PM в комнате видит его сразу (remark.advice). */

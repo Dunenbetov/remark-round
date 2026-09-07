@@ -23,6 +23,7 @@ import type {
   Side,
   User,
   VerdictCode,
+  RemarkHistoryEntry,
 } from './models';
 import { SessionService } from './session.service';
 
@@ -179,6 +180,10 @@ export class ApiService {
 
   remark(projectId: string, remarkId: string): Promise<Remark> {
     return this.run(this.http.get<Remark>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}`));
+  }
+
+  remarkHistory(projectId: string, remarkId: string): Promise<RemarkHistoryEntry[]> {
+    return this.run(this.http.get<RemarkHistoryEntry[]>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}/history`));
   }
 
   devQueue(projectId: string): Promise<Remark[]> {

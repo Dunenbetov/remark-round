@@ -32,6 +32,8 @@ export interface EnqueueOptions {
   runId?: string;
   maxAttempts?: number;
   delayMs?: number;
+  /** Поставить задачу в той же транзакции, что и доменную запись: откат отменит и её, коммит — сделает видимой воркеру. */
+  tx?: Prisma.TransactionClient;
 }
 
 export interface JobStats {
@@ -101,7 +103,7 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
   }
 
   async enqueue(kind: string, payload: unknown, opts: EnqueueOptions = {}): Promise<Job> {
-    const job = await this.prisma.job.create({
+    const job = await (opts.tx ?? this.prisma).job.create({
       data: {
         kind,
         payload: payload as Prisma.InputJsonValue,
@@ -112,7 +114,8 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
         owner: this.instanceId,
       },
     });
-    this.schedule(0);
+    // В транзакции строка видна воркеру только после коммита: ближайший опрос (JOBS_POLL_MS) её подхватит
+    this.schedule(opts.tx ? this.pollMs : 0);
     return job;
   }
 

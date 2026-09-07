@@ -167,6 +167,19 @@ export interface AdviceView {
   comment?: string;
 }
 
+/** Строка истории замечания (GET /remarks/:id/history). `by` пуст — переход сделала система (граф, сбой прогона). */
+export interface HistoryEntry {
+  id: string;
+  at: string;
+  action: string;
+  fromStatus?: RemarkStatus;
+  toStatus: RemarkStatus;
+  by?: { userId: string; name: string; role?: Role };
+  runId?: string;
+  /** Короткая пометка: что предложила модель, итог ретеста, причина сбоя. Заказчику предложения модели не показываются. */
+  detail?: string;
+}
+
 export interface RemarkView {
   id: string;
   projectId: string;
@@ -220,6 +233,8 @@ export interface RemarkView {
   /** Trace этого прогона в Langfuse (фаза 8): есть только когда Langfuse настроен. */
   traceUrl?: string;
   createdAt: string;
+  /** Последний переход или правка (аудит: remark-history). */
+  updatedAt: string;
 }
 
 // ---------- сборка ответа из строк Prisma ----------
@@ -245,6 +260,7 @@ export interface RemarkRow {
   closedByUserId: string | null;
   closedAt: Date | null;
   createdAt: Date;
+  updatedAt: Date;
   duplicateOfId: string | null;
   round: { number: number };
   screenshots: Array<{ id: string; kind: ScreenshotKind; storageKey: string; width: number | null; height: number | null; createdAt: Date }>;
@@ -356,6 +372,7 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience 
     reopenedBy: r.reopenedBy?.[0] ? { remarkId: r.reopenedBy[0].id, number: r.reopenedBy[0].number, roundNumber: r.reopenedBy[0].round.number } : undefined,
     traceUrl: run && !customer ? extra.traceUrl?.(run.id) : undefined,
     createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
   };
 }
 

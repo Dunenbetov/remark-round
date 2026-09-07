@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import type { NotificationKind, RemarkStatus, Role } from '@remarkround/db';
+import type { NotificationKind, Prisma, RemarkStatus, Role } from '@remarkround/db';
 import { config } from '../config';
 import { JobsService, RetryJobError, type JobContext } from '../jobs/jobs.service';
 import { MailService } from '../mail/mail.service';
@@ -36,34 +36,35 @@ export class NotificationsService implements OnModuleInit {
   }
 
   /**
-   * Переход замечания записан. actorUserId — кто нажал: ему о собственном действии не пишем
-   * (null — писать всем, например бизнесу о готовом ретесте, который он сам и запустил).
+   * Переход замечания пишется — в той же транзакции (`tx`), чтобы уведомление и статус либо есть оба, либо нет.
+   * actorUserId — кто нажал: ему о собственном действии не пишем (null — писать всем, например бизнесу о готовом
+   * ретесте, который он сам и запустил).
    */
-  async remarkChanged(projectId: string, remarkId: string, status: RemarkStatus, actorUserId: string | null): Promise<void> {
+  async remarkChanged(tx: Prisma.TransactionClient, projectId: string, remarkId: string, status: RemarkStatus, actorUserId: string | null): Promise<void> {
     const waiting = WAITING[status];
     if (!waiting) return;
-    const members = await this.prisma.membership.findMany({
+    const members = await tx.membership.findMany({
       where: { projectId, role: waiting.role, user: { disabledAt: null }, ...(actorUserId ? { userId: { not: actorUserId } } : {}) },
       select: { userId: true, user: { select: { notifyByEmail: true } } },
     });
     if (!members.length) return;
     // Без SMTP или с выключенными письмами запись всё равно остаётся — как след «кого и когда ждали», без задачи
     const deliverable = this.mail.enabled;
-    await this.prisma.notification.createMany({
+    await tx.notification.createMany({
       data: members.map((m) => ({ userId: m.userId, projectId, remarkId, kind: waiting.kind, status: deliverable && m.user.notifyByEmail ? 'pending' : 'skipped' })),
     });
     if (!deliverable) return;
     for (const m of members) {
       if (!m.user.notifyByEmail) continue;
-      await this.scheduleDigest(m.userId, projectId);
+      await this.scheduleDigest(tx, m.userId, projectId);
     }
   }
 
   /** Одна ждущая задача на человека: пока она не ушла, новые уведомления просто копятся к ней. */
-  private async scheduleDigest(userId: string, projectId: string): Promise<void> {
-    const queued = await this.prisma.job.findFirst({ where: { kind: 'notify_digest', status: 'queued', payload: { path: ['userId'], equals: userId } }, select: { id: true } });
+  private async scheduleDigest(tx: Prisma.TransactionClient, userId: string, projectId: string): Promise<void> {
+    const queued = await tx.job.findFirst({ where: { kind: 'notify_digest', status: 'queued', payload: { path: ['userId'], equals: userId } }, select: { id: true } });
     if (queued) return;
-    await this.jobs.enqueue('notify_digest', { userId }, { projectId, delayMs: config().NOTIFY_DIGEST_MS });
+    await this.jobs.enqueue('notify_digest', { userId }, { projectId, delayMs: config().NOTIFY_DIGEST_MS, tx });
   }
 
   /** Задача очереди: всё pending человека → одно письмо. Сбой SMTP — повтор с паузой, после последней попытки — failed. */

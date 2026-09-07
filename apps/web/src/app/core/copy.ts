@@ -204,6 +204,9 @@ export const CARD = {
   draftByRules: 'по правилам, без модели',
   /** Повтор претензии: подпись у карточки и кнопка у закрытого замечания (business). */
   originOf: (number: number, round: number) => `Повтор претензии №${number} из раунда ${round}`,
+  history: 'История',
+  historyEmpty: 'Пока пусто',
+  historySystem: 'RemarkRound',
   reopenedIn: (number: number, round: number) => `Открыто снова: №${number} в раунде ${round}`,
   reopenIn: (round: number) => `Открыть снова в раунде ${round}`,
   reopenNoRound: 'Чтобы открыть снова, сначала создайте новый раунд',
@@ -801,3 +804,23 @@ function numWord(n: number, gender: 'f' | 'm'): string {
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/** Подписи переходов в истории замечания (GET /remarks/:id/history). Ключи — action с сервера. */
+export const HISTORY_ACTION: Record<string, string> = {
+  create: 'Замечание создано',
+  import: 'Импортировано из журнала',
+  reopen: 'Претензия открыта снова',
+  fix_row: 'Строка журнала дописана',
+  attach_screenshot: 'Скрин приложен',
+  triage: 'Разбор запущен',
+  proposal: 'Модель предложила',
+  rejected_binding: 'Не та цитата — разбор снова',
+  verdict: 'Решение',
+  ready_for_retest: 'Разработчик: готово',
+  retest: 'Кадр для ретеста приложен',
+  retest_result: 'Кадры сравнили',
+  close: 'Закрыто',
+  not_fixed: 'Не исправлено — снова в работу',
+  cancel: 'Разбор остановлен',
+  run_failed: 'Разбор не удался',
+};

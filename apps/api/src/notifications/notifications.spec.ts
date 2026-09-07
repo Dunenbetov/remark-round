@@ -63,8 +63,8 @@ describe('notifications', () => {
     const a = await remarkIn('imported', 'Первое за окно');
     const b = await remarkIn('imported', 'Второе за окно');
     // Прямой вызов того же метода, что зовёт RemarksService.applyProposal: граф здесь не нужен
-    await notifications.remarkChanged(h.projectId, a.id, 'awaiting_pm', h.users.business.id);
-    await notifications.remarkChanged(h.projectId, b.id, 'awaiting_pm', h.users.business.id);
+    await h.prisma.$transaction((tx) => notifications.remarkChanged(tx, h.projectId, a.id, 'awaiting_pm', h.users.business.id));
+    await h.prisma.$transaction((tx) => notifications.remarkChanged(tx, h.projectId, b.id, 'awaiting_pm', h.users.business.id));
     const queued = await h.prisma.job.count({ where: { kind: 'notify_digest', status: 'queued', payload: { path: ['userId'], equals: h.users.pm.id } } });
     expect(queued).toBe(1);
     const [mail] = await h.mail.waitFor(1);
@@ -84,7 +84,7 @@ describe('notifications', () => {
     expect(first!.to).toBe(h.users.business.email);
     expect(first!.text).toContain('нужен новый кадр');
 
-    await notifications.remarkChanged(h.projectId, id, 'awaiting_business_close', null);
+    await h.prisma.$transaction((tx) => notifications.remarkChanged(tx, h.projectId, id, 'awaiting_business_close', null));
     const [, second] = await h.mail.waitFor(2);
     expect(second!.to).toBe(h.users.business.email);
     expect(second!.text).toContain('закройте или верните');
@@ -112,7 +112,12 @@ describe('notifications', () => {
     await h.http.post(url(`/remarks/${id}/verdict`)).set(h.auth('pm')).send({ runId, verdict: 'defect', idempotencyKey: randomUUID() }).expect(200);
     await waitStatus(id, h.users.developer.id, 'sent');
     expect(h.mail.sent).toHaveLength(1);
-    const job = await h.prisma.job.findFirst({ where: { kind: 'notify_digest', projectId: h.projectId }, orderBy: { createdAt: 'desc' } });
+    // Уведомление помечается sent внутри обработчика, а строка задачи — после него: ждём done, а не читаем сразу
+    let job = await h.prisma.job.findFirstOrThrow({ where: { kind: 'notify_digest', projectId: h.projectId }, orderBy: { createdAt: 'desc' } });
+    for (let i = 0; i < 50 && job.status !== 'done'; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      job = await h.prisma.job.findUniqueOrThrow({ where: { id: job.id } });
+    }
     expect(job).toMatchObject({ status: 'done', attempts: 2 });
 
     h.mail.failNext.push(new Error('x'), new Error('y'), new Error('z'));

@@ -35,7 +35,7 @@ flowchart LR
 | Auth · Tenancy | JWT, membership → `ProjectContext`; чужой проект — 404, роль — 403 | `apps/api/src/{auth,tenancy}` |
 | Documents · Rag | PDF / DOCX / MD → чанки по разделам → `text-embedding-3-small` → pgvector; retrieve только `WHERE projectId` | `apps/api/src/{documents,rag}` |
 | Imports | Только официальный шаблон журнала (CSV/XLSX, картинки из ячеек); пустое описание → `needs_human_parse` | `apps/api/src/imports` |
-| Remarks | Единственный путь записи: статусы по `STATUS.md`, вердикт человека, идемпотентность `(runId, idempotencyKey)`; совет разработчика `DeveloperAdvice` (не вердикт, событие `remark.advice`) | `apps/api/src/remarks` |
+| Remarks | Единственный путь записи: статусы по `STATUS.md`, вердикт человека, идемпотентность `(runId, idempotencyKey)`; история переходов `RemarkStatusChange` в той же транзакции; совет разработчика `DeveloperAdvice` (не вердикт, событие `remark.advice`) | `apps/api/src/remarks` |
 | Agent | Граф триажа (retrieve → vision → bind ↔ rewrite ≤ 2 → classify → draft → faithfulness ↔ bind ≤ 2 → interrupt PM) и граф ретеста (pixel-diff → explain → interrupt бизнеса); guardrail входа; чекпоинты `GraphCheckpoint` | `apps/api/src/agent` |
 | Notifications · Mail | «Вас ждёт кнопка» (ADR 009): переход пишет `Notification` участникам нужной роли, задача `notify_digest` шлёт одно письмо на окно; приглашение — письмом со ссылкой; SMTP через nodemailer, без `SMTP_URL` — `skipped` | `apps/api/src/{notifications,mail}` |
 | Jobs | Очередь фоновых задач в той же Postgres (`Job`, `FOR UPDATE SKIP LOCKED`): прогоны графа и индексация документов; повтор временной ошибки модели с паузой, возврат осиротевших задач после падения процесса, heartbeat, остановка по SIGTERM | `apps/api/src/jobs` |

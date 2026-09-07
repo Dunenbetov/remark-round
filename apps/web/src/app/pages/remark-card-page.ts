@@ -2,8 +2,8 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { Router, RouterLink } from '@angular/router';
-import type { JoinAck, Phase, Presence, Remark, Role, Screenshot, ServerEvent, VerdictCode } from '../core/models';
-import { APP_NAME, CARD, DECISION, DEV_QUEUE, EMPTY, HINT, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, PillTone, QUEUE, ROLE_SHORT, ROUND, STAMP_LABEL, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
+import type { JoinAck, Phase, Presence, Remark, RemarkHistoryEntry, Role, Screenshot, ServerEvent, VerdictCode } from '../core/models';
+import { APP_NAME, CARD, DECISION, DEV_QUEUE, EMPTY, HINT, HISTORY_ACTION, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, PillTone, QUEUE, ROLE_SHORT, ROUND, STAMP_LABEL, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
 import { filterRemarks } from '../core/journal-filter';
 import { PendingActionService } from '../core/pending-action.service';
 import { QueueService } from '../core/queue.service';
@@ -13,6 +13,7 @@ import { ShortcutsService } from '../core/shortcuts.service';
 import { TriageRun, TriageService } from '../core/triage.service';
 import { UiStateService } from '../core/ui-state.service';
 import { WsService, initialPhase } from '../core/ws.service';
+import { ApiService } from '../core/api.service';
 import { AppBar } from '../ui/app-bar';
 import { BrandMark } from '../ui/brand-mark';
 import { CardHeader, HeaderStamp } from '../ui/card-header';
@@ -308,6 +309,32 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                       <a class="link card__trace" [href]="r.traceUrl" target="_blank" rel="noopener">{{ traceLabel }} <rr-icon name="external" [size]="12" /></a>
                     }
                   </footer>
+                  <details class="history" (toggle)="onHistoryToggle($event)">
+                    <summary class="history__summary">{{ copy.history }}</summary>
+                    @if (historyLoading()) {
+                      <p class="meta history__note">…</p>
+                    } @else if (!history().length) {
+                      <p class="meta history__note">{{ copy.historyEmpty }}</p>
+                    } @else {
+                      <ol class="history__list">
+                        @for (e of history(); track e.id) {
+                          <li class="history__row">
+                            <time class="history__when" [attr.datetime]="e.at">{{ when(e.at) }}</time>
+                            <div class="history__what">
+                              <span class="history__who">{{ e.by ? person(e.by.name, e.by.role) : copy.historySystem }}</span>
+                              <span>{{ actionLabel(e.action) }}</span>
+                              @if (e.fromStatus !== e.toStatus) {
+                                <span class="history__to">→ {{ statusLabel[e.toStatus] }}</span>
+                              }
+                              @if (e.detail) {
+                                <span class="meta history__detail">{{ e.detail }}</span>
+                              }
+                            </div>
+                          </li>
+                        }
+                      </ol>
+                    }
+                  </details>
                 </article>
               </div>
             </div>
@@ -552,6 +579,66 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
       gap: var(--sp-4);
     }
     /* Служебная ссылка PM на trace прогона: справа, тихо, не кнопка решения. */
+    .history {
+      margin-top: var(--sp-3);
+      border-top: 1px solid var(--rr-line);
+      padding-top: var(--sp-3);
+    }
+    .history__summary {
+      cursor: pointer;
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
+      color: var(--rr-ink-2);
+      list-style: none;
+    }
+    .history__summary::-webkit-details-marker {
+      display: none;
+    }
+    .history__summary::before {
+      content: '▸ ';
+    }
+    .history[open] .history__summary::before {
+      content: '▾ ';
+    }
+    .history__note {
+      margin: var(--sp-2) 0 0;
+    }
+    .history__list {
+      list-style: none;
+      margin: var(--sp-2) 0 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+    .history__row {
+      display: grid;
+      grid-template-columns: 9ch minmax(0, 1fr);
+      gap: var(--sp-3);
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
+    }
+    .history__when {
+      color: var(--rr-ink-3);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .history__what {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0 var(--sp-2);
+      min-width: 0;
+    }
+    .history__who {
+      font-weight: var(--fw-medium);
+    }
+    .history__to {
+      color: var(--rr-ink-2);
+    }
+    .history__detail {
+      flex-basis: 100%;
+      overflow-wrap: anywhere;
+    }
     .card__trace {
       margin-left: auto;
       display: inline-flex;
@@ -663,6 +750,7 @@ export class RemarkCardPage {
   private readonly router = inject(Router);
   private readonly title = inject(Title);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly api = inject(ApiService);
   private readonly panel = viewChild(DecisionPanel);
 
   protected readonly copy = CARD;
@@ -672,6 +760,10 @@ export class RemarkCardPage {
   protected readonly newRemark = NEW_REMARK;
   protected readonly statusLabel = STATUS_LABEL;
   protected readonly pressed = this.shortcuts.pressed;
+  /** История переходов (аудит: remark-history): грузится при раскрытии и перечитывается при каждом изменении карточки. */
+  protected readonly history = signal<RemarkHistoryEntry[]>([]);
+  protected readonly historyLoading = signal(false);
+  private historyOpen = false;
   /** Поля «Допишите строку журнала»; «Где» предзаполняется ячейкой из файла. */
   protected readonly fixWhat = signal('');
   protected readonly fixWhere = signal('');
@@ -698,6 +790,10 @@ export class RemarkCardPage {
   private poll: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
+    effect(() => {
+      const r = this.remark();
+      if (r && this.historyOpen) untracked(() => void this.loadHistory());
+    });
     effect(() => {
       const projectId = this.projectId();
       const id = this.remarkId();
@@ -1357,6 +1453,34 @@ export class RemarkCardPage {
       run.busy.set(false);
     }
   }
+  protected onHistoryToggle(e: Event): void {
+    this.historyOpen = (e.target as HTMLDetailsElement).open;
+    if (this.historyOpen) void this.loadHistory();
+  }
+
+  private async loadHistory(): Promise<void> {
+    this.historyLoading.set(true);
+    try {
+      this.history.set(await this.api.remarkHistory(this.projectId(), this.remarkId()));
+    } catch {
+      this.history.set([]);
+    } finally {
+      this.historyLoading.set(false);
+    }
+  }
+
+  protected person(name: string, role: Role | undefined): string {
+    return person(name, role);
+  }
+
+  protected actionLabel(action: string): string {
+    return HISTORY_ACTION[action] ?? action;
+  }
+
+  protected when(iso: string): string {
+    return new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
 }
 
 /** «Business (заказчик)»: имя с ролью в проекте — людей на одной стороне может быть несколько. */

@@ -183,6 +183,18 @@ export interface Round {
   closedAt?: string | null;
 }
 
+/** Строка истории замечания (GET /remarks/:id/history): `by` пуст — переход сделала система (граф, сбой). */
+export interface RemarkHistoryEntry {
+  id: string;
+  at: string;
+  action: string;
+  fromStatus?: RemarkStatus;
+  toStatus: RemarkStatus;
+  by?: { userId: string; name: string; role?: Role };
+  runId?: string;
+  detail?: string;
+}
+
 /** Ссылка между закрытым замечанием и его повтором в новом раунде (docs/STATUS.md closed → reopened). */
 export interface RemarkLink {
   remarkId: string;

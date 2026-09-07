@@ -40,8 +40,14 @@ describe('jobs queue', () => {
     return remark.id;
   }
 
+  /** Карточка меняет статус внутри обработчика, строка задачи — после него: ждём, пока задача закроется. */
   async function jobOfRun(runId: string) {
-    return h.prisma.job.findFirstOrThrow({ where: { runId }, orderBy: { createdAt: 'desc' } });
+    let job = await h.prisma.job.findFirstOrThrow({ where: { runId }, orderBy: { createdAt: 'desc' } });
+    for (let i = 0; i < 100 && (job.status === 'running' || job.status === 'queued'); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      job = await h.prisma.job.findUniqueOrThrow({ where: { id: job.id } });
+    }
+    return job;
   }
 
   it('индексация документа — задача очереди: загрузка отвечает сразу, документ становится indexed', async () => {
@@ -146,8 +152,8 @@ describe('jobs queue', () => {
       throw new Error(`${e.message}; run ${r.status} ${r.failureCode}: ${r.failureMessage}`);
     });
     expect(done.runId).toBe(run.id);
-    const row = await h.prisma.job.findUniqueOrThrow({ where: { id: job.id } });
-    expect(row).toMatchObject({ status: 'done', attempts: 2 });
+    const row = await jobOfRun(run.id);
+    expect(row).toMatchObject({ id: job.id, status: 'done', attempts: 2 });
   });
 
   it('сметание зависших прогонов не трогает прогон, у которого есть живая задача в очереди', async () => {

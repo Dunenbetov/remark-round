@@ -1,12 +1,13 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException, Logger } from '@nestjs/common';
-import type { Prisma, ProposedClass, Remark, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import type { Prisma, ProposedClass, Remark, RemarkStatus, RetestOutcome, Role, VerdictCode } from '@remarkround/db';
 import type { LlmUsage } from '../llm/triage-llm';
 import { ObservabilityService } from '../observability/observability.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
-import { AdviceDto, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, audienceFor, quote, toRemarkView } from './remark.dto';
+import { AdviceDto, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, audienceFor, quote, toRemarkView, type HistoryEntry } from './remark.dto';
+import { PROPOSED_LABEL_RU } from './labels';
 
 const REMARK_INCLUDE = {
   round: { select: { number: true } },
@@ -80,7 +81,6 @@ export interface VerdictResult {
  */
 @Injectable()
 export class RemarksService {
-  private readonly log = new Logger(RemarksService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly observability: ObservabilityService,
@@ -97,13 +97,15 @@ export class RemarksService {
    * Номер в раунде под блокировкой строки раунда: два одновременных замечания иначе получали один номер
    * (@@unique(roundId, number) → P2002). На всякий случай — повтор.
    */
-  private async createNumbered(roundId: string, data: Omit<Prisma.RemarkUncheckedCreateInput, 'number' | 'roundId'>): Promise<Remark> {
+  private async createNumbered(roundId: string, data: Omit<Prisma.RemarkUncheckedCreateInput, 'number' | 'roundId'>, by: HistoryBy & { action: 'create' | 'import' | 'reopen' }): Promise<Remark> {
     for (let attempt = 1; ; attempt++) {
       try {
         return await this.prisma.$transaction(async (tx) => {
           await tx.$queryRaw`SELECT "id" FROM "Round" WHERE "id" = ${roundId} FOR UPDATE`;
           const last = await tx.remark.findFirst({ where: { roundId }, orderBy: { number: 'desc' }, select: { number: true } });
-          return tx.remark.create({ data: { ...data, roundId, number: (last?.number ?? 0) + 1 } });
+          const created = await tx.remark.create({ data: { ...data, roundId, number: (last?.number ?? 0) + 1 } });
+          await tx.remarkStatusChange.create({ data: { remarkId: created.id, fromStatus: null, toStatus: created.status, action: by.action, userId: by.userId ?? null, role: by.role ?? null } });
+          return created;
         });
       } catch (e) {
         if ((e as { code?: string }).code !== 'P2002' || attempt >= 3) throw e;
@@ -156,6 +158,23 @@ export class RemarksService {
     return row.status;
   }
 
+  /** История переходов (аудит: remark-history): тот же ACL, что у карточки; заказчику — без содержания предложений модели (ADR 007). */
+  async history(ctx: ProjectContext, remarkId: string): Promise<HistoryEntry[]> {
+    await this.get(ctx, remarkId);
+    const rows = await this.prisma.remarkStatusChange.findMany({ where: { remarkId }, orderBy: { createdAt: 'asc' }, include: { user: { select: { name: true } } } });
+    const customer = audienceFor(ctx.role) === 'customer';
+    return rows.map((h) => ({
+      id: h.id,
+      at: h.createdAt.toISOString(),
+      action: h.action,
+      fromStatus: h.fromStatus ?? undefined,
+      toStatus: h.toStatus,
+      by: h.userId ? { userId: h.userId, name: h.user?.name ?? '', role: h.role ?? undefined } : undefined,
+      runId: h.runId ?? undefined,
+      detail: customer && h.action === 'proposal' ? undefined : (h.detail ?? undefined),
+    }));
+  }
+
   // ---------- создание ----------
 
   /** Ручное замечание → `imported`. Разбор стартует AgentService (граф), не здесь. */
@@ -171,7 +190,7 @@ export class RemarksService {
       status: 'imported',
       authorId: ctx.userId,
       screenshots: dto.screenshotKey ? { create: { kind: 'original', storageKey: dto.screenshotKey } } : undefined,
-    });
+    }, { action: 'create', userId: ctx.userId, role: ctx.role });
     return this.get(ctx, remark.id);
   }
 
@@ -192,7 +211,7 @@ export class RemarksService {
       status: input.status,
       authorId: ctx.userId,
       screenshots: input.screenshot ? { create: { kind: 'original', ...input.screenshot } } : undefined,
-    });
+    }, { action: 'import', userId: ctx.userId, role: ctx.role });
     return { id: created.id, number: created.number, status: created.status };
   }
 
@@ -220,7 +239,7 @@ export class RemarksService {
       authorId: ctx.userId,
       originRemarkId: row.id,
       screenshots: shot ? { create: { kind: 'original', ...shot } } : undefined,
-    });
+    }, { action: 'reopen', userId: ctx.userId, role: ctx.role });
     return this.get(ctx, created.id);
   }
 
@@ -243,7 +262,7 @@ export class RemarksService {
         pageOrScreen: dto.pageOrScreen?.trim() || row.pageOrScreen,
         expected: dto.expected?.trim() || row.expected,
         status: 'imported',
-      }),
+      }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status }),
     );
     return this.get(ctx, row.id);
   }
@@ -257,6 +276,7 @@ export class RemarksService {
     await this.prisma.$transaction([
       this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: 'original' } }),
       this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'original', storageKey: screenshotKey } }),
+      this.prisma.remarkStatusChange.create({ data: { remarkId, fromStatus: row.status, toStatus: row.status, action: 'attach_screenshot', userId: ctx.userId, role: ctx.role } }),
     ]);
     return this.get(ctx, remarkId);
   }
@@ -269,8 +289,9 @@ export class RemarksService {
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['imported', 'cannot_tell', 'reopened'], 'triage');
     const run = await this.prisma.$transaction(async (tx) => {
-      await this.transition(tx, row.id, ['imported', 'cannot_tell', 'reopened'], 'triage', { status: 'triaging' });
-      return tx.agentRun.create({ data: { remarkId: row.id, projectId: ctx.projectId, mode: 'triage', status: 'running', model } });
+      const created = await tx.agentRun.create({ data: { remarkId: row.id, projectId: ctx.projectId, mode: 'triage', status: 'running', model } });
+      await this.transition(tx, row.id, ['imported', 'cannot_tell', 'reopened'], 'triage', { status: 'triaging' }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: created.id });
+      return created;
     });
     return { runId: run.id };
   }
@@ -325,12 +346,16 @@ export class RemarksService {
         rationale: proposal.rationale.join('\n\n'),
         visionFacts: proposal.visionFacts ?? null,
         duplicateOfId: duplicateOf?.id ?? null,
-      });
+      }, { userId: null, role: null, fromStatus: 'triaging', runId, detail: proposalDetail(proposal) });
       await tx.evidenceCitation.deleteMany({ where: { remarkId } });
       if (citations.length) await tx.evidenceCitation.createMany({ data: citations });
-      await tx.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human', ...usageData(proposal.usage) } });
+      // Снимок предложения в самом прогоне: новый прогон (после cannot_tell, reopen) не затирает прежний разбор
+      await tx.agentRun.update({
+        where: { id: runId },
+        data: { status: 'awaiting_human', proposedClass: proposal.proposedClass, rationale: proposal.rationale.join('\n\n'), visionFacts: proposal.visionFacts ?? null, ...usageData(proposal.usage) },
+      });
+      await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'awaiting_pm', ctx.userId);
     });
-    await this.notify(ctx, remarkId, 'awaiting_pm', ctx.userId);
     return this.get(ctx, remarkId);
   }
 
@@ -342,6 +367,7 @@ export class RemarksService {
     await this.prisma.$transaction([
       this.prisma.agentRun.update({ where: { id: runId }, data: { status: 'failed', failureCode: failure?.code ?? null, failureMessage: failure?.message ?? null } }),
       ...(next !== run.remark.status ? [this.prisma.remark.update({ where: { id: run.remark.id }, data: { status: next } })] : []),
+      this.prisma.remarkStatusChange.create({ data: { remarkId: run.remark.id, fromStatus: run.remark.status, toStatus: next, action: 'run_failed', runId, detail: failure?.message ?? null } }),
     ]);
     return next;
   }
@@ -375,21 +401,26 @@ export class RemarksService {
     const latest = [...row.runs].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
     // Статус меняется только из того, что прочитали: параллельный вердикт не будет перезаписан отменой.
     // Порядок блокировок как у verdict(): сначала Remark, потом AgentRun — иначе две встречные транзакции ловят deadlock.
-    const ops: Prisma.PrismaPromise<unknown>[] = [];
-    if (latest?.id === runId) {
-      if (run.mode === 'triage' && (row.status === 'triaging' || row.status === 'awaiting_pm')) {
-        ops.push(this.prisma.remark.updateMany({ where: { id: remarkId, status: { in: ['triaging', 'awaiting_pm'] } }, data: { status: 'imported' } }));
+    await this.prisma.$transaction(async (tx) => {
+      let changed: { count: number } = { count: 0 };
+      let next: RemarkStatus = row.status;
+      if (latest?.id === runId) {
+        if (run.mode === 'triage' && (row.status === 'triaging' || row.status === 'awaiting_pm')) {
+          next = 'imported';
+          changed = await tx.remark.updateMany({ where: { id: remarkId, status: { in: ['triaging', 'awaiting_pm'] } }, data: { status: next } });
+        }
+        if (run.mode === 'retest' && (row.status === 'ready_for_retest' || row.status === 'awaiting_business_close')) {
+          next = 'ready_for_retest';
+          await tx.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } });
+          changed = await tx.remark.updateMany({ where: { id: remarkId, status: { in: ['ready_for_retest', 'awaiting_business_close'] } }, data: { status: next, retestOutcome: null, retestExplanation: null } });
+        }
       }
-      if (run.mode === 'retest' && (row.status === 'ready_for_retest' || row.status === 'awaiting_business_close')) {
-        ops.push(
-          this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } }),
-          this.prisma.remark.updateMany({ where: { id: remarkId, status: { in: ['ready_for_retest', 'awaiting_business_close'] } }, data: { status: 'ready_for_retest', retestOutcome: null, retestExplanation: null } }),
-        );
+      // Прогон, который параллельный вердикт уже перевёл в persisted, отменой не трогаем
+      const cancelled = await tx.agentRun.updateMany({ where: { id: runId, status: { in: ['running', 'awaiting_human'] } }, data: { status: 'cancelled' } });
+      if (cancelled.count === 1 || changed.count === 1) {
+        await tx.remarkStatusChange.create({ data: { remarkId, fromStatus: row.status, toStatus: changed.count === 1 ? next : row.status, action: 'cancel', userId: ctx.userId, role: ctx.role, runId } });
       }
-    }
-    // Прогон, который параллельный вердикт уже перевёл в persisted, отменой не трогаем
-    ops.push(this.prisma.agentRun.updateMany({ where: { id: runId, status: { in: ['running', 'awaiting_human'] } }, data: { status: 'cancelled' } }));
-    await this.prisma.$transaction(ops);
+    });
     return this.get(ctx, remarkId);
   }
 
@@ -414,7 +445,7 @@ export class RemarksService {
       if (!dto.comment?.trim()) throw new ConflictException('Для «не та цитата» нужен комментарий');
       const comment = dto.comment.trim();
       await this.prisma.$transaction(async (tx) => {
-        await this.transition(tx, remarkId, ['awaiting_pm'], 'rejected_binding', { status: 'triaging' });
+        await this.transition(tx, remarkId, ['awaiting_pm'], 'rejected_binding', { status: 'triaging' }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: dto.runId });
         await tx.humanVerdict.create({ data: { remarkId, runId: dto.runId, userId: ctx.userId, code: 'rejected_binding', comment, idempotencyKey: dto.idempotencyKey } });
         await tx.agentRun.update({ where: { id: dto.runId }, data: { status: 'running' } });
       });
@@ -427,11 +458,11 @@ export class RemarksService {
       : null;
     // Условная запись: два одновременных решения не дадут «произвольного победителя» — второе получит 409 и перечитает карточку
     await this.prisma.$transaction(async (tx) => {
-      await this.transition(tx, remarkId, [row.status], 'verdict', { status: next, duplicateOfId: duplicateOf?.id ?? row.duplicateOfId });
+      await this.transition(tx, remarkId, [row.status], 'verdict', { status: next, duplicateOfId: duplicateOf?.id ?? row.duplicateOfId }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: dto.runId });
       await tx.humanVerdict.create({ data: { remarkId, runId: dto.runId, userId: ctx.userId, code: dto.verdict, comment: dto.comment?.trim() || null, idempotencyKey: dto.idempotencyKey } });
       await tx.agentRun.update({ where: { id: dto.runId }, data: { status: 'persisted' } });
+      await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, next, ctx.userId);
     });
-    await this.notify(ctx, remarkId, next, ctx.userId);
     return { remark: await this.get(ctx, remarkId), applied: true };
   }
 
@@ -460,8 +491,10 @@ export class RemarksService {
     if (ctx.role !== 'developer') throw new ForbiddenException();
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['defect'], 'ready_for_retest');
-    await this.prisma.$transaction((tx) => this.transition(tx, remarkId, ['defect'], 'ready_for_retest', { status: 'ready_for_retest', fixedByUserId: ctx.userId }));
-    await this.notify(ctx, remarkId, 'ready_for_retest', ctx.userId);
+    await this.prisma.$transaction(async (tx) => {
+      await this.transition(tx, remarkId, ['defect'], 'ready_for_retest', { status: 'ready_for_retest', fixedByUserId: ctx.userId }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status });
+      await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'ready_for_retest', ctx.userId);
+    });
     return this.get(ctx, remarkId);
   }
 
@@ -501,11 +534,12 @@ export class RemarksService {
     if (row.runs.some((r) => r.mode === 'retest' && r.status === 'running')) throw new ConflictException('Кадры уже сравниваются');
     await this.assertShot(ctx, screenshotKey);
     const run = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.agentRun.create({ data: { remarkId, projectId: ctx.projectId, mode: 'retest', status: 'running', model } });
       // Статус не меняется, но замечание должно быть всё ещё ready_for_retest в момент записи кадра (SET status=status считает строку)
-      await this.transition(tx, remarkId, ['ready_for_retest'], 'retest', { status: 'ready_for_retest' });
+      await this.transition(tx, remarkId, ['ready_for_retest'], 'retest', { status: 'ready_for_retest' }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: created.id });
       await tx.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } });
       await tx.remarkScreenshot.create({ data: { remarkId, kind: 'retest', storageKey: screenshotKey } });
-      return tx.agentRun.create({ data: { remarkId, projectId: ctx.projectId, mode: 'retest', status: 'running', model } });
+      return created;
     });
     return { runId: run.id };
   }
@@ -532,14 +566,14 @@ export class RemarksService {
     if (!run) throw new ConflictException('Прогон уже завершён или остановлен');
     const retest = [...row.screenshots].filter((s) => s.kind === 'retest').sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
     await this.prisma.$transaction(async (tx) => {
-      await this.transition(tx, remarkId, ['ready_for_retest'], 'retest_result', { status: 'awaiting_business_close', retestOutcome: result.outcome, retestExplanation: result.explanation });
+      await this.transition(tx, remarkId, ['ready_for_retest'], 'retest_result', { status: 'awaiting_business_close', retestOutcome: result.outcome, retestExplanation: result.explanation }, { userId: null, role: null, fromStatus: row.status, runId, detail: [retestLabel(result.outcome), result.explanation].filter(Boolean).join(' — ').slice(0, 300) });
       if (retest && result.retestSize) await tx.remarkScreenshot.update({ where: { id: retest.id }, data: result.retestSize });
       await tx.remarkScreenshot.deleteMany({ where: { remarkId, kind: 'diff' } });
       if (result.diffShot) await tx.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...result.diffShot } });
       await tx.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human', ...usageData(result.usage) } });
+      // Ретест запускает сам заказчик и, пока граф сравнивает кадры, мог уйти: письмо — и ему тоже (actor = null)
+      await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'awaiting_business_close', null);
     });
-    // Ретест запускает сам заказчик и, пока граф сравнивает кадры, мог уйти: письмо — и ему тоже (actor = null)
-    await this.notify(ctx, remarkId, 'awaiting_business_close', null);
     return this.get(ctx, remarkId);
   }
 
@@ -548,7 +582,7 @@ export class RemarksService {
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['awaiting_business_close'], 'close');
     await this.prisma.$transaction(async (tx) => {
-      await this.transition(tx, remarkId, ['awaiting_business_close'], 'close', { status: 'closed', closedByUserId: ctx.userId, closedAt: new Date() });
+      await this.transition(tx, remarkId, ['awaiting_business_close'], 'close', { status: 'closed', closedByUserId: ctx.userId, closedAt: new Date() }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status });
       await tx.agentRun.updateMany({ where: { remarkId, mode: 'retest', status: 'awaiting_human' }, data: { status: 'persisted' } });
     });
     return this.get(ctx, remarkId);
@@ -559,20 +593,16 @@ export class RemarksService {
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['awaiting_business_close'], 'not_fixed');
     await this.prisma.$transaction(async (tx) => {
-      await this.transition(tx, remarkId, ['awaiting_business_close'], 'not_fixed', { status: 'defect', retestOutcome: null, retestExplanation: null });
+      await this.transition(tx, remarkId, ['awaiting_business_close'], 'not_fixed', { status: 'defect', retestOutcome: null, retestExplanation: null }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status });
       await tx.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } });
       await tx.agentRun.updateMany({ where: { remarkId, mode: 'retest', status: 'awaiting_human' }, data: { status: 'persisted' } });
+      await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'defect', ctx.userId);
     });
-    await this.notify(ctx, remarkId, 'defect', ctx.userId);
     return this.get(ctx, remarkId);
   }
 
   // ---------- helpers ----------
 
-  /** Переход записан — сказать тем, кого он ждёт (ADR 009). Сбой почты не откатывает и не роняет решение. */
-  private async notify(ctx: ProjectContext, remarkId: string, status: RemarkStatus, actorUserId: string | null): Promise<void> {
-    await this.notifications.remarkChanged(ctx.projectId, remarkId, status, actorUserId).catch((e: Error) => this.log.warn(`notify ${remarkId} ${status}: ${e.message}`));
-  }
 
   private assertTransition(from: RemarkStatus, allowed: RemarkStatus[], action: string): void {
     if (!allowed.includes(from)) throw new ConflictException(`Переход «${action}» из статуса ${from} запрещён (docs/STATUS.md)`);
@@ -583,9 +613,18 @@ export class RemarksService {
    * а здесь Postgres гарантирует, что строка всё ещё в ожидаемом статусе: два одновременных решения дадут
    * одну запись и один 409 с актуальным статусом, а не произвольного «победителя». Бросок откатывает транзакцию.
    */
-  private async transition(tx: Prisma.TransactionClient, remarkId: string, from: RemarkStatus[], action: string, data: Prisma.RemarkUncheckedUpdateManyInput): Promise<void> {
+  private async transition(tx: Prisma.TransactionClient, remarkId: string, from: RemarkStatus[], action: string, data: Prisma.RemarkUncheckedUpdateManyInput, by: HistoryBy = {}): Promise<void> {
     const { count } = await tx.remark.updateMany({ where: { id: remarkId, status: { in: from } }, data });
-    if (count === 1) return;
+    if (count === 1) {
+      // История — в той же транзакции, что и статус (аудит: remark-history): строка на переход, кто, в какой роли, каким прогоном
+      const toStatus = typeof data.status === 'string' ? data.status : undefined;
+      if (toStatus) {
+        await tx.remarkStatusChange.create({
+          data: { remarkId, fromStatus: by.fromStatus ?? (from.length === 1 ? from[0]! : null), toStatus, action, userId: by.userId ?? null, role: by.role ?? null, runId: by.runId ?? null, detail: by.detail ?? null },
+        });
+      }
+      return;
+    }
     const now = await tx.remark.findUnique({ where: { id: remarkId }, select: { status: true } });
     throw new ConflictException(`Переход «${action}» из статуса ${now?.status ?? '?'} запрещён (docs/STATUS.md): карточка изменилась, обновите её`);
   }
@@ -620,4 +659,24 @@ export class RemarksService {
 function usageData(usage?: LlmUsage): { inputTokens?: number; outputTokens?: number; costUsd?: number } {
   if (!usage || (usage.inputTokens === 0 && usage.outputTokens === 0)) return {};
   return { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: usage.costUsd };
+}
+
+
+/** Кто и чем вызвал переход — для строки истории. */
+interface HistoryBy {
+  userId?: string | null;
+  role?: Role | null;
+  fromStatus?: RemarkStatus;
+  runId?: string | null;
+  detail?: string | null;
+}
+
+/** Короткая пометка «что предложила модель»: класс и первый абзац черновика без заголовка. */
+function proposalDetail(p: ProposalInput): string {
+  const body = p.rationale.slice(1).find((x) => x.trim()) ?? p.rationale[0] ?? '';
+  return `${PROPOSED_LABEL_RU[p.proposedClass]}${body ? `: ${body.trim()}` : ''}`.slice(0, 300);
+}
+
+function retestLabel(outcome: RetestOutcome): string {
+  return outcome === 'likely_addressed' ? 'Похоже, исправлено' : outcome === 'likely_unchanged' ? 'Похоже, без изменений' : 'По кадрам не понять';
 }
