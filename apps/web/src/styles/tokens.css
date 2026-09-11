@@ -43,7 +43,7 @@
   --rr-focus: #1d2d80;
   --rr-danger: #a12a3a;
   --rr-scrim: rgba(20, 26, 51, 0.8);
-  --rr-thumb-bg: #f4f5fa;
+  --rr-thumb-bg: var(--rr-surface);   /* поля кадра — цвет бумаги: letterbox не читается полосой */
   /* чужой экран (rr-shot) — светлый по своей природе; днём показываем как есть, ночью глушим и обводим */
   --rr-shot-dim: none;
   --rr-shot-line: var(--rr-line);
@@ -163,7 +163,7 @@
   --rr-focus: #aab5ff;
   --rr-danger: #ef8a9a;
   --rr-scrim: rgba(0, 0, 0, 0.82);
-  --rr-thumb-bg: #242849;
+  --rr-thumb-bg: var(--rr-surface);
   --rr-shot-dim: brightness(0.88) saturate(0.9);  /* чужой светлый экран приглушён, но не выключен */
   --rr-shot-line: var(--rr-line-strong);
   --rr-wait-bg: #143d3b;   --rr-wait-ink: #95fbf2;   --rr-wait-dot: #5fe3d8;
