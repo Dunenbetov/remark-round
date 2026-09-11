@@ -63,7 +63,9 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
     }
     .ph__sub {
       margin: 0;
-      color: var(--rr-ink-2);
+      color: var(--rr-ink-3);
+      font-size: var(--fs-14);
+      line-height: var(--lh-14);
       max-width: 72ch;
     }
     .ph__actions {

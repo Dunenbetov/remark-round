@@ -2,6 +2,7 @@
  * Скриншоты UI для README (docs/screenshots): headless Chrome через CDP, без Playwright.
  * Нужен поднятый стенд (docker compose up): web на WEB_URL, api на API_URL, seed-пользователи.
  *   pnpm --filter @remarkround/api exec tsx src/evals/make-screenshots.ts
+ * OUT_DIR=… — другая папка (раунды критика), ONLY=journal,remark-card — только эти кадры.
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -11,7 +12,9 @@ import { resolve } from 'node:path';
 const CHROME = process.env['CHROME'] ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const WEB = process.env['WEB_URL'] ?? 'http://localhost:4200';
 const API = process.env['API_URL'] ?? 'http://localhost:3001/api/v1';
-const OUT = resolve(__dirname, '../../../../docs/screenshots');
+const OUT = process.env['OUT_DIR'] ? resolve(process.env['OUT_DIR']) : resolve(__dirname, '../../../../docs/screenshots');
+/** ONLY=journal,remark-card — снять только эти кадры (по имени файла без .png). */
+const ONLY = new Set((process.env['ONLY'] ?? '').split(',').map((s) => s.trim()).filter(Boolean));
 const PORT = 9333;
 
 interface Shot {
@@ -22,6 +25,8 @@ interface Shot {
   height?: number;
   /** Тёмная тема (localStorage rr.theme = dark). */
   dark?: boolean;
+  /** Снимок очереди «Ждут вас» в sessionStorage — карточка покажет рельс «i из N». */
+  queue?: boolean;
 }
 
 const byNumber = (remarks: Array<{ id: string; number: number }>, n: number) => remarks.find((r) => r.number === n)!.id;
@@ -29,8 +34,8 @@ const byNumber = (remarks: Array<{ id: string; number: number }>, n: number) => 
 const SHOTS: Shot[] = [
   { file: 'login.png', path: () => `/login`, as: null },
   { file: 'journal.png', path: ({ projectId }) => `/p/${projectId}/r/2`, as: 'pm' },
-  { file: 'remark-card.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 12)}`, as: 'pm', height: 1000 },
-  { file: 'remark-card-dark.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 12)}`, as: 'pm', height: 1000, dark: true },
+  { file: 'remark-card.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 12)}`, as: 'pm', height: 1000, queue: true },
+  { file: 'remark-card-dark.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 12)}`, as: 'pm', height: 1000, dark: true, queue: true },
   { file: 'retest.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 2)}`, as: 'business', height: 900 },
   { file: 'documents.png', path: ({ projectId }) => `/p/${projectId}/documents`, as: 'pm' },
   { file: 'import.png', path: ({ projectId }) => `/p/${projectId}/r/2/import`, as: 'business' },
@@ -107,18 +112,29 @@ async function main(): Promise<void> {
     await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
 
     for (const shot of SHOTS) {
+      if (ONLY.size && !ONLY.has(shot.file.replace(/\.png$/, ""))) continue;
       const width = shot.width ?? 1440;
       const height = shot.height ?? 900;
       await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 2, mobile: false });
       // Сессия — в localStorage той же origin: сначала пустая страница приложения, потом нужный маршрут.
+      // сначала выходим: иначе /login с живой сессией редиректит в журнал и перезаписывает rr.session после нашего setItem
+      const loaded0 = cdp.once('Page.loadEventFired');
+      await cdp.send('Page.navigate', { url: `${WEB}/login` });
+      await loaded0;
+      await cdp.send('Runtime.evaluate', { expression: `localStorage.removeItem('rr.session'); sessionStorage.clear();` });
       const loaded = cdp.once('Page.loadEventFired');
       await cdp.send('Page.navigate', { url: `${WEB}/login` });
       await loaded;
+      await sleep(300);
       const session = shot.as ? `localStorage.setItem('rr.session', ${JSON.stringify(JSON.stringify(sessions[shot.as]))}); localStorage.setItem('rr.project', ${JSON.stringify(pm.projectId)});` : `localStorage.removeItem('rr.session');`;
       const theme = shot.dark ? `localStorage.setItem('rr.theme', 'dark');` : `localStorage.removeItem('rr.theme');`;
-      // подсказки первого захода закрываем, чтобы скрины были «рабочими»
-      const hints = ['journal.pm', 'journal.business', 'card.pm', 'card.business', 'card.developer', 'tour.pm', 'tour.business'].map((k) => `localStorage.setItem('rr.hint.${k}', '1');`).join('');
-      await cdp.send('Runtime.evaluate', { expression: session + theme + hints + `sessionStorage.removeItem('rr.queue');` });
+      // подсказки первого захода закрываем, чтобы скрины были «рабочими» (ключи — на пользователя: rr.hint.<userId>.<key>)
+      const userId = shot.as ? (sessions[shot.as] as { user: { id: string } }).user.id : '';
+      const hints = ['journal.pm', 'journal.business', 'card.pm', 'card.business', 'card.developer', 'tour.pm', 'tour.business'].map((k) => `localStorage.setItem('rr.hint.${userId}.${k}', '1');`).join('');
+      // очередь «Ждут вас»: все awaiting_pm по убыванию номера, как в журнале
+      const waiting = remarks.filter((r) => r.status === 'awaiting_pm').sort((a, b) => b.number - a.number).map((r) => r.id);
+      const queue = shot.queue ? `sessionStorage.setItem('rr.queue', ${JSON.stringify(JSON.stringify({ ids: waiting, label: 'Ждут вас', backLink: ['/p', pm.projectId, 'r', 2] }))});` : `sessionStorage.removeItem('rr.queue');`;
+      await cdp.send('Runtime.evaluate', { expression: session + theme + hints + queue });
       const loaded2 = cdp.once('Page.loadEventFired');
       await cdp.send('Page.navigate', { url: `${WEB}${shot.path({ projectId: pm.projectId, remarks })}` });
       await loaded2;

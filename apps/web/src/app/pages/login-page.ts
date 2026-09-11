@@ -409,7 +409,7 @@ export class LoginPage {
   protected ring(role: Role): string {
     switch (TONE_BY_ROLE[role]) {
       case 'wait':
-        return 'var(--rr-accent-2)';
+        return 'var(--rr-accent-2-text)';
       case 'work':
         return 'var(--rr-work-dot)';
       default:

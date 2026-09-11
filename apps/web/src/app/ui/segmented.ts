@@ -68,8 +68,7 @@ export interface SegmentItem {
       height: 36px;
       padding: 3px;
       border-radius: var(--rr-r-md);
-      background: var(--rr-surface-2);
-      border: 1px solid var(--rr-line);
+      background: transparent;
       isolation: isolate;
     }
     /* скользящая подложка под активным сегментом */
@@ -82,8 +81,7 @@ export interface SegmentItem {
       width: var(--seg-w, 0px);
       transform: translateX(var(--seg-x, 0px));
       border-radius: calc(var(--rr-r-md) - 3px);
-      background: var(--rr-surface);
-      box-shadow: var(--rr-shadow-1);
+      background: var(--rr-accent-soft);
       opacity: 0;
       pointer-events: none;
       z-index: 0;
@@ -116,7 +114,7 @@ export interface SegmentItem {
       color: var(--rr-ink);
     }
     .seg__item--on {
-      color: var(--rr-ink);
+      color: var(--rr-accent-text);
       font-weight: var(--fw-semibold);
     }
     .seg__item:focus-visible {
@@ -127,7 +125,7 @@ export interface SegmentItem {
       font-size: var(--fs-13);
       line-height: var(--lh-13);
       font-weight: var(--fw-semibold);
-      color: var(--rr-accent-2-text);
+      color: var(--rr-accent-text);
     }
   `,
 })

@@ -95,7 +95,7 @@ export interface StageFrame {
     }
     /* закон меди (б): рамка кадра «Дифф» */
     .stage__frame--diff {
-      box-shadow: 0 0 0 2px var(--rr-accent-2);
+      box-shadow: 0 0 0 2px var(--rr-accent-2-text);
     }
     .stage__frame--attn {
       animation: rr-diff-attn 600ms var(--ease) 2;
@@ -155,7 +155,7 @@ export interface StageFrame {
       box-shadow: 0 0 0 2px var(--rr-accent);
     }
     .tab--diff.tab--on .tab__thumb {
-      box-shadow: 0 0 0 2px var(--rr-accent-2);
+      box-shadow: 0 0 0 2px var(--rr-accent-2-text);
     }
     .tab:disabled {
       opacity: 0.5;

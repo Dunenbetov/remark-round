@@ -355,7 +355,7 @@ export class RegisterPage {
   protected ring(side: Side): string {
     switch (TONE_BY_SIDE[side]) {
       case 'wait':
-        return 'var(--rr-accent-2)';
+        return 'var(--rr-accent-2-text)';
       case 'work':
         return 'var(--rr-work-dot)';
       default:

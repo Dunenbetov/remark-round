@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Title } from '@angular/platform-browser';
 import { Router, RouterLink } from '@angular/router';
 import type { Remark, Screenshot } from '../core/models';
-import { APP_NAME, CARD, EMPTY, HINT, JOURNAL, JournalChip, NAV, PHASE_EXTRA, PROCESS, QUEUE, ROLE_TITLE, ROUND, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
+import { APP_NAME, CARD, EMPTY, JOURNAL, JournalChip, NAV, PHASE_EXTRA, QUEUE, ROLE_TITLE, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
 import { filterRemarks } from '../core/journal-filter';
 import { OnboardingService } from '../core/onboarding.service';
 import { QueueService } from '../core/queue.service';
@@ -13,10 +13,8 @@ import { AppBar } from '../ui/app-bar';
 import { EmptyState } from '../ui/empty-state';
 import { ErrorBanner } from '../ui/error-banner';
 import { GroupHeader } from '../ui/group-header';
-import { HintLine } from '../ui/hint-line';
 import { Icon } from '../ui/icons';
 import { PageHeader } from '../ui/page-header';
-import { ProcessStrip } from '../ui/process-strip';
 import { RoundTiles, Tile } from '../ui/round-tiles';
 import { Shot } from '../ui/shot';
 import { Skeleton } from '../ui/skeleton';
@@ -47,32 +45,12 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
 @Component({
   selector: 'rr-journal-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, AppBar, PageHeader, HintLine, RoundTiles, GroupHeader, ErrorBanner, EmptyState, Skeleton, Shot, StatusPill, Icon, ProcessStrip],
+  imports: [RouterLink, AppBar, PageHeader, RoundTiles, GroupHeader, ErrorBanner, EmptyState, Skeleton, Shot, StatusPill, Icon],
   template: `
     <div class="page">
       <rr-app-bar />
       <main id="main" class="page__body page__body--loose">
-        <rr-page-header [title]="roleTitle()" [subtitle]="explain()">
-          @if (role(); as r) {
-            <rr-hint-line hint [key]="'journal.' + r" [text]="hintText()" />
-          }
-        </rr-page-header>
-
-        <!-- схема пути замечания: крутится, пока не свернули; «По шагам» открывает тур -->
-        @if (tourRole(); as tr) {
-          <section class="how paper" [class.how--collapsed]="ui.bandCollapsed('process')" [attr.aria-label]="process.title">
-            <div class="how__head">
-              <span class="eyebrow how__title">{{ process.title }}</span>
-              <button type="button" class="btn btn--text how__btn" (click)="openTour($event)">{{ process.stepByStep }}</button>
-              <button type="button" class="btn btn--text how__btn how__toggle" [attr.aria-expanded]="!ui.bandCollapsed('process')" (click)="ui.toggleBand('process')">
-                {{ ui.bandCollapsed('process') ? process.expand : process.collapse }}
-              </button>
-            </div>
-            @if (!ui.bandCollapsed('process')) {
-              <rr-process-strip class="how__strip" mode="loop" [role]="tr" />
-            }
-          </section>
-        }
+        <rr-page-header [title]="roleTitle()" [subtitle]="explain()" />
 
         @if (store.error(); as err) {
           <rr-error-banner class="banner" [message]="err" [busy]="store.loading()" (retry)="reload()" />
@@ -96,13 +74,6 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
         } @else {
           <div class="filters">
             <rr-round-tiles [tiles]="tiles()" [active]="filter()" (pick)="onTile($event)" (start)="startReview()" />
-            @if (wishCount() > 0) {
-              <div class="chips" role="group" [attr.aria-label]="filterLabel">
-                <button type="button" class="chip chip--quiet" [class.chip--on]="filter() === 'Новые желания'" [attr.aria-pressed]="filter() === 'Новые желания'" (click)="onTile('Новые желания')">
-                  {{ chipLabel('Новые желания') }}<span class="chip__n num">{{ wishCount() }}</span>
-                </button>
-              </div>
-            }
           </div>
 
           @if (fixCount() > 0 && filter() !== 'Дописать из журнала') {
@@ -115,6 +86,13 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
 
           @if (rows().length) {
             <div class="paper tbl-wrap">
+              @if (wishCount() > 0) {
+                <div class="chips" role="group" [attr.aria-label]="filterLabel">
+                  <button type="button" class="chip chip--quiet" [class.chip--on]="filter() === 'Новые желания'" [attr.aria-pressed]="filter() === 'Новые желания'" (click)="onTile('Новые желания')">
+                    {{ chipLabel('Новые желания') }}<span class="chip__n num">{{ wishCount() }}</span>
+                  </button>
+                </div>
+              }
               <table class="tbl journal">
                 <caption class="visually-hidden">{{ nav.journal }}</caption>
                 <colgroup>
@@ -122,21 +100,19 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
                   <col />
                   <col class="journal__c-outcome" />
                   <col class="journal__c-status" />
-                  <col class="journal__c-go" />
                 </colgroup>
                 <thead>
                   <tr>
                     @for (c of columns; track c) {
                       <th scope="col">{{ c }}</th>
                     }
-                    <th scope="col"><span class="visually-hidden">{{ openLabel }}</span></th>
                   </tr>
                 </thead>
                 @for (g of groups(); track g.id) {
                   <tbody>
                     @if (groups().length > 1) {
                       <tr class="journal__group">
-                        <td colspan="5" class="journal__group-cell">
+                        <td colspan="4" class="journal__group-cell">
                           <rr-group-header [title]="g.title" [count]="g.rows.length" [tone]="g.tone" [sticky]="false" [collapsible]="true" [collapsed]="ui.isGroupCollapsed(g.id)" (toggle)="ui.toggleGroup(g.id)" />
                         </td>
                       </tr>
@@ -151,6 +127,8 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
                             <div class="journal__title-in">
                               @if (thumb(r); as s) {
                                 <span class="thumb"><rr-shot [variant]="s.variant ?? 'grey'" [src]="s.url" /></span>
+                              } @else {
+                                <span class="thumb thumb--empty" aria-hidden="true"></span>
                               }
                               <div class="journal__text">
                                 <span class="journal__title-text">{{ r.title }}</span>
@@ -165,21 +143,20 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
                               <button type="button" class="btn btn--text act" [disabled]="store.loading()" (click)="link(r)">{{ linkLabel(r.duplicateOfNumber) }}</button>
                             }
                           </td>
-                          <td class="journal__status"><rr-status-pill [status]="r.status" [dot]="true" /></td>
-                          <td class="journal__go"><rr-icon name="chevron-right" [size]="16" /></td>
+                          <td class="journal__status"><rr-status-pill [status]="r.status" /></td>
                         </tr>
                       }
                     }
                   </tbody>
                 }
               </table>
+              @if (filter() === 'Ждут меня' && restCount() > 0) {
+                <div class="rest meta">
+                  <span>{{ journal.restCount(restCount()) }}</span>
+                  <button type="button" class="btn btn--text" (click)="onTile('Все')">{{ journal.showAll }}</button>
+                </div>
+              }
             </div>
-            @if (filter() === 'Ждут меня' && restCount() > 0) {
-              <div class="rest meta">
-                <span>{{ journal.restCount(restCount()) }}</span>
-                <button type="button" class="btn btn--text" (click)="onTile('Все')">{{ journal.showAll }}</button>
-              </div>
-            }
           } @else if (!store.loading()) {
             <rr-empty-state [title]="filter() === 'Дописать из журнала' ? journal.emptyFilter : journal.allDone">
               <button cta type="button" class="btn btn--secondary" (click)="onTile('Все')">{{ journal.showAll }}</button>
@@ -192,29 +169,6 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
   styles: `
     .banner {
       margin-bottom: var(--sp-4);
-    }
-    .how {
-      margin-bottom: var(--sp-5);
-      padding: var(--sp-3) var(--sp-5) var(--sp-4);
-    }
-    .how--collapsed {
-      padding-bottom: var(--sp-3);
-    }
-    .how__head {
-      display: flex;
-      align-items: center;
-      gap: var(--sp-3);
-    }
-    .how__title {
-      margin-right: auto;
-    }
-    .how__btn {
-      min-height: 28px;
-      padding: 0 6px;
-      font-size: var(--fs-13);
-    }
-    .how__strip {
-      margin-top: var(--sp-2);
     }
     .filters {
       display: flex;
@@ -249,13 +203,14 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
       width: 72px;
     }
     .journal__c-outcome {
-      width: 320px;
+      width: 34%;
     }
     .journal__c-status {
-      width: 210px;
+      width: 200px;
     }
-    .journal__c-go {
-      width: 44px;
+    .thumb--empty {
+      border-color: transparent;
+      background: transparent;
     }
     .journal__group-cell {
       padding: 0 !important;
@@ -269,7 +224,7 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
       min-width: 28px;
     }
     .tbl__row:hover .journal__num {
-      color: var(--rr-accent-2-text);
+      color: var(--rr-accent-text);
     }
     .journal__title {
       max-width: 0;
@@ -300,7 +255,8 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
       text-overflow: ellipsis;
     }
     .journal__outcome {
-      color: var(--rr-ink-2);
+      color: var(--rr-ink);
+      font-weight: var(--fw-medium);
       white-space: nowrap;
       overflow: hidden;
     }
@@ -315,14 +271,30 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
       margin-left: 10px;
       vertical-align: middle;
     }
-    .journal__go {
-      color: var(--rr-ink-3);
-      padding-left: 0 !important;
-      transition: transform var(--dur-fast) var(--ease);
-    }
-    .tbl__row:hover .journal__go {
-      transform: translateX(2px);
+    /* статус в таблице — текст с точкой, без заливки (пилюли только в шапке карточки) */
+    .journal__status ::ng-deep .pill {
+      background: transparent;
+      padding: 0;
+      height: auto;
+      font-size: var(--fs-14);
+      line-height: var(--lh-14);
       color: var(--rr-ink-2);
+    }
+    .journal__status ::ng-deep .pill--wait {
+      color: var(--rr-accent-text);
+      font-weight: var(--fw-medium);
+    }
+    /* чип «Новые желания» — в правом верхнем углу таблицы, над шапкой */
+    .tbl-wrap {
+      position: relative;
+    }
+    .chips {
+      display: flex;
+      justify-content: flex-end;
+      padding: var(--sp-3) var(--sp-4) 0;
+    }
+    .journal .tbl__row {
+      height: 64px;
     }
     .journal__status-inline {
       display: none;
@@ -331,7 +303,12 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
       display: flex;
       align-items: center;
       gap: var(--sp-3);
-      padding: var(--sp-4) var(--sp-2) 0;
+      height: 52px;
+      padding: 0 var(--sp-5);
+      border-top: 1px solid var(--rr-line);
+    }
+    .journal tr:last-child td {
+      border-bottom: 0;
     }
     @media (max-width: 900px) {
       .journal__c-outcome,
@@ -379,17 +356,9 @@ export class JournalPage {
   protected readonly empty = EMPTY;
   protected readonly nav = NAV;
   protected readonly filterLabel = 'Фильтр';
-  protected readonly openLabel = CARD.zoomOpen;
   protected readonly role = computed(() => this.session.roleIn(this.projectId()));
   protected readonly roleTitle = computed(() => (this.role() ? ROLE_TITLE[this.role()!] : ''));
   protected readonly explain = computed(() => (this.role() === 'business' ? JOURNAL.explain.business : JOURNAL.explain.pm));
-  protected readonly hintText = computed(() => (this.role() === 'business' ? HINT.journal.business : HINT.journal.pm));
-  protected readonly process = PROCESS;
-  /** Схема и тур — только у нетехнических ролей. */
-  protected readonly tourRole = computed<'business' | 'pm' | null>(() => {
-    const r = this.role();
-    return r === 'business' || r === 'pm' ? r : null;
-  });
   protected readonly filter = signal<JournalChip>(this.ui.journalFilter() ?? 'Ждут меня');
   protected readonly canOpenRound = computed(() => this.role() === 'pm' || this.role() === 'business' || this.role() === 'admin');
   protected readonly creatingRound = signal(false);
@@ -418,11 +387,6 @@ export class JournalPage {
       const role = this.role();
       untracked(() => this.onboarding.maybeAutoOpen(role));
     });
-  }
-
-  protected openTour(e: Event): void {
-    const role = this.tourRole();
-    if (role) this.onboarding.open(role, 0, e.currentTarget as HTMLElement);
   }
 
   // ---------- счётчики и тайлы ----------

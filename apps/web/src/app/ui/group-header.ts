@@ -22,7 +22,7 @@ export type GroupTone = 'accent-2' | 'work' | 'wait' | 'ok' | 'muted' | null;
         <span class="gh__bar" aria-hidden="true"></span>
         <span class="gh__title">{{ title() }}</span>
         @if (count() !== null) {
-          <span class="gh__count num">· {{ count() }}</span>
+          <span class="gh__count num"><span class="gh__sep">· </span>{{ count() }}</span>
         }
         <rr-icon class="gh__chev" [class.gh__chev--collapsed]="collapsed()" name="chevron-down" [size]="16" />
       </button>
@@ -31,7 +31,7 @@ export type GroupTone = 'accent-2' | 'work' | 'wait' | 'ok' | 'muted' | null;
         <span class="gh__bar" aria-hidden="true"></span>
         <span class="gh__title">{{ title() }}</span>
         @if (count() !== null) {
-          <span class="gh__count num">· {{ count() }}</span>
+          <span class="gh__count num"><span class="gh__sep">· </span>{{ count() }}</span>
         }
       </div>
     }
@@ -41,6 +41,22 @@ export type GroupTone = 'accent-2' | 'work' | 'wait' | 'ok' | 'muted' | null;
       display: block;
       background: var(--rr-surface);
       border-bottom: 1px solid var(--rr-line);
+    }
+    /* группа «ждут вас / в работе» — индиго-объект списка */
+    :host([data-tone='accent-2']) {
+      background: linear-gradient(90deg, var(--rr-accent-2nd), var(--rr-accent));
+      color: var(--rr-accent-ink);
+      border-bottom-color: transparent;
+    }
+    :host([data-tone='accent-2']) .gh__btn {
+      color: inherit;
+    }
+    :host([data-tone='accent-2']) .gh__count,
+    :host([data-tone='accent-2']) .gh__chev {
+      color: rgba(255, 255, 255, 0.7);
+    }
+    :host([data-tone='accent-2']) .gh__btn:not(.gh__btn--static):hover {
+      background: rgba(255, 255, 255, 0.08);
     }
     :host(.gh--sticky) {
       position: sticky;
@@ -69,37 +85,17 @@ export type GroupTone = 'accent-2' | 'work' | 'wait' | 'ok' | 'muted' | null;
       background: var(--rr-surface-2);
     }
     .gh__bar {
-      position: absolute;
-      left: 0;
-      top: 12px;
-      bottom: 12px;
-      width: 3px;
-      border-radius: 0 2px 2px 0;
-      background: var(--rr-line-strong);
-    }
-    :host([data-tone='accent-2']) .gh__bar {
-      background: var(--rr-accent-2);
-    }
-    :host([data-tone='work']) .gh__bar {
-      background: var(--rr-work-dot);
-    }
-    :host([data-tone='wait']) .gh__bar {
-      background: var(--rr-wait-dot);
-    }
-    :host([data-tone='ok']) .gh__bar {
-      background: var(--rr-ok-dot);
-    }
-    :host([data-tone='muted']) .gh__bar {
-      background: var(--rr-muted-dot);
+      display: none;
     }
     .gh__title {
-      font-size: var(--fs-18);
-      line-height: var(--lh-18);
+      font-size: var(--fs-16);
+      line-height: var(--lh-16);
       font-weight: var(--fw-semibold);
     }
     .gh__count {
-      font-size: var(--fs-18);
-      line-height: var(--lh-18);
+      font-family: var(--rr-serif);
+      font-size: var(--fs-16);
+      line-height: var(--lh-16);
       color: var(--rr-ink-2);
     }
     .gh__chev {

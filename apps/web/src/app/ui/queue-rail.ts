@@ -15,8 +15,8 @@ export interface RailItem {
 }
 
 /**
- * Рельс очереди слева от карточки: «Ждут вас · 4», список замечаний, внизу «1 из 4» и точки прогресса.
- * Активный элемент — «бумага» с медной полосой слева (закон меди); полоса переезжает view-transition.
+ * Рельс очереди слева от карточки — индиго-объект экрана: «Ждут вас · 4», список, внизу «1 из 4» и точки.
+ * Активный элемент залит аквой (закон аквы п. а); заливка переезжает view-transition.
  * Пока идёт 5-секундный отсчёт (locked) — переходы запрещены.
  */
 @Component({
@@ -25,7 +25,7 @@ export interface RailItem {
   imports: [RouterLink, Icon],
   template: `
     <nav class="rail" [attr.aria-label]="label()">
-      <div class="eyebrow rail__label">{{ label() }} · {{ items().length }}</div>
+      <div class="eyebrow rail__label"><span>{{ label() }}</span><span class="rail__count">{{ items().length }}</span></div>
       <ol class="rail__list">
         @for (it of items(); track it.id; let i = $index) {
           <li>
@@ -50,7 +50,7 @@ export interface RailItem {
               @if (it.done) {
                 <rr-icon name="check" [size]="16" class="rail__check" />
               } @else {
-                <span class="dot" [class]="'dot dot--' + tone(it.status)" [class.dot--pulse]="it.status === 'triaging'"></span>
+                <span class="dot" [class.dot--pulse]="it.status === 'triaging'"></span>
               }
             </a>
           </li>
@@ -58,11 +58,6 @@ export interface RailItem {
       </ol>
       <div class="rail__foot">
         <span class="meta num">{{ QUEUE.of(index(), items().length) }}</span>
-        <span class="rail__dots" aria-hidden="true">
-          @for (it of items(); track it.id) {
-            <span class="rail__dot" [class.rail__dot--fill]="it.done || it.id === activeId()"></span>
-          }
-        </span>
       </div>
     </nav>
   `,
@@ -71,12 +66,13 @@ export interface RailItem {
       display: block;
       width: var(--rr-rail-w);
       position: sticky;
-      top: calc(var(--rr-bar-h) + var(--sp-4));
+      top: calc(var(--rr-bar-h) + var(--sp-6));
       align-self: start;
-      background: var(--rr-surface-2);
-      border: 1px solid var(--rr-line);
-      border-radius: var(--rr-r-lg);
-      padding: var(--sp-3);
+      background: linear-gradient(170deg, var(--rr-accent-2nd), var(--rr-accent) 55%, var(--rr-accent-deep));
+      color: var(--rr-accent-ink);
+      border-radius: var(--rr-r-xl);
+      padding: var(--sp-5) var(--sp-4) var(--sp-4);
+      box-shadow: var(--rr-shadow-ink), inset 0 1px 0 rgba(255, 255, 255, 0.18);
     }
     @media (max-width: 1279px) {
       :host {
@@ -84,8 +80,20 @@ export interface RailItem {
       }
     }
     .rail__label {
-      color: var(--rr-ink-2);
-      padding: var(--sp-1) var(--sp-2) var(--sp-3);
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      color: rgba(255, 255, 255, 0.65);
+      padding: 0 var(--sp-2) var(--sp-4);
+    }
+    .rail__count {
+      font-family: var(--rr-serif);
+      font-size: var(--fs-18);
+      line-height: var(--lh-18);
+      font-weight: var(--fw-medium);
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--rr-accent-2);
     }
     .rail__list {
       list-style: none;
@@ -93,52 +101,53 @@ export interface RailItem {
       padding: 0;
       display: flex;
       flex-direction: column;
-      gap: 2px;
-      max-height: calc(100vh - var(--rr-bar-h) - 160px);
+      gap: 6px;
+      max-height: calc(100vh - var(--rr-bar-h) - 180px);
       overflow: auto;
     }
     .rail__item {
       position: relative;
       display: grid;
-      grid-template-columns: 28px 1fr 16px;
+      grid-template-columns: 30px 1fr 12px;
       align-items: center;
       gap: var(--sp-2);
-      min-height: 60px;
-      padding: 0 var(--sp-3) 0 var(--sp-4);
+      min-height: 52px;
+      padding: 0 var(--sp-3) 0 var(--sp-3);
       border-radius: var(--rr-r-md);
-      color: var(--rr-ink);
+      color: rgba(255, 255, 255, 0.86);
       text-decoration: none;
-      transition: background-color var(--dur-fast) var(--ease);
+      transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
     }
     .rail__item:hover {
-      background: var(--rr-surface);
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--rr-accent-ink);
     }
     .rail__item:focus-visible {
-      outline: 2px solid var(--rr-focus);
+      outline: 2px solid var(--rr-accent-2);
       outline-offset: -2px;
     }
-    .rail__item--on {
-      background: var(--rr-surface);
-      box-shadow: var(--rr-shadow-1);
+    /* активный — аква с индиго-текстом (закон аквы п. а); маркер переезжает view-transition */
+    .rail__item--on,
+    .rail__item--on:hover {
+      background: var(--rr-accent-2);
+      color: var(--rr-accent);
+      box-shadow: 0 10px 24px -10px rgba(149, 251, 242, 0.8);
     }
     .rail__item--on .rail__title {
       font-weight: var(--fw-semibold);
     }
-    /* полоса слева: медь только у активного (закон меди) */
     .rail__bar {
       position: absolute;
-      left: 0;
-      top: 12px;
-      bottom: 12px;
-      width: 3px;
-      border-radius: 0 2px 2px 0;
-      background: transparent;
-    }
-    .rail__item--on .rail__bar {
-      background: var(--rr-accent-2);
+      inset: 0;
+      border-radius: var(--rr-r-md);
+      pointer-events: none;
     }
     .rail__n {
-      color: var(--rr-ink-2);
+      color: inherit;
+      opacity: 0.75;
+    }
+    .rail__item--on .rail__n {
+      opacity: 1;
     }
     .rail__title {
       font-size: var(--fs-14);
@@ -148,33 +157,45 @@ export interface RailItem {
       text-overflow: ellipsis;
     }
     .rail__item--done .rail__title {
-      color: var(--rr-ink-2);
+      opacity: 0.7;
     }
     .rail__check {
-      color: var(--rr-ok-dot);
+      color: var(--rr-accent-2);
     }
+    .rail__item--on .rail__check {
+      color: var(--rr-accent);
+    }
+    /* точки у пунктов — только пульс «разбираем»; статус читается словами на карточке */
     .rail__item .dot {
       justify-self: center;
+      background: transparent;
+    }
+    .rail__item .dot--pulse {
+      background: rgba(255, 255, 255, 0.7);
     }
     [aria-disabled='true'] {
       pointer-events: none;
-      opacity: 0.7;
+      opacity: 0.6;
     }
     .rail__foot {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: var(--sp-3) var(--sp-2) 0;
+      padding: var(--sp-4) var(--sp-2) 0;
+      color: rgba(255, 255, 255, 0.7);
+    }
+    .rail__foot .meta {
+      color: inherit;
     }
     .rail__dots {
       display: flex;
-      gap: 4px;
+      gap: 5px;
     }
     .rail__dot {
       width: 6px;
       height: 6px;
       border-radius: 999px;
-      background: var(--rr-line-strong);
+      background: rgba(255, 255, 255, 0.3);
     }
     .rail__dot--fill {
       background: var(--rr-accent-2);

@@ -21,7 +21,7 @@ const LEAVE_MS = 140;
       }
     </div>
     @if (shown(); as p) {
-      <div class="undo glass glass--pill" [class.is-leaving]="leaving()">
+      <div class="undo ink-card" [class.is-leaving]="leaving()">
         <span class="undo__text">{{ p.record ?? decision.record }} {{ p.label }}</span>
         <button type="button" class="btn btn--text undo__btn" [disabled]="actions.committing() || leaving()" (click)="actions.cancel()">{{ common.undo }}</button>
         <span class="undo__sec num" aria-hidden="true">{{ seconds() }}</span>
@@ -43,7 +43,14 @@ const LEAVE_MS = 140;
       padding: 0 var(--sp-5);
       max-width: calc(100vw - 32px);
       overflow: hidden;
+      border-radius: var(--rr-r-pill);
+      box-shadow: var(--rr-shadow-ink), inset 0 1px 0 rgba(255, 255, 255, 0.18);
       animation: rr-undo-in var(--dur) var(--rr-ease-out) both;
+    }
+    .undo .btn--text {
+      color: var(--rr-ink-surface-text);
+      text-decoration: underline;
+      text-underline-offset: 3px;
     }
     /* уход — тоже ключевыми кадрами: fill-mode входа иначе перекрыл бы transition */
     .undo.is-leaving {
@@ -87,7 +94,7 @@ const LEAVE_MS = 140;
       font-size: var(--fs-18);
       line-height: var(--lh-18);
       font-weight: var(--fw-semibold);
-      color: var(--rr-accent-2-text);
+      color: var(--rr-accent-2);
       text-align: center;
     }
     .undo__line {
@@ -96,7 +103,7 @@ const LEAVE_MS = 140;
       right: 0;
       bottom: 0;
       height: 3px;
-      background: var(--rr-line);
+      background: var(--rr-ink-surface-line);
     }
     .undo__fill {
       display: block;

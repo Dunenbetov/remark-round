@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { Title } from '@angular/platform-browser';
 import { Router, RouterLink } from '@angular/router';
 import type { JoinAck, Phase, Presence, Remark, RemarkHistoryEntry, Role, Screenshot, ServerEvent, VerdictCode } from '../core/models';
-import { APP_NAME, CARD, DECISION, DEV_QUEUE, EMPTY, HINT, HISTORY_ACTION, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, PillTone, QUEUE, ROLE_SHORT, ROUND, STAMP_LABEL, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
+import { APP_NAME, CARD, DECISION, DEV_QUEUE, EMPTY, HISTORY_ACTION, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, PillTone, QUEUE, ROLE_SHORT, ROUND, STAMP_LABEL, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
 import { filterRemarks } from '../core/journal-filter';
 import { PendingActionService } from '../core/pending-action.service';
 import { QueueService } from '../core/queue.service';
@@ -22,7 +22,6 @@ import { Citation } from '../ui/citation';
 import { CompareStage, StageFrame } from '../ui/compare-stage';
 import { DecisionMode, DecisionNext, DecisionPanel, DecisionPending, DecisionRecord } from '../ui/decision-panel';
 import { DropZone } from '../ui/drop-zone';
-import { HintLine } from '../ui/hint-line';
 import { Icon } from '../ui/icons';
 import { PhaseLine, PhaseTone } from '../ui/phase-line';
 import { QueueRail, RailItem } from '../ui/queue-rail';
@@ -49,7 +48,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
 @Component({
   selector: 'rr-remark-card-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgTemplateOutlet, RouterLink, AppBar, BrandMark, CardHeader, CardNav, Citation, CompareStage, DecisionPanel, DropZone, HintLine, Icon, PhaseLine, QueueRail, RunSteps, Shot, ShotViewer, ProcessStrip],
+  imports: [NgTemplateOutlet, RouterLink, AppBar, BrandMark, CardHeader, CardNav, Citation, CompareStage, DecisionPanel, DropZone, Icon, PhaseLine, QueueRail, RunSteps, Shot, ShotViewer, ProcessStrip],
   template: `
     @if (remark(); as r) {
       @if (allowed()) {
@@ -76,11 +75,6 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                   <rr-card-header [number]="r.number" [title]="r.title" [status]="showPill() ? r.status : null" [meta]="metaLine()" [presence]="presence()" [stamp]="headerStamp()" />
                   @if (role() === 'business' || role() === 'pm') {
                     <rr-process-strip class="card__strip" mode="static" [current]="r.status" [role]="role()" [compact]="true" />
-                  }
-                  @if (role(); as ro) {
-                    @if (ro !== 'admin') {
-                      <rr-hint-line class="card__hint" [key]="'card.' + ro" [text]="hintText()" />
-                    }
                   }
 
                   <div class="grid" [class.grid--retest]="twoCols()" [class.grid--noshot]="!original() && !twoCols()">
@@ -183,19 +177,25 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                             <div class="soft">{{ copy.compareHint }}</div>
                           }
                           @default {
+                            <!-- вывод черновика — первым: это предмет решения; улики и цитаты — ниже как подтверждение -->
+                            @if (!running() && visibleDraft().length) {
+                              <p class="draft__p lead draft__lead fade" [style.opacity]="draftVisible() ? 1 : 0" aria-live="polite">{{ visibleDraft()[0] }}</p>
+                            }
+                            @if (r.seen) {
+                              <div class="soft"><span class="seen">{{ copy.seen }}</span> {{ r.seen }}</div>
+                            }
                             @if (specCitation(); as c) {
                               <rr-citation [citation]="c" [documentsLink]="documentsLink()" [visible]="quoteVisible()" />
                             }
                             @for (c of otherCitations(); track c.id) {
                               <rr-citation [citation]="c" />
                             }
-                            @if (r.seen) {
-                              <div class="soft"><span class="seen">{{ copy.seen }}</span> {{ r.seen }}</div>
-                            }
                             @if (!running()) {
-                              <div class="draft fade" [style.opacity]="draftVisible() ? 1 : 0" aria-live="polite">
+                              <div class="draft fade" [style.opacity]="draftVisible() ? 1 : 0">
                                 @for (p of visibleDraft(); track $index; let i = $index) {
-                                  <p class="draft__p rise" [class.lead]="i === 0" [style.--i]="i">{{ p }}</p>
+                                  @if (i > 0) {
+                                    <p class="draft__p rise" [style.--i]="i">{{ p }}</p>
+                                  }
                                 }
                                 @if (role() === 'developer' && r.draft.length > 1) {
                                   <button type="button" class="btn btn--text draft__more" (click)="fullDraft.set(!fullDraft())">{{ fullDraft() ? copy.hideFullDraft : copy.showFullDraft }}</button>
@@ -392,6 +392,10 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
     .layout--rail {
       grid-template-columns: var(--rr-rail-w) minmax(0, 1fr);
     }
+    /* рельс начинается на уровне бумаги, а не строки навигации */
+    .layout--rail rr-queue-rail {
+      margin-top: 48px;
+    }
     .main {
       min-width: 0;
     }
@@ -401,9 +405,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
     /* схема пути: где сейчас это замечание (бизнес и PM) */
     .card__strip {
       display: block;
-      margin: calc(-1 * var(--sp-2)) 0 var(--sp-4);
-      padding-bottom: var(--sp-3);
-      border-bottom: 1px solid var(--rr-line);
+      margin: calc(-1 * var(--sp-3)) 0 var(--sp-5);
     }
     .card__hint {
       margin: calc(-1 * var(--sp-2)) 0 var(--sp-5);
@@ -486,7 +488,15 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
       padding: var(--sp-3) var(--sp-4);
       border-radius: var(--rr-r-md);
       background: var(--rr-surface-2);
-      border: 1px solid var(--rr-line);
+    }
+    .said .eyebrow,
+    .blank .eyebrow,
+    .todo .eyebrow {
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: var(--fs-13);
+      font-weight: var(--fw-medium);
+      color: var(--rr-ink-3);
     }
     .cells {
       margin: 0;
@@ -546,7 +556,6 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
       padding: var(--sp-3) var(--sp-4);
       border-radius: var(--rr-r-md);
       background: var(--rr-surface-2);
-      border: 1px solid var(--rr-line);
       font-size: var(--fs-14);
       line-height: var(--lh-14);
     }
@@ -778,11 +787,6 @@ export class RemarkCardPage {
   protected readonly viewer = signal<number | null>(null);
   /** Кто ещё в комнате замечания (presence из WS), кроме меня. */
   protected readonly presence = signal<Presence[]>([]);
-  protected readonly hintText = computed(() => {
-    const role = this.role();
-    return role && role !== 'admin' ? HINT.card[role] : '';
-  });
-
   private readonly runSig = signal<TriageRun | null>(null);
   private fileAction: FileAction | null = null;
   private fileInput: HTMLInputElement | null = null;

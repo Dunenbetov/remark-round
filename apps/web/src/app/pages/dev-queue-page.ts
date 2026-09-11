@@ -38,7 +38,6 @@ const QUOTE_LEN = 90;
       <main id="main" class="page__body page__body--loose queue">
         <rr-page-header size="lg" [title]="roleTitle" [subtitle]="subtitle">
           @if (store.devQueue().length || advisory().length) {
-            <div hint class="meta num queue__counts">{{ counts() }}</div>
           }
         </rr-page-header>
 
@@ -55,7 +54,7 @@ const QUOTE_LEN = 90;
         } @else {
           <!-- В работе -->
           @if (store.devQueue().length) {
-          <section class="paper rows" [attr.aria-label]="copy.groups.todo">
+          <section class="paper rows rows--todo" [attr.aria-label]="copy.groups.todo">
             <rr-group-header [title]="copy.groups.todo" [count]="todo().length" tone="accent-2" [sticky]="false" />
             @for (r of todo(); track r.id; let i = $index) {
               <article class="row row--card rise" [class.row--focused]="focused() === r.id" [style.--i]="i" [attr.data-status]="r.status" [attr.data-id]="r.id">
@@ -73,7 +72,7 @@ const QUOTE_LEN = 90;
                   @if (thumb(r); as s) {
                     <span class="thumb thumb--lg row__thumb"><rr-shot [variant]="s.variant ?? 'grey'" [src]="s.url" /></span>
                   }
-                  <button type="button" class="btn btn--soft btn--sm act row__btn" [disabled]="store.loading() || !!actions.pendingFor(r.id)" (click)="ready(r)">{{ readyLabel }}</button>
+                  <button type="button" class="btn btn--secondary btn--sm act row__btn" [disabled]="store.loading() || !!actions.pendingFor(r.id)" (click)="ready(r)">{{ readyLabel }}</button>
                 </div>
               </article>
             } @empty {
@@ -89,7 +88,6 @@ const QUOTE_LEN = 90;
           @if (advisory().length) {
             <section class="paper rows" [attr.aria-label]="copy.groups.advisory">
               <rr-group-header [title]="copy.groups.advisory" [count]="advisory().length" tone="wait" [sticky]="false" />
-              <div class="rows__hint meta">{{ copy.advisoryHint }}</div>
               @for (r of advisory(); track r.id; let i = $index) {
                 <div class="row rise" [class.row--focused]="focused() === r.id" [style.--i]="i" [attr.data-status]="r.status" [attr.data-id]="r.id">
                   <span class="n-serif row__n num">{{ r.number }}</span>
@@ -131,14 +129,93 @@ const QUOTE_LEN = 90;
     .queue {
       gap: var(--sp-6);
     }
-    .queue__counts {
-      margin-top: calc(-1 * var(--sp-2));
-    }
     .queue__banner {
       margin-bottom: calc(-1 * var(--sp-2));
     }
     .rows {
       overflow: hidden;
+    }
+    /* «В работе» — индиго-поднос, единственный цветной объект: строки лежат на нём белыми листами */
+    .rows--todo {
+      background: linear-gradient(170deg, var(--rr-accent-2nd), var(--rr-accent) 55%, var(--rr-accent-deep));
+      border-color: transparent;
+      border-radius: var(--rr-r-xl);
+      padding: 0 var(--sp-3) var(--sp-3);
+      box-shadow: var(--rr-shadow-ink), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+    .rows--todo rr-group-header {
+      background: transparent;
+      border-bottom: 0;
+    }
+    .rows--todo rr-group-header ::ng-deep .gh__btn {
+      height: 64px;
+      padding-left: var(--sp-4);
+    }
+    .rows--todo rr-group-header ::ng-deep .gh__title {
+      font-size: var(--fs-18);
+      color: var(--rr-accent-ink);
+    }
+    .rows--todo rr-group-header ::ng-deep .gh__sep {
+      display: none;
+    }
+    .rows--todo rr-group-header ::ng-deep .gh__count {
+      font-size: var(--rr-fs-40);
+      line-height: var(--rr-lh-40);
+      font-weight: var(--fw-bold);
+      letter-spacing: -0.04em;
+      color: var(--rr-accent-ink);
+    }
+    .rows--todo .row--card {
+      background: var(--rr-surface);
+      border-radius: var(--rr-r-md);
+      border-bottom: 0;
+      box-shadow: var(--rr-shadow-1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    }
+    .rows--todo .row--card + .row--card {
+      margin-top: var(--sp-3);
+    }
+    .rows--todo .row--card:hover,
+    .rows--todo .row--card.row--focused {
+      background: var(--rr-surface);
+    }
+    /* остальные группы — плоские списки на столе */
+    .rows:not(.rows--todo) {
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+    }
+    .rows:not(.rows--todo) rr-group-header {
+      background: transparent;
+    }
+    /* одна сетка на весь экран: номер и заголовок нижних списков на тех же x, что и в карточках подноса */
+    .rows:not(.rows--todo) rr-group-header ::ng-deep .gh__btn {
+      padding-left: calc(var(--sp-3) + var(--sp-5));
+    }
+    .rows:not(.rows--todo) rr-group-header ::ng-deep .gh__title {
+      font-size: var(--fs-13);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--rr-ink-2);
+    }
+    .rows:not(.rows--todo) .row {
+      padding-inline: calc(var(--sp-3) + var(--sp-5)) calc(var(--sp-3) + var(--sp-5));
+    }
+    .row__btn {
+      border: 0;
+      border-radius: var(--rr-r-md);
+      background: var(--rr-surface);
+      color: var(--rr-accent-text);
+      font-weight: var(--fw-semibold);
+      box-shadow: 0 1px 2px rgba(20, 26, 51, 0.08), 0 8px 20px -12px rgba(20, 26, 51, 0.35), inset 0 1px 0 var(--rr-surface);
+    }
+    .row__btn:hover:not(:disabled) {
+      background: var(--rr-accent-soft);
+      transform: translateY(-1px);
+    }
+    .row__advice {
+      background: transparent;
+      padding: 0;
+      color: var(--rr-accent-text);
     }
 
     /* ---------- строка ---------- */
@@ -170,7 +247,7 @@ const QUOTE_LEN = 90;
     }
     .row:hover .row__n,
     .row--focused .row__n {
-      color: var(--rr-accent-2-text);
+      color: var(--rr-accent-text);
     }
     .row__text {
       min-width: 0;
@@ -199,16 +276,6 @@ const QUOTE_LEN = 90;
       padding-top: var(--sp-3);
       padding-bottom: var(--sp-3);
     }
-    .row--card::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 12px;
-      bottom: 12px;
-      width: 3px;
-      border-radius: 0 2px 2px 0;
-      background: var(--rr-accent-2);
-    }
     .row--card .row__text {
       gap: 4px;
     }
@@ -219,7 +286,8 @@ const QUOTE_LEN = 90;
     }
     /* строка цитаты ТЗ — «голос документов», сериф */
     .row__quote {
-      font-family: var(--rr-serif);
+      padding-left: 10px;
+      border-left: 2px solid var(--rr-accent-soft);
       font-size: var(--fs-14);
       line-height: var(--lh-14);
       color: var(--rr-ink-2);
@@ -325,7 +393,6 @@ export class DevQueuePage {
   protected readonly review = computed(() => this.store.devQueue().filter((r) => r.status !== 'defect'));
   /** «Сейчас у руководителя приёмки»: awaiting_pm — можно посоветовать. */
   protected readonly advisory = computed(() => this.store.advisoryQueue());
-  protected readonly counts = computed(() => DEV_QUEUE.counts(this.todo().length, this.review().length, this.advisory().length));
 
   constructor() {
     effect(() => {

@@ -17,7 +17,7 @@ export interface Tile {
 /**
  * Сводка раунда = фильтры: пять тайлов «Ждут вас · В работе · На ретесте · Закрыто · Все».
  * Клик по тайлу — фильтр (повторный по активному — «Все»); активный поднят и подчёркнут полосой тона.
- * Число тайла «Ждут вас» — медь (закон меди п. в).
+ * Тайл «Ждут вас» — индиго-объект экрана, его число и кнопка — аква (закон аквы).
  *
  * Раскладка — grid-области: подпись / число + кнопка «Начать разбор» справа от него / подстрока
  * («1 закрыть · 2 новый кадр») отдельной строкой. Кнопка стоит в потоке и ничего не перекрывает;
@@ -47,8 +47,25 @@ export interface Tile {
   styles: `
     :host {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: var(--sp-3);
+    }
+    .tile[data-tone='accent-2'] {
+      grid-column: span 2;
+      min-height: 140px;
+      background: linear-gradient(180deg, var(--rr-accent-2nd), var(--rr-accent) 60%, var(--rr-accent-deep));
+    }
+    .tile {
+      min-height: 112px;
+    }
+    /* остальные тайлы тише: без тени, только hairline */
+    .tile:not([data-tone='accent-2']) {
+      box-shadow: none;
+      border-color: var(--rr-line);
+    }
+    .tile:not([data-tone='accent-2']):hover {
+      transform: none;
+      box-shadow: var(--rr-shadow-1);
     }
     .tile {
       position: relative;
@@ -96,14 +113,58 @@ export interface Tile {
     }
     .tile__count {
       grid-area: count;
+      font-family: var(--rr-serif);
       font-size: var(--rr-fs-40);
       line-height: var(--rr-lh-40);
       font-weight: var(--fw-bold);
-      letter-spacing: -0.02em;
+      letter-spacing: -0.05em;
       transition: color var(--dur) var(--ease);
     }
+    /* тайл «Ждут вас» — индиго-объект журнала: белый текст, число аквой, кнопка аквой */
+    .tile[data-tone='accent-2'] {
+      background: linear-gradient(170deg, var(--rr-accent-2nd), var(--rr-accent) 60%, var(--rr-accent-hover));
+      border-color: transparent;
+      color: var(--rr-accent-ink);
+      box-shadow: var(--rr-shadow-ink), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+    .tile[data-tone='accent-2'] .tile__label,
+    .tile[data-tone='accent-2'] .tile__sub {
+      color: rgba(255, 255, 255, 0.72);
+    }
+    .tile[data-tone='accent-2'] .tile__hit {
+      color: inherit;
+    }
+    .tile[data-tone='accent-2'] .tile__count {
+      font-size: 72px;
+      line-height: 68px;
+      margin-top: 2px;
+    }
+    .tile[data-tone='accent-2'] .tile__cta {
+      align-self: end;
+    }
     .tile[data-tone='accent-2'] .tile__count:not(.tile__count--zero) {
-      color: var(--rr-accent-2-text);
+      color: var(--rr-accent-ink);
+    }
+    .tile[data-tone='accent-2'] .tile__count--zero {
+      color: rgba(255, 255, 255, 0.5);
+    }
+    .tile[data-tone='accent-2'] .tile__cta {
+      background: var(--rr-surface);
+      color: var(--rr-accent);
+      border-color: transparent;
+      box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.4);
+      min-height: 40px;
+      padding: 9px var(--sp-5);
+    }
+    .tile[data-tone='accent-2'] .tile__cta:hover:not(:disabled) {
+      background: var(--rr-accent-2);
+      color: var(--rr-accent);
+    }
+    .tile[data-tone='accent-2'] .tile__marker {
+      display: none;
+    }
+    .tile[data-tone='accent-2']:has(.tile__hit:focus-visible) {
+      outline-color: var(--rr-accent-2);
     }
     .tile__count--zero {
       color: var(--rr-ink-3);
@@ -111,6 +172,7 @@ export interface Tile {
     .tile__sub {
       grid-area: sub;
       min-width: 0;
+      color: var(--rr-ink-3);
       font-size: var(--fs-13);
       line-height: var(--lh-13);
       color: var(--rr-ink-2);
@@ -159,7 +221,7 @@ export interface Tile {
     }
     @media (max-width: 1279px) {
       :host {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
       }
     }
     @media (max-width: 900px) {

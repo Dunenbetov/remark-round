@@ -22,7 +22,7 @@ type ShownPresence = Presence & { leaving?: boolean };
   template: `
     <header class="ch">
       <div class="ch__row">
-        <span class="n-display ch__n" style="view-transition-name: remark-n">№ {{ number() }}</span>
+        <span class="n-display ch__n" style="view-transition-name: remark-n">{{ number() }}</span>
         <h1 class="ch__title">{{ title() }}</h1>
         @if (status()) {
           <rr-status-pill class="ch__pill" [status]="status()!" [dot]="true" />
@@ -52,27 +52,39 @@ type ShownPresence = Presence & { leaving?: boolean };
     .ch__row {
       display: flex;
       align-items: baseline;
-      gap: var(--sp-3);
+      gap: var(--sp-5);
       flex-wrap: wrap;
     }
+    /* номер — display-цифра индиго на бумаге, на одной базовой линии с заголовком */
     .ch__n {
-      color: var(--rr-ink-2);
+      font-size: var(--rr-fs-40);
+      line-height: var(--rr-lh-40);
+      color: var(--rr-accent-text);
     }
     .ch__title {
       margin: 0;
-      font-size: var(--fs-22);
-      line-height: var(--lh-22);
-      font-weight: 600;
-      letter-spacing: -0.01em;
+      font-size: var(--fs-28);
+      line-height: var(--lh-28);
+      font-weight: var(--fw-bold);
+      letter-spacing: -0.02em;
       min-width: 0;
+      text-wrap: balance;
     }
     .ch__pill {
       align-self: center;
     }
-    /* пилюля статуса в шапке — размер md */
+    /* пилюля статуса в шапке — индиго с аква-точкой (единственная заливка после рельса) */
     ::ng-deep .ch__pill .pill {
-      height: 28px;
-      padding: 0 12px;
+      height: 32px;
+      padding: 0 14px;
+      background: var(--rr-accent);
+      color: var(--rr-accent-ink);
+      font-weight: var(--fw-semibold);
+      box-shadow: 0 12px 24px -14px rgba(29, 45, 128, 0.8);
+    }
+    ::ng-deep .ch__pill .pill .dot {
+      background: var(--rr-accent-2);
+      box-shadow: 0 0 0 4px rgba(149, 251, 242, 0.25);
     }
     .ch__stamp {
       margin-left: auto;
@@ -113,12 +125,9 @@ type ShownPresence = Presence & { leaving?: boolean };
       color: var(--rr-accent-ink);
       background: var(--rr-accent);
     }
-    /* закон меди (е): единственная заливка с текстом — аватар роли business */
     .ch__ava[data-role='business'] {
       background: var(--rr-accent-2);
-    }
-    :host-context([data-theme='dark']) .ch__ava[data-role='business'] {
-      color: var(--rr-ink-inverse);
+      color: var(--rr-accent);
     }
     .ch__ava[data-role='developer'] {
       background: var(--rr-work-dot);
@@ -130,8 +139,8 @@ type ShownPresence = Presence & { leaving?: boolean };
         line-height: var(--lh-18);
       }
       .ch__n {
-        font-size: 28px;
-        line-height: 32px;
+        font-size: var(--fs-28);
+        line-height: var(--lh-28);
       }
     }
   `,

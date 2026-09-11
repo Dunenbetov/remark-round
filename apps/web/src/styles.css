@@ -170,23 +170,28 @@ select {
   font-family: var(--rr-serif);
   font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
-  font-size: var(--fs-18);
+  font-size: var(--fs-15);
   line-height: var(--lh-18);
+  letter-spacing: -0.02em;
   color: var(--rr-ink-2);
 }
 .n-display {
   font-family: var(--rr-serif);
-  font-weight: var(--fw-semibold);
+  font-weight: var(--fw-bold);
   font-variant-numeric: tabular-nums;
   font-size: var(--rr-fs-40);
   line-height: var(--rr-lh-40);
-  letter-spacing: -0.015em;
+  letter-spacing: -0.04em;
 }
 
 [data-theme='dark'] h1,
-[data-theme='dark'] .h-role,
-[data-theme='dark'] .n-display {
-  font-variation-settings: 'wght' 560;
+[data-theme='dark'] .h-role {
+  font-variation-settings: 'wght' 640;
+}
+/* ночью бумага держится на кромке: блик сверху сильнее */
+[data-theme='dark'] .paper {
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 1px 2px rgba(0, 0, 0, 0.45), 0 12px 30px -20px rgba(0, 0, 0, 0.6);
 }
 
 .link {
@@ -240,18 +245,17 @@ select {
 }
 
 .btn--primary {
-  background: var(--rr-accent) linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent);
-  border-color: var(--rr-accent);
+  background: linear-gradient(180deg, var(--rr-accent-hi, var(--rr-accent-2nd)), var(--rr-accent));
+  border-color: transparent;
   color: var(--rr-accent-ink);
   font-weight: var(--fw-semibold);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(25, 22, 18, 0.12), var(--rr-primary-ring);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 10px 24px -12px rgba(29, 45, 128, 0.7), var(--rr-primary-ring);
 }
 .btn--primary:hover:not(:disabled) {
-  background-color: var(--rr-accent-hover);
-  border-color: var(--rr-accent-hover);
+  background: linear-gradient(180deg, var(--rr-accent-hi, var(--rr-accent-2nd)), var(--rr-accent-hover));
   color: var(--rr-accent-ink);
   transform: translateY(-1px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), var(--rr-shadow-btn), var(--rr-primary-ring);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), var(--rr-shadow-btn), var(--rr-primary-ring);
 }
 .btn--primary:active:not(:disabled) {
   transform: scale(0.98);
@@ -504,25 +508,32 @@ select {
   width: max-content;
 }
 
-/* ---------- цитата из документа: голос документов — сериф ---------- */
+/* ---------- цитата из документа: тонированная карточка индиго ---------- */
 .cite {
   position: relative;
-  border-left: 3px solid var(--rr-accent-text);
-  padding-left: var(--sp-4);
+  padding: var(--sp-4) 18px;
+  border-radius: var(--rr-r-md);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rr-accent-soft) 55%, var(--rr-surface)), var(--rr-accent-soft));
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
 }
 .cite--soft {
-  border-left-color: var(--rr-line-strong);
+  background: var(--rr-surface-2);
 }
 .cite__head {
+  font-size: var(--fs-13);
+  line-height: var(--lh-13);
   font-weight: var(--fw-semibold);
+  color: var(--rr-accent-text);
+  margin-bottom: 2px;
+}
+.cite--soft .cite__head {
+  color: var(--rr-ink-2);
 }
 .cite__text {
-  font-family: var(--rr-serif);
-  font-size: var(--fs-18);
-  line-height: var(--lh-18);
+  font-size: var(--fs-15);
+  line-height: var(--lh-15);
   font-weight: var(--fw-medium);
   max-width: 60ch;
 }
@@ -652,23 +663,18 @@ select {
   justify-content: center;
   font-size: var(--fs-13);
   font-weight: var(--fw-semibold);
-  color: var(--rr-accent-ink);
-  background: var(--rr-accent);
-  border: 0;
+  color: var(--rr-ink);
+  background: var(--rr-surface-2);
+  border: 1px solid var(--rr-line);
   padding: 0;
   cursor: pointer;
   flex: none;
-  box-shadow: 0 0 0 2px var(--rr-surface);
 }
-/* закон меди (е): единственная заливка с текстом — аватар роли business */
 .avatar--wait {
-  background: var(--rr-accent-2);
-}
-[data-theme='dark'] .avatar--wait {
-  color: var(--rr-ink-inverse);
+  color: var(--rr-accent-2-text);
 }
 .avatar--work {
-  background: var(--rr-work-dot);
+  color: var(--rr-accent-text);
 }
 
 .empty {
@@ -769,9 +775,9 @@ select {
 .tbl__row:hover {
   background: var(--rr-surface-2);
 }
-/* 3px медная полоса у строк, которые ждут человека */
+/* 3px индиго-полоса у строк, которые ждут человека */
 .tbl__row--mine td:first-child {
-  box-shadow: inset 3px 0 0 var(--rr-accent-2);
+  box-shadow: inset 3px 0 0 var(--rr-accent);
 }
 .tbl__row:has(.row-link:focus-visible) {
   outline: 2px solid var(--rr-focus);

@@ -13,7 +13,7 @@ export type BrandMarkTone = 'default' | 'danger';
   host: { 'aria-hidden': 'true' },
   template: `<svg [attr.width]="size()" [attr.height]="size()" viewBox="0 0 24 24" fill="none" focusable="false">
     <path d="M20.98 12.63A9 9 0 1 1 17.29 4.72" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" />
-    <circle cx="20.16" cy="8.2" r="2.4" [attr.fill]="tone() === 'danger' ? 'var(--rr-danger)' : 'var(--rr-accent-2)'" />
+    <circle cx="20.16" cy="8.2" r="2.4" [attr.fill]="tone() === 'danger' ? 'var(--rr-danger)' : 'var(--rr-accent-2-text)'" />
   </svg>`,
   styles: `
     :host {

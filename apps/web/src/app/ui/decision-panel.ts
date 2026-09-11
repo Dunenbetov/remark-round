@@ -262,12 +262,29 @@ const UNDO_SECONDS = 5;
       transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
     }
     :host(.panel--glass) {
-      background: var(--rr-glass-bg);
-      -webkit-backdrop-filter: blur(16px) saturate(140%);
-      backdrop-filter: blur(16px) saturate(140%);
-      border: 1px solid var(--rr-glass-line);
-      box-shadow: var(--rr-glass-shadow);
+      background: var(--rr-surface-2);
       border-radius: var(--rr-r-xl);
+    }
+    .group__title {
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: var(--fs-13);
+      font-weight: var(--fw-medium);
+      color: var(--rr-ink-3);
+    }
+    .btn--secondary {
+      border-color: transparent;
+      box-shadow: 0 1px 2px rgba(20, 26, 51, 0.06);
+    }
+    .kbd {
+      border-radius: 6px;
+      background: var(--rr-surface);
+      border-bottom-width: 2px;
+    }
+    .btn--primary .kbd {
+      background: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.35);
+      color: var(--rr-accent-ink);
     }
     :host(.panel--record) {
       background: var(--rr-surface-2);
@@ -277,6 +294,8 @@ const UNDO_SECONDS = 5;
     }
     :host(.panel--ink) {
       border: 1px solid transparent;
+      border-radius: var(--rr-r-xl);
+      box-shadow: var(--rr-shadow-ink), inset 0 1px 0 rgba(255, 255, 255, 0.18);
       animation: rr-ink-in var(--dur) var(--rr-ease-out) both;
     }
     @keyframes rr-ink-in {
@@ -352,6 +371,11 @@ const UNDO_SECONDS = 5;
       background: rgba(255, 255, 255, 0.18);
       color: var(--rr-accent-ink);
     }
+    .btn--primary .btn__advice-av i {
+      background: var(--rr-surface);
+      color: var(--rr-accent);
+      border-color: transparent;
+    }
     .btn__advice--pop {
       animation: rr-pop 300ms var(--rr-ease-spring);
     }
@@ -366,7 +390,7 @@ const UNDO_SECONDS = 5;
       height: 18px;
       border-radius: 50%;
       background: var(--rr-work-dot);
-      color: #fff;
+      color: var(--rr-accent-ink);
       font-size: 10px;
       font-style: normal;
       font-weight: 700;
@@ -394,7 +418,7 @@ const UNDO_SECONDS = 5;
       font-weight: var(--fw-semibold);
     }
     .advice-note__text {
-      font-family: var(--rr-serif);
+      font-style: italic;
     }
     /* режим dev-advice */
     .advise__eyebrow {

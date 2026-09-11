@@ -293,7 +293,7 @@ let nextId = 0;
       align-items: center;
       width: 260px;
       padding: var(--sp-4) var(--sp-5);
-      box-shadow: inset 0 -3px 0 var(--rr-accent-2);
+      box-shadow: inset 0 -3px 0 var(--rr-accent);
     }
     .tile .eyebrow {
       grid-area: label;

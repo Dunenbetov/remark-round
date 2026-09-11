@@ -175,7 +175,7 @@ interface Node {
       height: 3px;
       margin-left: -14px;
       border-radius: 2px;
-      background: var(--rr-accent-2);
+      background: var(--rr-accent);
     }
     /* токен «№» едет по центрам узлов */
     .token {
@@ -191,7 +191,7 @@ interface Node {
       height: 26px;
       border-radius: 50%;
       background: var(--rr-surface-raised);
-      color: var(--rr-accent-2-text);
+      color: var(--rr-accent-text);
       border: 1px solid var(--rr-line-strong);
       box-shadow: var(--rr-shadow-2);
       font-size: var(--fs-13);
@@ -216,25 +216,42 @@ interface Node {
     }
     /* компактный вариант — в шапке карточки: «где сейчас это замечание» */
     :host(.strip--compact) {
-      --strip-dot: 14px;
+      --strip-dot: 8px;
       padding-top: 0;
     }
+    :host(.strip--compact) .nodes {
+      gap: var(--sp-5);
+      align-items: center;
+    }
     :host(.strip--compact) .node {
-      gap: 4px;
-      padding-bottom: 6px;
+      flex: 0 0 auto;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      padding-bottom: 0;
+    }
+    :host(.strip--compact) .node__line,
+    :host(.strip--compact) .node__you {
+      display: none;
+    }
+    :host(.strip--compact) .node__dot {
+      border-width: 1.5px;
     }
     :host(.strip--compact) .node__label {
-      font-size: var(--fs-12);
-      line-height: var(--lh-12);
-      letter-spacing: 0.02em;
-    }
-    :host(.strip--compact) .node__you {
-      width: 20px;
-      margin-left: -10px;
-      height: 2px;
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
+      letter-spacing: 0;
     }
     :host(.strip--compact.strip--static) .node--now .node__dot {
-      box-shadow: 0 0 0 3px var(--rr-accent-soft);
+      border-color: var(--rr-accent);
+      box-shadow: 0 0 0 3px var(--rr-accent-2-soft);
+    }
+    :host(.strip--compact.strip--static) .node--now .node__core {
+      background: var(--rr-accent-2);
+      opacity: 1;
+    }
+    :host(.strip--compact) .node--now .node__label {
+      color: var(--rr-accent-text);
     }
     @media (prefers-reduced-motion: reduce) {
       /* цикл гасится глобально; токен прячем — остаётся схема с пройденными узлами */

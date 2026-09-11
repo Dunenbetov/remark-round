@@ -23,7 +23,7 @@ type Section = 'journal' | 'documents' | 'import' | 'team' | 'dev';
 const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', admin: 'accent', business: 'wait', developer: 'work' };
 
 /**
- * Верхняя панель 60px: бренд-знак + RemarkRound + одна контекст-пилюля «Проект · Раунд ▾» | сегменты разделов |
+ * Верхняя панель — плавающая белая полоса со скруглением: бренд-знак + RemarkRound + контекст «Проект · Раунд ▾» | сегменты |
  * «Добавить замечание» (бизнес) · тумблер темы · аватар. Роль человека — в заголовке страницы и в меню аватара.
  * На узком экране разделы уезжают в нижний таб-бар.
  */
@@ -34,7 +34,7 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
   template: `
     <a class="skip" href="#main" (click)="skipToMain($event)">{{ nav.skip }}</a>
     <header class="bar">
-      <div class="bar__in" [class.bar__in--brand]="brandOnly() || !projectId()">
+      <div class="bar__in" [class.bar__in--brand]="brandOnly() || !projectId()" [class.bar__in--nonav]="segments().length < 2">
         <div class="bar__left">
           <a class="bar__brand" routerLink="/">
             <rr-brand-mark [size]="24" />
@@ -51,7 +51,7 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
             }
           }
         </div>
-        @if (!brandOnly() && projectId()) {
+        @if (!brandOnly() && projectId() && segments().length > 1) {
           <nav class="bar__nav" [attr.aria-label]="nav.sections">
             <rr-segmented [items]="segments()" [selected]="section()" [label]="nav.sections" />
           </nav>
@@ -89,24 +89,31 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
       position: sticky;
       top: 0;
       z-index: var(--z-bar);
+      padding: var(--sp-3) 0 0;
+      background: linear-gradient(180deg, var(--rr-bg) 60%, transparent);
     }
     .bar {
-      height: var(--rr-bar-h);
+      height: calc(var(--rr-bar-h) - 4px);
+      width: min(var(--rr-container-wide), 100% - 48px);
+      margin-inline: auto;
       background: var(--rr-glass-bg);
       -webkit-backdrop-filter: blur(16px) saturate(140%);
       backdrop-filter: blur(16px) saturate(140%);
-      border-bottom: 1px solid var(--rr-line);
+      border: 1px solid var(--rr-glass-line);
+      border-radius: var(--rr-r-lg);
+      box-shadow: var(--rr-glass-shadow);
     }
     .bar__in {
-      width: min(var(--rr-container-wide), 100% - 48px);
-      margin-inline: auto;
+      width: 100%;
+      padding: 0 var(--sp-3) 0 var(--sp-4);
       height: 100%;
       display: grid;
       grid-template-columns: 1fr auto 1fr;
       align-items: center;
       gap: var(--sp-4);
     }
-    .bar__in--brand {
+    .bar__in--brand,
+    .bar__in--nonav {
       grid-template-columns: 1fr auto;
     }
     .bar__left {
@@ -127,9 +134,10 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
       color: var(--rr-ink);
     }
     .bar__word {
-      font-size: 20px;
+      font-size: 15px;
       line-height: 24px;
-      letter-spacing: -0.01em;
+      font-weight: var(--fw-semibold);
+      letter-spacing: -0.02em;
     }
     .bar__context {
       font-size: var(--fs-14);
@@ -165,8 +173,13 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
       display: none;
     }
     @media (max-width: 900px) {
+      :host {
+        padding-top: var(--sp-2);
+      }
+      .bar {
+        width: calc(100% - 16px);
+      }
       .bar__in {
-        width: calc(100% - 24px);
         grid-template-columns: 1fr auto;
         gap: var(--sp-3);
       }
