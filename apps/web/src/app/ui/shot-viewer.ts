@@ -86,7 +86,7 @@ const ZOOM_STEPS = [75, 100, 125, 150];
       max-height: calc(100vh - 200px);
       overflow: auto;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-      border-radius: var(--rr-r-sm);
+      border-radius: var(--rr-r-md);
       transition: width var(--dur) var(--ease);
     }
     .viewer__toolbar {

@@ -245,14 +245,14 @@ select {
 }
 
 .btn--primary {
-  background: linear-gradient(180deg, var(--rr-accent-hi, var(--rr-accent-2nd)), var(--rr-accent));
+  background: var(--rr-primary-grad);
   border-color: transparent;
   color: var(--rr-accent-ink);
   font-weight: var(--fw-semibold);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 10px 24px -12px rgba(29, 45, 128, 0.7), var(--rr-primary-ring);
 }
 .btn--primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, var(--rr-accent-hi, var(--rr-accent-2nd)), var(--rr-accent-hover));
+  background: var(--rr-primary-grad-hover);
   color: var(--rr-accent-ink);
   transform: translateY(-1px);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), var(--rr-shadow-btn), var(--rr-primary-ring);
@@ -508,18 +508,18 @@ select {
   width: max-content;
 }
 
-/* ---------- цитата из документа: тонированная карточка индиго ---------- */
+/* ---------- цитата из документа: редакторская врезка — линия слева, без плашки ----------
+   Плашка делала из цитаты пузырь чата (ANTI.md). Голос документа держит линия индиго. */
 .cite {
   position: relative;
-  padding: var(--sp-4) 18px;
-  border-radius: var(--rr-r-md);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--rr-accent-soft) 55%, var(--rr-surface)), var(--rr-accent-soft));
+  padding: 2px 0 2px var(--sp-4);
+  border-left: 2px solid var(--rr-accent);
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
 }
 .cite--soft {
-  background: var(--rr-surface-2);
+  border-left-color: var(--rr-line-strong);
 }
 .cite__head {
   font-size: var(--fs-13);
@@ -536,6 +536,7 @@ select {
   line-height: var(--lh-15);
   font-weight: var(--fw-medium);
   max-width: 60ch;
+  color: var(--rr-ink);
 }
 .cite--soft .cite__text {
   color: var(--rr-ink-2);
@@ -716,8 +717,8 @@ select {
   display: block;
   width: 64px;
   height: 40px;
-  border-radius: var(--rr-r-sm);
-  border: 1px solid var(--rr-line);
+  border-radius: var(--rr-r-xs);
+  border: 1px solid var(--rr-shot-line);
   overflow: hidden;
   background: var(--rr-thumb-bg);
   flex: none;
@@ -730,8 +731,8 @@ select {
   border-radius: 0;
 }
 .thumb--lg {
-  width: 160px;
-  height: 100px;
+  width: 112px;
+  height: 70px;
 }
 .dash {
   color: var(--rr-ink-3);

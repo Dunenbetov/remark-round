@@ -113,7 +113,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                         }
                         @case ('fix') {
                           <div class="blank">
-                            <div class="eyebrow">{{ r.externalId ? copy.fromJournal(r.externalId) : copy.saidBy }}</div>
+                            <div class="in-label">{{ r.externalId ? copy.fromJournal(r.externalId) : copy.saidBy }}</div>
                             <dl class="cells">
                               @if (r.pageOrScreen !== '—') {
                                 <dt>{{ copy.where }}</dt>
@@ -284,7 +284,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                       @if (role() === 'developer' && r.status === 'defect') {
                         @if (devTodo().length) {
                           <div class="todo">
-                            <div class="eyebrow">{{ copy.whatToDo }}</div>
+                            <div class="in-label">{{ copy.whatToDo }}</div>
                             @for (line of devTodo(); track line) {
                               <div class="todo__line">{{ line }}</div>
                             }
@@ -355,7 +355,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
     <ng-template #said>
       @if (saidLines().length) {
         <div class="said">
-          <div class="eyebrow">{{ copy.saidBy }}</div>
+          <div class="in-label">{{ copy.saidBy }}</div>
           <dl class="cells">
             @for (l of saidLines(); track l.dt) {
               <dt>{{ l.dt }}</dt>
@@ -454,7 +454,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
       cursor: zoom-in;
       width: 100%;
       color: var(--rr-ink);
-      border-radius: var(--rr-r-sm);
+      border-radius: var(--rr-r-md);
     }
     .frame rr-shot {
       aspect-ratio: 16 / 10;
@@ -489,12 +489,10 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
       border-radius: var(--rr-r-md);
       background: var(--rr-surface-2);
     }
-    .said .eyebrow,
-    .blank .eyebrow,
-    .todo .eyebrow {
-      text-transform: none;
-      letter-spacing: 0;
+    /* Подпись блока внутри бумаги. Капс с разрядкой на карточке носят только заголовки колонок. */
+    .in-label {
       font-size: var(--fs-13);
+      line-height: var(--lh-13);
       font-weight: var(--fw-medium);
       color: var(--rr-ink-3);
     }
@@ -559,7 +557,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
       font-size: var(--fs-14);
       line-height: var(--lh-14);
     }
-    .todo .eyebrow {
+    .todo .in-label {
       margin-bottom: 2px;
     }
     .dev-ready {

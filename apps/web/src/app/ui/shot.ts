@@ -54,12 +54,18 @@ import type { ShotVariant } from '../core/models';
       width: 100%;
       aspect-ratio: 4 / 3;
       background: var(--rr-thumb-bg);
-      border-radius: var(--rr-r-sm);
+      border-radius: var(--rr-r-md);
       overflow: hidden;
       position: relative;
-      border: 1px solid var(--rr-line);
+      border: 1px solid var(--rr-shot-line);
       line-height: 1.3;
       color: #26262a;
+    }
+    /* Чужой экран светлый по своей природе. Ночью он ярче любой бумаги, поэтому
+       приглушается токеном (--rr-shot-dim) и держится рамкой; днём фильтра нет. */
+    .shot__body,
+    .shot__img {
+      filter: var(--rr-shot-dim);
     }
     .shot__img {
       position: absolute;

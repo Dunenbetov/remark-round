@@ -137,7 +137,7 @@ const QUOTE_LEN = 90;
     }
     /* «В работе» — индиго-поднос, единственный цветной объект: строки лежат на нём белыми листами */
     .rows--todo {
-      background: linear-gradient(170deg, var(--rr-accent-2nd), var(--rr-accent) 55%, var(--rr-accent-deep));
+      background: var(--rr-object);
       border-color: transparent;
       border-radius: var(--rr-r-xl);
       padding: 0 var(--sp-3) var(--sp-3);
@@ -150,19 +150,23 @@ const QUOTE_LEN = 90;
     .rows--todo rr-group-header ::ng-deep .gh__btn {
       height: 64px;
       padding-left: var(--sp-4);
+      align-items: baseline;
     }
     .rows--todo rr-group-header ::ng-deep .gh__title {
-      font-size: var(--fs-18);
+      font-size: var(--fs-22);
+      line-height: var(--lh-22);
+      font-weight: var(--fw-semibold);
       color: var(--rr-accent-ink);
     }
     .rows--todo rr-group-header ::ng-deep .gh__sep {
       display: none;
     }
     .rows--todo rr-group-header ::ng-deep .gh__count {
-      font-size: var(--rr-fs-40);
-      line-height: var(--rr-lh-40);
+      font-size: 44px;
+      line-height: 1;
       font-weight: var(--fw-bold);
       letter-spacing: -0.04em;
+      margin-left: var(--sp-1);
       color: var(--rr-accent-ink);
     }
     .rows--todo .row--card {
@@ -286,8 +290,8 @@ const QUOTE_LEN = 90;
     }
     /* строка цитаты ТЗ — «голос документов», сериф */
     .row__quote {
-      padding-left: 10px;
-      border-left: 2px solid var(--rr-accent-soft);
+      padding-left: var(--sp-3);
+      border-left: 2px solid var(--rr-line-strong);
       font-size: var(--fs-14);
       line-height: var(--lh-14);
       color: var(--rr-ink-2);
@@ -313,8 +317,8 @@ const QUOTE_LEN = 90;
       display: inline-flex;
       align-items: center;
       height: 24px;
-      padding: 0 10px;
-      border-radius: 999px;
+      padding: 0 8px;
+      border-radius: var(--rr-r-xs);
       background: var(--rr-work-bg);
       color: var(--rr-work-ink);
       font-size: var(--fs-13);

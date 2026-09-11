@@ -97,7 +97,7 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
                 <caption class="visually-hidden">{{ nav.journal }}</caption>
                 <colgroup>
                   <col class="journal__c-n" />
-                  <col />
+                  <col class="journal__c-title" />
                   <col class="journal__c-outcome" />
                   <col class="journal__c-status" />
                 </colgroup>
@@ -125,16 +125,14 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
                           </td>
                           <td class="journal__title">
                             <div class="journal__title-in">
-                              @if (thumb(r); as s) {
-                                <span class="thumb"><rr-shot [variant]="s.variant ?? 'grey'" [src]="s.url" /></span>
-                              } @else {
-                                <span class="thumb thumb--empty" aria-hidden="true"></span>
-                              }
                               <div class="journal__text">
                                 <span class="journal__title-text">{{ r.title }}</span>
                                 <span class="meta journal__meta">{{ metaLine(r) }}</span>
                                 <rr-status-pill class="journal__status-inline" [status]="r.status" [dot]="true" />
                               </div>
+                              @if (thumb(r); as s) {
+                                <span class="thumb journal__thumb"><rr-shot [variant]="s.variant ?? 'grey'" [src]="s.url" /></span>
+                              }
                             </div>
                           </td>
                           <td class="journal__outcome">
@@ -199,18 +197,28 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
       color: var(--rr-danger-ink);
       font-size: var(--fs-14);
     }
+    /* Доли колонок: 8 / 38 / 34 / 20. Фиксированная раскладка — иначе «Суть» съедала половину
+       таблицы и между нею и «Итогом» стояла пустота. Слот под миниатюру в строке не резервируется:
+       она прижата к правому краю «Сути», поэтому заголовки строк стоят в одной вертикали. */
+    .journal {
+      table-layout: fixed;
+    }
     .journal__c-n {
-      width: 72px;
+      width: 8%;
+    }
+    .journal__c-title {
+      width: 38%;
     }
     .journal__c-outcome {
       width: 34%;
     }
     .journal__c-status {
-      width: 200px;
+      width: 20%;
     }
-    .thumb--empty {
-      border-color: transparent;
-      background: transparent;
+    .journal__thumb {
+      width: 72px;
+      height: 44px;
+      margin-left: var(--sp-4);
     }
     .journal__group-cell {
       padding: 0 !important;
@@ -226,13 +234,9 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
     .tbl__row:hover .journal__num {
       color: var(--rr-accent-text);
     }
-    .journal__title {
-      max-width: 0;
-    }
     .journal__title-in {
       display: flex;
       align-items: center;
-      gap: var(--sp-4);
       min-width: 0;
     }
     .journal__text {
@@ -240,6 +244,7 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
       flex-direction: column;
       gap: 2px;
       min-width: 0;
+      flex: 1 1 auto;
     }
     .journal__title-text {
       font-size: var(--fs-16);
@@ -284,14 +289,22 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
       color: var(--rr-accent-text);
       font-weight: var(--fw-medium);
     }
-    /* чип «Новые желания» — в правом верхнем углу таблицы, над шапкой */
+    /* чип «Новые желания» — на одной базовой линии с шапкой таблицы, без лишней полосы */
     .tbl-wrap {
       position: relative;
     }
     .chips {
+      position: absolute;
+      top: 0;
+      right: var(--sp-5);
+      height: 44px;
       display: flex;
+      align-items: center;
       justify-content: flex-end;
-      padding: var(--sp-3) var(--sp-4) 0;
+      padding: 0;
+    }
+    .chips .chip {
+      border-radius: var(--rr-r-xs);
     }
     .journal .tbl__row {
       height: 64px;
@@ -317,12 +330,17 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
       .journal :is(td, th):nth-child(4) {
         display: none;
       }
+      .journal {
+        table-layout: auto;
+      }
       .journal__c-n {
         width: 52px;
       }
+      .journal__c-title {
+        width: auto;
+      }
       .journal__title {
         white-space: normal;
-        max-width: none;
         padding-top: var(--sp-3);
         padding-bottom: var(--sp-3);
       }
@@ -333,7 +351,7 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
         display: inline-flex;
         margin-top: 6px;
       }
-      .thumb {
+      .journal__thumb {
         display: none;
       }
     }

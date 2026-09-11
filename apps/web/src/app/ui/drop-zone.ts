@@ -95,6 +95,10 @@ const EDITABLE = 'input, textarea, [contenteditable=""], [contenteditable="true"
     .dz:hover {
       border-color: var(--rr-ink-3);
     }
+    /* wide живёт внутри бумаги карточки — это лист (14), а не объект на столе (24) */
+    .dz[data-size='wide'] {
+      border-radius: var(--rr-r-md);
+    }
     .dz--over,
     .dz:has(:focus-visible) {
       border-style: solid;

@@ -80,7 +80,7 @@ export interface StageFrame {
       padding: 0;
       border: 0;
       background: transparent;
-      border-radius: var(--rr-r-sm);
+      border-radius: var(--rr-r-md);
       cursor: zoom-in;
       text-align: left;
       overflow: hidden;
@@ -123,7 +123,7 @@ export interface StageFrame {
       padding: 4px;
       border: 0;
       background: transparent;
-      border-radius: var(--rr-r-sm);
+      border-radius: var(--rr-r-xs);
       cursor: pointer;
       color: var(--rr-ink-2);
       font: inherit;
@@ -135,7 +135,7 @@ export interface StageFrame {
       display: block;
       width: 120px;
       height: 75px;
-      border-radius: var(--rr-r-sm);
+      border-radius: var(--rr-r-xs);
       overflow: hidden;
       border: 1px solid var(--rr-line);
       background: var(--rr-thumb-bg);

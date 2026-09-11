@@ -17,11 +17,12 @@ export interface Tile {
 /**
  * Сводка раунда = фильтры: пять тайлов «Ждут вас · В работе · На ретесте · Закрыто · Все».
  * Клик по тайлу — фильтр (повторный по активному — «Все»); активный поднят и подчёркнут полосой тона.
- * Тайл «Ждут вас» — индиго-объект экрана, его число и кнопка — аква (закон аквы).
+ * Тайл «Ждут вас» — индиго-объект экрана: число на всю высоту плиты, кнопка «Начать разбор»
+ * в правом нижнем углу.
  *
- * Раскладка — grid-области: подпись / число + кнопка «Начать разбор» справа от него / подстрока
- * («1 закрыть · 2 новый кадр») отдельной строкой. Кнопка стоит в потоке и ничего не перекрывает;
- * зона клика фильтра растянута на весь тайл через ::after (как .row-link), кнопка поверх неё (.act).
+ * Раскладка — grid-области: подпись сверху / число + кнопка одной строкой (обе прижаты к низу) /
+ * подстрока («1 закрыть · 2 новый кадр») снизу. У тихих тайлов содержимое разведено по высоте.
+ * Зона клика фильтра растянута на весь тайл через ::after (как .row-link), кнопка поверх неё (.act).
  */
 @Component({
   selector: 'rr-round-tiles',
@@ -31,7 +32,7 @@ export interface Tile {
     @for (t of tiles(); track t.chip; let i = $index) {
       <div class="tile paper paper--lift rise" [class.tile--on]="t.chip === active()" [attr.data-tone]="t.tone" [style.--i]="i">
         <button type="button" class="tile__hit" [attr.aria-pressed]="t.chip === active()" [attr.aria-label]="hitLabel(t)" (click)="pick.emit(t.chip)">
-          <span class="eyebrow tile__label">{{ t.label }}</span>
+          <span class="tile__label">{{ t.label }}</span>
         </button>
         <span class="tile__count num" [class.tile__count--zero]="t.count === 0" aria-hidden="true">{{ t.count }}</span>
         @if (t.sub) {
@@ -52,11 +53,6 @@ export interface Tile {
     }
     .tile[data-tone='accent-2'] {
       grid-column: span 2;
-      min-height: 140px;
-      background: linear-gradient(180deg, var(--rr-accent-2nd), var(--rr-accent) 60%, var(--rr-accent-deep));
-    }
-    .tile {
-      min-height: 112px;
     }
     /* остальные тайлы тише: без тени, только hairline */
     .tile:not([data-tone='accent-2']) {
@@ -69,17 +65,18 @@ export interface Tile {
     }
     .tile {
       position: relative;
-      min-height: 88px;
+      min-height: 160px;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-rows: auto 1fr auto auto;
       grid-template-areas:
         'label label'
+        'air air'
         'count cta'
         'sub sub';
       column-gap: var(--sp-3);
       row-gap: 2px;
-      align-items: center;
-      align-content: start;
+      align-items: end;
       padding: var(--sp-4) var(--sp-5);
       overflow: hidden;
     }
@@ -108,39 +105,44 @@ export interface Tile {
       outline: 2px solid var(--rr-focus);
       outline-offset: -2px;
     }
+    /* капс с разрядкой оставлен только заголовкам колонок (ANTI.md) — подпись тайла обычным регистром */
     .tile__label {
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
+      font-weight: var(--fw-medium);
       color: var(--rr-ink-2);
     }
     .tile__count {
       grid-area: count;
+      align-self: end;
       font-family: var(--rr-serif);
       font-size: var(--rr-fs-40);
-      line-height: var(--rr-lh-40);
+      line-height: 0.9;
       font-weight: var(--fw-bold);
       letter-spacing: -0.05em;
       transition: color var(--dur) var(--ease);
     }
     /* тайл «Ждут вас» — индиго-объект журнала: белый текст, число аквой, кнопка аквой */
     .tile[data-tone='accent-2'] {
-      background: linear-gradient(170deg, var(--rr-accent-2nd), var(--rr-accent) 60%, var(--rr-accent-hover));
+      background: var(--rr-object);
       border-color: transparent;
       color: var(--rr-accent-ink);
       box-shadow: var(--rr-shadow-ink), inset 0 1px 0 rgba(255, 255, 255, 0.18);
     }
+    /* с проектора подпись на индиго не должна уходить в лаванду */
     .tile[data-tone='accent-2'] .tile__label,
     .tile[data-tone='accent-2'] .tile__sub {
-      color: rgba(255, 255, 255, 0.72);
+      color: rgba(255, 255, 255, 0.82);
     }
     .tile[data-tone='accent-2'] .tile__hit {
       color: inherit;
     }
+    /* Число плиты — главный объект журнала: вдвое крупнее тихих тайлов, на всю высоту плиты.
+       line-height меньше кегля: цифра садится на нижний паддинг в одну линию с кнопкой. */
     .tile[data-tone='accent-2'] .tile__count {
-      font-size: 72px;
-      line-height: 68px;
-      margin-top: 2px;
-    }
-    .tile[data-tone='accent-2'] .tile__cta {
-      align-self: end;
+      font-size: 128px;
+      line-height: 0.79;
+      margin-left: -6px;
     }
     .tile[data-tone='accent-2'] .tile__count:not(.tile__count--zero) {
       color: var(--rr-accent-ink);
@@ -150,7 +152,7 @@ export interface Tile {
     }
     .tile[data-tone='accent-2'] .tile__cta {
       background: var(--rr-surface);
-      color: var(--rr-accent);
+      color: var(--rr-accent-text);
       border-color: transparent;
       box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.4);
       min-height: 40px;
@@ -158,7 +160,7 @@ export interface Tile {
     }
     .tile[data-tone='accent-2'] .tile__cta:hover:not(:disabled) {
       background: var(--rr-accent-2);
-      color: var(--rr-accent);
+      color: var(--rr-accent-deep);
     }
     .tile[data-tone='accent-2'] .tile__marker {
       display: none;
@@ -172,7 +174,7 @@ export interface Tile {
     .tile__sub {
       grid-area: sub;
       min-width: 0;
-      color: var(--rr-ink-3);
+      align-self: end;
       font-size: var(--fs-13);
       line-height: var(--lh-13);
       color: var(--rr-ink-2);
@@ -180,10 +182,11 @@ export interface Tile {
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    /* «Начать разбор» — в правом нижнем углу плиты */
     .tile__cta {
       grid-area: cta;
       justify-self: end;
-      align-self: center;
+      align-self: end;
     }
     /* нижняя полоса тона: у активного растёт слева направо */
     .tile__marker {
@@ -233,13 +236,18 @@ export interface Tile {
       }
       .tile {
         flex: 0 0 160px;
+        min-height: 140px;
         scroll-snap-align: start;
         grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto auto auto auto;
         grid-template-areas:
           'label'
           'count'
           'sub'
           'cta';
+      }
+      .tile[data-tone='accent-2'] .tile__count {
+        font-size: 72px;
       }
       .tile__cta {
         justify-self: start;

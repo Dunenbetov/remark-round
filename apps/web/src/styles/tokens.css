@@ -23,7 +23,7 @@
   --rr-surface-raised: #ffffff;     /* поднятое: меню, поповеры, тулбар просмотрщика */
   --rr-ink: #141a33;
   --rr-ink-2: #5c6280;
-  --rr-ink-3: #6b7190;
+  --rr-ink-3: #656b89;   /* ≥4.5:1 на всех трёх светлых слоях: bg, surface-2, surface */
   --rr-ink-inverse: #ffffff;
   --rr-line: #e1e4ef;
   --rr-line-strong: #c9cee0;
@@ -44,6 +44,9 @@
   --rr-danger: #a12a3a;
   --rr-scrim: rgba(20, 26, 51, 0.8);
   --rr-thumb-bg: #f4f5fa;
+  /* чужой экран (rr-shot) — светлый по своей природе; днём показываем как есть, ночью глушим и обводим */
+  --rr-shot-dim: none;
+  --rr-shot-line: var(--rr-line);
 
   /* статусы: -bg фон пилюли, -ink текст на нём, -dot точка */
   --rr-wait-bg: #d9f8f4;   --rr-wait-ink: #0b5c55;   --rr-wait-dot: #23bfb1;
@@ -77,17 +80,26 @@
   --rr-fs-64: 64px; --rr-lh-64: 64px; /* «12» в бейдже шапки карточки (display) */
   --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
 
-  /* ---------- форма: мягкий 3D ---------- */
-  --rr-r-xs: 8px;    /* kbd, точки шагов */
-  --rr-r-sm: 12px;   /* миниатюры, скелетон, штамп, элементы рельса */
-  --rr-r-md: 14px;   /* кнопки, поля, сегменты, тайлы */
-  --rr-r-lg: 20px;   /* бумага: карточки, таблицы, панели, бейдж номера */
-  --rr-r-xl: 24px;   /* рельс, карточка отсчёта, меню, панель решения */
+  /* ---------- форма: мягкий 3D ----------
+     Радиус говорит о вложенности, три ступени: 24 → 14 → 8.
+     24 — то, что лежит на столе (бумага, таблица, тайл, шапка, рельс, поднос);
+     14 — то, что лежит на бумаге (кнопка, поле, кадр, лист, элемент рельса);
+     8 — метка внутри листа (кей-кап, миниатюра, бейдж, штамп). Промежуточных значений нет. */
+  --rr-r-xs: 8px;    /* ступень 3: кей-кап, миниатюра, бейдж, точка */
+  --rr-r-sm: 8px;    /* ступень 3 (синоним для миниатюр, штампа, скелетона) */
+  --rr-r-md: 14px;   /* ступень 2: кнопка, поле, кадр, лист внутри бумаги, элемент рельса */
+  --rr-r-lg: 24px;   /* ступень 1: бумага — карточка, таблица, тайл, шапка */
+  --rr-r-xl: 24px;   /* ступень 1: рельс, поднос, меню, карточка отсчёта */
   --rr-r-pill: 999px;
-  --rr-shadow-1: 0 1px 2px rgba(20, 26, 51, 0.05), 0 12px 30px -20px rgba(20, 26, 51, 0.28);
-  --rr-shadow-2: 0 2px 6px rgba(20, 26, 51, 0.06), 0 30px 60px -40px rgba(20, 26, 51, 0.38);
+  --rr-shadow-1: 0 1px 2px rgba(20, 26, 51, 0.06), 0 16px 40px -12px rgba(20, 26, 51, 0.14);
+  --rr-shadow-2: 0 2px 6px rgba(20, 26, 51, 0.07), 0 28px 60px -18px rgba(20, 26, 51, 0.2);
   --rr-shadow-btn: 0 14px 28px -14px rgba(29, 45, 128, 0.9);
-  --rr-shadow-ink: 0 30px 60px -30px rgba(29, 45, 128, 0.6);  /* индиго-объект: рельс, тайл «Ждут вас», отсчёт */
+  --rr-shadow-ink: 0 1px 2px rgba(20, 26, 51, 0.12), 0 16px 34px -10px rgba(20, 26, 51, 0.26);  /* индиго-объект: та же тень, что у бумаги, — не цветной ореол */
+  /* Заливка единственного цветного объекта экрана: рельс очереди, плита «Ждут вас», поднос «В работе». */
+  --rr-object: linear-gradient(170deg, var(--rr-accent-2nd), var(--rr-accent) 58%, var(--rr-accent-deep));
+  /* Заливка primary-кнопки. Белая подпись на ней ≥ 4.5:1 в обеих темах — светлый край градиента тоже проверен. */
+  --rr-primary-grad: linear-gradient(180deg, var(--rr-accent-2nd), var(--rr-accent));
+  --rr-primary-grad-hover: linear-gradient(180deg, var(--rr-accent-2nd), var(--rr-accent-hover));
   --rr-primary-ring: none;
 
   /* ---------- тумблер темы (rr-theme-toggle) ----------
@@ -124,20 +136,19 @@
 
 /* ---------- тёмная тема «Arc · ночь»: ThemeService ставит data-theme (и в режиме «как в системе») ---------- */
 [data-theme='dark'] {
-  --rr-bg: #0f1120;
-  --rr-bg-accent: #151837;
-  --rr-surface: #181b30;
-  --rr-surface-2: #1f2340;
-  --rr-surface-raised: #232849;
+  --rr-bg: #0d0f1c;
+  --rr-bg-accent: #141733;
+  --rr-surface: #1e2240;          /* бумага ночью светлее стола на ~9 L*: карточка видна пятном, а не рамкой */
+  --rr-surface-2: #171a30;        /* утопленное ночью темнее бумаги — тот же порядок слоёв, что днём */
+  --rr-surface-raised: #272c50;   /* поднятое: меню, поповеры, тулбар */
   --rr-ink: #eceef8;
   --rr-ink-2: #a3a9c8;
   --rr-ink-3: #8d93b3;
-  --rr-ink-inverse: #0f1120;
-  --rr-line: #2a2f4d;
-  --rr-line-strong: #3d4470;
+  --rr-ink-inverse: #0d0f1c;
+  --rr-line: #2f3559;
+  --rr-line-strong: #454d7d;
   --rr-accent: #5b6fe6;
   --rr-accent-hover: #7183f0;
-  --rr-accent-hi: #7183f0;          /* светлый край градиента primary ночью */
   --rr-accent-2nd: #4a58cf;         /* ночью индиго-объект плотнее primary-кнопки: градиент 2nd → deep, оба темнее accent */
   --rr-accent-deep: #2b3694;
   --rr-accent-soft: #232a5c;
@@ -152,19 +163,24 @@
   --rr-focus: #aab5ff;
   --rr-danger: #ef8a9a;
   --rr-scrim: rgba(0, 0, 0, 0.82);
-  --rr-thumb-bg: #1f2340;
+  --rr-thumb-bg: #242849;
+  --rr-shot-dim: brightness(0.88) saturate(0.9);  /* чужой светлый экран приглушён, но не выключен */
+  --rr-shot-line: var(--rr-line-strong);
   --rr-wait-bg: #143d3b;   --rr-wait-ink: #95fbf2;   --rr-wait-dot: #5fe3d8;
   --rr-work-bg: #232a5c;   --rr-work-ink: #aab5ff;   --rr-work-dot: #7183f0;
-  --rr-muted-bg: #1f2340;  --rr-muted-ink: #a3a9c8;  --rr-muted-dot: #6a7190;
+  --rr-muted-bg: #272c50;  --rr-muted-ink: #a3a9c8;  --rr-muted-dot: #6a7190;
   --rr-ok-bg: #16352a;     --rr-ok-ink: #8fd9b4;     --rr-ok-dot: #4fbf8a;
   --rr-danger-bg: #3d1d26; --rr-danger-ink: #f2a2ae; --rr-danger-dot: #e37a8c;
-  --rr-glass-bg: rgba(24, 27, 48, 0.8);
+  --rr-glass-bg: rgba(30, 34, 64, 0.82);
   --rr-glass-line: rgba(255, 255, 255, 0.08);
   --rr-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 30px -20px rgba(0, 0, 0, 0.6);
-  --rr-shadow-1: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.45), 0 12px 30px -20px rgba(0, 0, 0, 0.6);
-  --rr-shadow-2: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 6px rgba(0, 0, 0, 0.5), 0 30px 60px -40px rgba(0, 0, 0, 0.7);
+  --rr-shadow-1: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -20px rgba(0, 0, 0, 0.75);
+  --rr-shadow-2: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.55), 0 34px 64px -38px rgba(0, 0, 0, 0.85);
   --rr-shadow-btn: 0 14px 28px -14px rgba(0, 0, 0, 0.7);
-  --rr-shadow-ink: 0 30px 60px -30px rgba(0, 0, 0, 0.7);
+  --rr-shadow-ink: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 34px -10px rgba(0, 0, 0, 0.6);
+  --rr-object: linear-gradient(170deg, var(--rr-accent-2nd), var(--rr-accent-deep));  /* ночью объект плотнее primary: оба края темнее accent */
+  --rr-primary-grad: linear-gradient(180deg, #5364dc, #4453c4);        /* белый 4.97 / 6.40 */
+  --rr-primary-grad-hover: linear-gradient(180deg, #5f70e8, #4f5ecf);
   --rr-primary-ring: 0 0 0 1px rgba(170, 181, 255, 0.25);
 }
 

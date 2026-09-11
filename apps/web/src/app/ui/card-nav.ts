@@ -85,6 +85,10 @@ import { QUEUE } from '../core/copy';
     .nav__spacer {
       flex: 1;
     }
+    /* последняя кнопка вычитает свой паддинг: «Следующее ›» стоит на правом крае бумаги */
+    .nav .btn:last-child {
+      margin-right: -14px;
+    }
     /* узко: кнопки только иконками */
     @media (max-width: 900px) {
       .nav .btn .nav__btn-text {

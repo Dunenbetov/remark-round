@@ -57,10 +57,8 @@ const UNDO_SECONDS = 5;
   host: {
     class: 'panel',
     '[class.panel--record]': "mode() === 'record' && !pending()",
-    '[class.panel--glass]': "mode() !== 'record' && !pending()",
     '[class.panel--ink]': '!!pending()',
     '[class.ink-card]': '!!pending()',
-    '[class.panel--comment-open]': 'commentOpen()',
   },
   template: `
     @if (pending(); as p) {
@@ -145,12 +143,14 @@ const UNDO_SECONDS = 5;
         @case ('disabled') {
           @for (g of visibleGroups(); track g.key) {
             <div class="group">
-              <div class="eyebrow group__title">{{ g.title }}</div>
-              @for (v of g.verdicts; track v.code) {
-                <button type="button" class="btn btn--lg btn--left" [class.btn--outline-primary]="v.primary" [class.btn--secondary]="!v.primary" disabled>
-                  {{ v.label }}<span class="kbd">{{ v.key }}</span>
-                </button>
-              }
+              <div class="group__title">{{ g.title }}</div>
+              <div class="stack">
+                @for (v of g.verdicts; track v.code) {
+                  <button type="button" class="btn btn--lg btn--left" [class.btn--outline-primary]="v.primary" [class.btn--secondary]="!v.primary" disabled>
+                    {{ v.label }}<span class="kbd">{{ v.key }}</span>
+                  </button>
+                }
+              </div>
             </div>
           }
           <div class="hint">{{ copy.waitDraft }}</div>
@@ -171,46 +171,50 @@ const UNDO_SECONDS = 5;
             </div>
           } @else {
             @if (mode() === 'dev-advice') {
-              <div class="eyebrow advise__eyebrow">{{ copy.adviseEyebrow }}</div>
+              <div class="advise__eyebrow">{{ copy.adviseEyebrow }}</div>
             }
             @for (g of visibleGroups(); track g.key) {
               <div class="group">
-                <div class="eyebrow group__title">{{ g.title }}</div>
-                @for (v of g.verdicts; track v.code) {
-                  <button
-                    type="button"
-                    class="btn btn--lg btn--left"
-                    [class.btn--primary]="v.primary && mode() !== 'dev-advice'"
-                    [class.btn--secondary]="!v.primary || mode() === 'dev-advice'"
-                    [class.btn--busy]="busy() && clicked() === v.code"
-                    [class.is-pressed]="pressed() === 'Digit' + v.key"
-                    [class.is-chosen]="chosen() === v.code || (mode() === 'dev-advice' && myAdvice()?.code === v.code)"
-                    [class.is-dim]="chosen() !== null && chosen() !== v.code"
-                    [class.has-advice]="!!adviceFor(v.code)"
-                    [disabled]="busy() || chosen() !== null"
-                    (click)="pick(v.code)"
-                  >
-                    <span class="btn__label">{{ v.label }}</span>
-                    @if (adviceFor(v.code); as list) {
-                      <!-- совет разработчиков у варианта: стек аватаров + «Developer советует»; ничего не выбирает -->
-                      <span class="btn__advice" [class.btn__advice--pop]="popping()" [attr.title]="adviceTitle(list)">
-                        <span class="btn__advice-av" aria-hidden="true">
-                          @for (a of list; track a.userId) {
-                            <i>{{ initial(a) }}</i>
-                          }
+                <div class="group__title">{{ g.title }}</div>
+                <div class="stack">
+                  @for (v of g.verdicts; track v.code) {
+                    <button
+                      type="button"
+                      class="btn btn--lg btn--left"
+                      [class.btn--primary]="v.primary && mode() !== 'dev-advice'"
+                      [class.btn--secondary]="!v.primary || mode() === 'dev-advice'"
+                      [class.btn--busy]="busy() && clicked() === v.code"
+                      [class.is-pressed]="pressed() === 'Digit' + v.key"
+                      [class.is-chosen]="chosen() === v.code || (mode() === 'dev-advice' && myAdvice()?.code === v.code)"
+                      [class.is-dim]="chosen() !== null && chosen() !== v.code"
+                      [class.has-advice]="!!adviceFor(v.code)"
+                      [disabled]="busy() || chosen() !== null"
+                      (click)="pick(v.code)"
+                    >
+                      <span class="btn__label">{{ v.label }}</span>
+                      @if (adviceFor(v.code); as list) {
+                        <!-- совет разработчиков у варианта: аватары и подпись строкой, без плашки -->
+                        <span class="btn__advice" [class.btn__advice--pop]="popping()" [attr.title]="adviceTitle(list)">
+                          <span class="btn__advice-av" aria-hidden="true">
+                            @for (a of list; track a.userId) {
+                              <i>{{ initial(a) }}</i>
+                            }
+                          </span>
+                          <span class="btn__advice-text">{{ copy.advises(list.length, list[0].userName ?? '') }}</span>
                         </span>
-                        <span class="btn__advice-text">{{ copy.advises(list.length, list[0].userName ?? '') }}</span>
-                      </span>
-                    }
-                    <span class="kbd">{{ v.key }}</span>
-                  </button>
-                }
+                      }
+                      <span class="kbd">{{ v.key }}</span>
+                    </button>
+                  }
+                </div>
               </div>
             }
             @if (mode() !== 'dev-advice') {
               @for (a of adviceNotes(); track a.userId) {
                 <div class="advice-note">
-                  <span class="advice-note__who">{{ copy.advises(1, a.userName ?? '') }} «{{ verdictLabel[a.code] }}»{{ a.comment ? ':' : '' }}</span>
+                  @if (!visibleCodes().has(a.code)) {
+                    <span class="advice-note__who">{{ copy.advises(1, a.userName ?? '') }} «{{ verdictLabel[a.code] }}»{{ a.comment ? ':' : '' }}</span>
+                  }
                   @if (a.comment) {
                     <span class="advice-note__text">«{{ a.comment }}»</span>
                   }
@@ -252,33 +256,28 @@ const UNDO_SECONDS = 5;
     }
   `,
   styles: `
+    /* Панель лежит прямо на бумаге карточки: подложки нет.
+       Уровней ровно два — стопка вариантов (14) и кей-кап внутри строки (8). */
     :host {
       display: flex;
       flex-direction: column;
       gap: var(--sp-2);
-      padding: var(--sp-4);
       position: sticky;
       top: calc(var(--rr-bar-h) + var(--sp-4));
-      transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+      transition: color var(--dur) var(--ease);
     }
-    :host(.panel--glass) {
-      background: var(--rr-surface-2);
-      border-radius: var(--rr-r-xl);
+    :host(.panel--ink) {
+      padding: var(--sp-4);
     }
     .group__title {
-      text-transform: none;
-      letter-spacing: 0;
       font-size: var(--fs-13);
+      line-height: var(--lh-13);
       font-weight: var(--fw-medium);
       color: var(--rr-ink-3);
     }
-    .btn--secondary {
-      border-color: transparent;
-      box-shadow: 0 1px 2px rgba(20, 26, 51, 0.06);
-    }
     .kbd {
-      border-radius: 6px;
-      background: var(--rr-surface);
+      border-radius: var(--rr-r-xs);
+      background: var(--rr-surface-2);
       border-bottom-width: 2px;
     }
     .btn--primary .kbd {
@@ -288,8 +287,8 @@ const UNDO_SECONDS = 5;
     }
     :host(.panel--record) {
       background: var(--rr-surface-2);
-      border: 1px solid var(--rr-line);
-      border-radius: var(--rr-r-lg);
+      border-radius: var(--rr-r-md);
+      padding: var(--sp-4);
       gap: 6px;
     }
     :host(.panel--ink) {
@@ -309,17 +308,48 @@ const UNDO_SECONDS = 5;
       }
     }
 
-    /* группы кнопок */
+    /* Варианты решения — одна стопка листов со встречными линиями, а не пять плавающих карточек.
+       Группа с primary («это работа») стоит отдельным объектом: залитая кнопка сама себе лист. */
     .group {
       display: flex;
       flex-direction: column;
-      gap: 6px;
     }
     .group + .group {
-      margin-top: var(--sp-1);
+      margin-top: var(--sp-3);
     }
     .group__title {
-      margin: 0 0 2px 2px;
+      margin: 0 0 6px 2px;
+    }
+    .stack {
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--rr-r-md);
+      background: var(--rr-surface);
+      box-shadow: inset 0 0 0 1px var(--rr-line);
+      overflow: hidden;
+    }
+    /* у залитой primary своя форма — обойма ей не нужна */
+    .stack:has(.btn--primary) {
+      background: none;
+      box-shadow: none;
+      overflow: visible;
+    }
+    .stack .btn--secondary,
+    .stack .btn--outline-primary {
+      border-radius: 0;
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+    }
+    .stack .btn + .btn {
+      box-shadow: inset 0 1px 0 var(--rr-line);
+    }
+    .stack .btn--secondary:hover:not(:disabled) {
+      background: var(--rr-surface-2);
+      transform: none;
+    }
+    .stack .btn--secondary:hover:not(:disabled) + .btn {
+      box-shadow: none;
     }
     .btn--left {
       justify-content: space-between;
@@ -350,7 +380,8 @@ const UNDO_SECONDS = 5;
       grid-area: kbd;
       margin-left: var(--sp-3);
     }
-    /* бейдж совета разработчика у варианта */
+    /* Совет разработчика у варианта — подпись строкой: аватар и слова.
+       Плашки нет: третий уровень вложенности внутри кнопки был лишним. */
     .btn__advice {
       grid-area: advice;
       justify-self: start;
@@ -358,18 +389,14 @@ const UNDO_SECONDS = 5;
       align-items: center;
       gap: 6px;
       max-width: 100%;
-      padding: 2px 8px 2px 2px;
-      border-radius: 999px;
-      background: var(--rr-work-bg);
-      color: var(--rr-work-ink);
+      color: var(--rr-accent-text);
       font-size: var(--fs-12);
       line-height: var(--lh-12);
-      font-weight: var(--fw-semibold);
+      font-weight: var(--fw-medium);
       white-space: nowrap;
     }
     .btn--primary .btn__advice {
-      background: rgba(255, 255, 255, 0.18);
-      color: var(--rr-accent-ink);
+      color: rgba(255, 255, 255, 0.8);
     }
     .btn--primary .btn__advice-av i {
       background: var(--rr-surface);
@@ -386,30 +413,32 @@ const UNDO_SECONDS = 5;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 18px;
-      height: 18px;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
       background: var(--rr-work-dot);
       color: var(--rr-accent-ink);
       font-size: 10px;
       font-style: normal;
       font-weight: 700;
-      border: 1.5px solid var(--rr-surface);
     }
     .btn__advice-av i + i {
-      margin-left: -6px;
+      margin-left: -5px;
+      box-shadow: -1px 0 0 var(--rr-surface);
     }
     .btn__advice-text {
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    /* комментарий совета под группами — тихая серифная цитата */
+    /* комментарий совета под группами — та же редакторская врезка, что цитата из ТЗ */
     .advice-note {
       display: flex;
       flex-wrap: wrap;
       gap: 2px 6px;
       align-items: baseline;
-      padding: 2px 2px 0;
+      margin-top: var(--sp-1);
+      padding: 2px 0 2px var(--sp-3);
+      border-left: 2px solid var(--rr-accent);
       font-size: var(--fs-13);
       line-height: var(--lh-13);
       color: var(--rr-ink-2);
@@ -423,16 +452,18 @@ const UNDO_SECONDS = 5;
     /* режим dev-advice */
     .advise__eyebrow {
       margin: 0 0 2px 2px;
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
+      font-weight: var(--fw-semibold);
       color: var(--rr-ink);
     }
     .advice-mine {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      padding: var(--sp-3) var(--sp-3) var(--sp-2);
-      border-radius: var(--rr-r-md);
-      background: var(--rr-work-bg);
-      color: var(--rr-work-ink);
+      padding: 2px 0 2px var(--sp-4);
+      border-left: 2px solid var(--rr-accent);
+      color: var(--rr-ink);
     }
     .advice-mine__label {
       font-size: var(--fs-16);
@@ -444,7 +475,6 @@ const UNDO_SECONDS = 5;
       gap: var(--sp-3);
     }
     .advice-mine .btn--text {
-      color: var(--rr-work-ink);
       padding-left: 0;
     }
     .advice-mine .hint {
@@ -479,9 +509,7 @@ const UNDO_SECONDS = 5;
     /* комментарий */
     .panel__toggle {
       align-self: flex-start;
-      margin-top: var(--sp-1);
-      font-weight: var(--fw-regular);
-      color: var(--rr-ink-2);
+      margin-top: var(--sp-2);
       gap: 4px;
     }
     .panel__label {
@@ -607,9 +635,7 @@ const UNDO_SECONDS = 5;
     }
     .keys {
       color: var(--rr-ink-3);
-      margin-top: var(--sp-1);
-      padding-top: var(--sp-2);
-      border-top: 1px solid var(--rr-line);
+      margin-top: var(--sp-3);
     }
     @media (max-width: 900px) {
       :host {
@@ -669,10 +695,9 @@ export class DecisionPanel {
     return map;
   });
   /** Строки под группами: советы с комментарием и советы за вариант, у которого сейчас нет кнопки (pm-two). */
-  protected readonly adviceNotes = computed(() => {
-    const visible = new Set(this.visibleGroups().flatMap((g) => g.verdicts.map((v) => v.code)));
-    return this.advice().filter((a) => a.comment || !visible.has(a.code));
-  });
+  /** Коды, которые сейчас показаны кнопками: у них совет уже виден бейджем, повторять его словами не нужно. */
+  protected readonly visibleCodes = computed(() => new Set(this.visibleGroups().flatMap((g) => g.verdicts.map((v) => v.code))));
+  protected readonly adviceNotes = computed(() => this.advice().filter((a) => a.comment || !this.visibleCodes().has(a.code)));
   protected readonly comment = signal('');
   protected readonly hint = signal(false);
   protected readonly commentOpen = signal(false);

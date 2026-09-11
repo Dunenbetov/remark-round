@@ -25,7 +25,7 @@ export interface RailItem {
   imports: [RouterLink, Icon],
   template: `
     <nav class="rail" [attr.aria-label]="label()">
-      <div class="eyebrow rail__label"><span>{{ label() }}</span><span class="rail__count">{{ items().length }}</span></div>
+      <div class="rail__label"><span>{{ label() }}</span><span class="rail__count">{{ items().length }}</span></div>
       <ol class="rail__list">
         @for (it of items(); track it.id; let i = $index) {
           <li>
@@ -63,16 +63,23 @@ export interface RailItem {
   `,
   styles: `
     :host {
-      display: block;
+      display: flex;
       width: var(--rr-rail-w);
+      min-height: min(560px, calc(100vh - var(--rr-bar-h) - var(--sp-12) * 2));
       position: sticky;
       top: calc(var(--rr-bar-h) + var(--sp-6));
       align-self: start;
-      background: linear-gradient(170deg, var(--rr-accent-2nd), var(--rr-accent) 55%, var(--rr-accent-deep));
+      background: var(--rr-object);
       color: var(--rr-accent-ink);
       border-radius: var(--rr-r-xl);
       padding: var(--sp-5) var(--sp-4) var(--sp-4);
       box-shadow: var(--rr-shadow-ink), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+    .rail {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 0;
     }
     @media (max-width: 1279px) {
       :host {
@@ -83,7 +90,10 @@ export interface RailItem {
       display: flex;
       align-items: baseline;
       justify-content: space-between;
-      color: rgba(255, 255, 255, 0.65);
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
+      font-weight: var(--fw-medium);
+      color: rgba(255, 255, 255, 0.82);
       padding: 0 var(--sp-2) var(--sp-4);
     }
     .rail__count {
@@ -102,7 +112,7 @@ export interface RailItem {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      max-height: calc(100vh - var(--rr-bar-h) - 180px);
+      flex: 0 1 auto;
       overflow: auto;
     }
     .rail__item {
@@ -181,8 +191,9 @@ export interface RailItem {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      margin-top: auto;
       padding: var(--sp-4) var(--sp-2) 0;
-      color: rgba(255, 255, 255, 0.7);
+      color: rgba(255, 255, 255, 0.8);
     }
     .rail__foot .meta {
       color: inherit;
