@@ -92,7 +92,7 @@ export class RoundsService {
     const round = await this.load(ctx, roundId);
     const [project, remarks] = await Promise.all([this.prisma.project.findUniqueOrThrow({ where: { id: ctx.projectId } }), this.remarks.list(ctx, round.id)]);
     const data = await buildRoundXlsx({ projectName: project.name, roundNumber: round.number, publicOrigin: config().WEB_ORIGIN, remarks });
-    return { fileName: `remarkround-${slug(project.name)}-round-${round.number}.xlsx`, data };
+    return { fileName: `remarkround-${project.slug}-round-${round.number}.xlsx`, data };
   }
 
   private async load(ctx: ProjectContext, roundId: string) {
@@ -116,9 +116,4 @@ export class RoundsService {
     });
     return new Map(rows.map((r) => [r.roundId, r._count._all]));
   }
-}
-
-function slug(name: string): string {
-  const s = name.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-+|-+$/g, '');
-  return s || 'project';
 }

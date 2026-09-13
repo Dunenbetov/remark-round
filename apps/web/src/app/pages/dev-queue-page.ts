@@ -8,6 +8,7 @@ import { QueueService } from '../core/queue.service';
 import { RemarksStore } from '../core/remarks.store';
 import { ShortcutsService } from '../core/shortcuts.service';
 import { UiStateService } from '../core/ui-state.service';
+import { links } from '../core/links';
 import { AppBar } from '../ui/app-bar';
 import { EmptyState } from '../ui/empty-state';
 import { ErrorBanner } from '../ui/error-banner';
@@ -453,12 +454,12 @@ export class DevQueuePage {
     return shots.length ? shots[shots.length - 1]! : null;
   }
 
-  protected cardLink(r: Remark): (string | number)[] {
-    return ['/p', this.projectId(), 'r', r.roundNumber, 'remarks', r.id];
+  protected cardLink(r: Remark): string[] {
+    return links.remark(this.session.slugOf(this.projectId()), r.roundNumber, r.number);
   }
 
-  private backLink(): (string | number)[] {
-    return ['/p', this.projectId(), 'dev'];
+  private backLink(): string[] {
+    return links.dev(this.session.slugOf(this.projectId()));
   }
 
   /** Клик по строке «В работе»: очередь = строки группы в порядке показа; номер перетекает в шапку карточки. */

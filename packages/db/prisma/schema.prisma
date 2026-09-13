@@ -144,6 +144,9 @@ model User {
 model Project {
   id          String         @id @default(uuid())
   name        String
+  /// Имя в адресе: /klientskiy-kabinet/round-2/12. Транслит названия при создании (ProjectsService, projects/slug.ts);
+  /// при переименовании не меняется — ссылки не ломаются. Мимо сервиса (тесты, evals) — uuid, чтобы unique держался.
+  slug        String         @unique @default(uuid())
   memberships Membership[]
   invitations Invitation[]
   documents   Document[]

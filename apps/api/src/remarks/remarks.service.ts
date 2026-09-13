@@ -152,6 +152,13 @@ export class RemarksService {
     return (await this.views([row], ctx))[0]!;
   }
 
+  /** По адресу SPA: раунд по номеру в проекте, замечание по номеру в раунде (@@unique(roundId, number)). */
+  async getAt(ctx: ProjectContext, roundNumber: number, number: number): Promise<RemarkView> {
+    const row = await this.prisma.remark.findFirst({ where: { projectId: ctx.projectId, number, round: { number: roundNumber } }, select: { id: true } });
+    if (!row) throw new NotFoundException();
+    return this.get(ctx, row.id);
+  }
+
   async statusOf(ctx: ProjectContext, remarkId: string): Promise<RemarkStatus> {
     const row = await this.prisma.remark.findFirst({ where: { id: remarkId, projectId: ctx.projectId }, select: { status: true } });
     if (!row) throw new NotFoundException();

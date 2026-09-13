@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterNextRe
 import { Router, RouterLink } from '@angular/router';
 import { EMPTY, NEW_REMARK, ROUND } from '../core/copy';
 import { RemarksStore } from '../core/remarks.store';
+import { links } from '../core/links';
+import { SessionService } from '../core/session.service';
 import { AppBar } from '../ui/app-bar';
 import { DropZone } from '../ui/drop-zone';
 import { ErrorBanner } from '../ui/error-banner';
@@ -233,6 +235,7 @@ export class NewRemarkPage {
 
   protected readonly store = inject(RemarksStore);
   private readonly router = inject(Router);
+  private readonly session = inject(SessionService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   protected readonly copy = NEW_REMARK;
@@ -262,7 +265,7 @@ export class NewRemarkPage {
       // страница открыта напрямую: подтянем раунд, чтобы было куда сохранять; раундов нет — в журнал, там «Новый раунд»
       queueMicrotask(() =>
         void this.store.enterRound(this.projectId(), this.round()).then((r) => {
-          if (!r) void this.router.navigate(['/p', this.projectId(), 'r', 'latest']);
+          if (!r) void this.router.navigate(links.project(this.slug()));
         }),
       );
     }
@@ -313,8 +316,12 @@ export class NewRemarkPage {
     this.host.nativeElement.querySelector<HTMLTextAreaElement>('textarea[name=what]')?.focus();
   }
 
-  protected journalLink(): (string | number)[] {
-    return ['/p', this.projectId(), 'r', this.round()];
+  private slug(): string {
+    return this.session.slugOf(this.projectId());
+  }
+
+  protected journalLink(): string[] {
+    return links.journal(this.slug(), this.round());
   }
 
   protected async save(e: Event): Promise<void> {
@@ -333,6 +340,6 @@ export class NewRemarkPage {
       file: this.file(),
     });
     if (!remark) return;
-    void this.router.navigate(['/p', this.projectId(), 'r', remark.roundNumber, 'remarks', remark.id]);
+    void this.router.navigate(links.remark(this.slug(), remark.roundNumber, remark.number));
   }
 }

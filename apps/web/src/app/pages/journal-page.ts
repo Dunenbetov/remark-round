@@ -9,6 +9,7 @@ import { QueueService } from '../core/queue.service';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { UiStateService } from '../core/ui-state.service';
+import { links } from '../core/links';
 import { AppBar } from '../ui/app-bar';
 import { EmptyState } from '../ui/empty-state';
 import { ErrorBanner } from '../ui/error-banner';
@@ -475,7 +476,7 @@ export class JournalPage {
     this.creatingRound.set(true);
     try {
       const round = await this.store.createRound(this.projectId());
-      if (round) await this.router.navigate(['/p', this.projectId(), 'r', round.number]);
+      if (round) await this.router.navigate(links.journal(this.slug(), round.number));
     } finally {
       this.creatingRound.set(false);
     }
@@ -497,16 +498,21 @@ export class JournalPage {
     this.ui.lastRemarkId.set(r.id);
   }
 
-  private backLink(): (string | number)[] {
-    return ['/p', this.projectId(), 'r', this.store.roundNumber() ?? this.round()];
+  private slug(): string {
+    return this.session.slugOf(this.projectId());
   }
 
-  protected cardLink(r: Remark): (string | number)[] {
-    return ['/p', this.projectId(), 'r', this.store.roundNumber() ?? this.round(), 'remarks', r.id];
+  private backLink(): string[] {
+    return links.journal(this.slug(), this.store.roundNumber() ?? this.round());
   }
 
-  protected newLink(): unknown[] {
-    return ['/p', this.projectId(), 'r', this.store.roundNumber() ?? this.round(), 'remarks', 'new'];
+  /** /klientskiy-kabinet/round-2/12 — номер замечания уникален в раунде. */
+  protected cardLink(r: Remark): string[] {
+    return links.remark(this.slug(), r.roundNumber || this.store.roundNumber() || this.round(), r.number);
+  }
+
+  protected newLink(): string[] {
+    return links.newRemark(this.slug(), this.store.roundNumber() ?? this.round());
   }
 
   protected rowLabel(r: Remark): string {

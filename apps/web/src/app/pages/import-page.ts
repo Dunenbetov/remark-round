@@ -4,6 +4,7 @@ import type { ImportJob, ImportRow } from '../core/models';
 import { IMPORT, ROLE_TITLE, ROUND, STATUS_LABEL, STATUS_TONE } from '../core/copy';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
+import { links } from '../core/links';
 import { AppBar } from '../ui/app-bar';
 import { DropZone } from '../ui/drop-zone';
 import { ErrorBanner } from '../ui/error-banner';
@@ -19,7 +20,7 @@ const POLL_MS = 2000;
  * Импорт журнала (бизнес): только наш шаблон. Файл уходит в POST /imports, строки без описания
  * становятся замечаниями «Допишите строку журнала» — человек дописывает их здесь, парсер ничего не выдумывает.
  *
- * До загрузки — колонки 5/7: дропзона слева, «Что в шаблоне» и «Как это работает» справа.
+ * До загрузки — сетка из трёх равных колонок: дропзона 1, «Что в шаблоне» 2; «Как это работает» — ряд шагов под ними.
  * После загрузки дропзона сжимается в полосу, результат ложится на всю ширину двумя группами:
  * «Допишите» (поля ввода) и «Разобраны» (ссылки на карточки). Липкий подвал — «Сохранить строки».
  */
@@ -456,7 +457,7 @@ export class ImportPage {
       // раундов нет — в журнал, там «Новый раунд»
       queueMicrotask(() =>
         void this.store.enterRound(this.projectId(), this.round()).then((r) => {
-          if (!r) void this.router.navigate(['/p', this.projectId(), 'r', 'latest']);
+          if (!r) void this.router.navigate(links.project(this.session.slugOf(this.projectId())));
         }),
       );
     }
@@ -528,12 +529,12 @@ export class ImportPage {
     return row.remarkStatus ? STATUS_TONE[row.remarkStatus] : 'muted';
   }
 
-  protected cardLink(row: ImportRow): unknown[] {
-    return ['/p', this.projectId(), 'r', this.store.roundNumber() ?? this.round(), 'remarks', row.remarkId];
+  protected cardLink(row: ImportRow): string[] {
+    return links.remark(this.session.slugOf(this.projectId()), this.store.roundNumber() ?? this.round(), row.remarkNumber ?? 0);
   }
 
-  protected journalLink(): unknown[] {
-    return ['/p', this.projectId(), 'r', this.store.roundNumber() ?? this.round()];
+  protected journalLink(): string[] {
+    return links.journal(this.session.slugOf(this.projectId()), this.store.roundNumber() ?? this.round());
   }
 
   /** Дописанные строки уходят в разбор через fix-row; остальные ждут дальше. */

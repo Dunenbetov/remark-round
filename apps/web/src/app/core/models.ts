@@ -63,6 +63,8 @@ export type Tone = 'accent' | 'wait' | 'work';
 export interface Membership {
   projectId: string;
   projectName: string;
+  /** Имя проекта в адресе: /klientskiy-kabinet/round-2/12 (core/links.ts). */
+  projectSlug: string;
   role: Role;
 }
 
@@ -109,6 +111,7 @@ export interface AuthOptions {
 export interface ProjectSummary {
   id: string;
   name: string;
+  slug: string;
   role: Role;
   createdAt: string;
 }

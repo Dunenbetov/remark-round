@@ -50,7 +50,8 @@ describe('notifications', () => {
     expect(mail!.to).toBe(h.users.developer.email);
     expect(mail!.from).toBe('RemarkRound <no-reply@test.dev>');
     expect(mail!.subject).toContain(`№${number}`);
-    expect(mail!.text).toContain(`/p/${h.projectId}/r/1/remarks/${id}`);
+    const { slug } = await h.prisma.project.findUniqueOrThrow({ where: { id: h.projectId } });
+    expect(mail!.text).toContain(`/${slug}/round-1/${number}`);
     expect(mail!.text).toContain('в работу');
     expect(mail!.html).toContain('<a href=');
     const rows = await h.prisma.notification.findMany({ where: { remarkId: id } });

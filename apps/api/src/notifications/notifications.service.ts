@@ -73,7 +73,7 @@ export class NotificationsService implements OnModuleInit {
     const pending = await this.prisma.notification.findMany({
       where: { userId, status: 'pending' },
       orderBy: { createdAt: 'asc' },
-      include: { remark: { select: { number: true, description: true, round: { select: { number: true } } } }, project: { select: { name: true } } },
+      include: { remark: { select: { number: true, description: true, round: { select: { number: true } } } }, project: { select: { name: true, slug: true } } },
     });
     if (!pending.length) return;
     const ids = pending.map((n) => n.id);
@@ -91,7 +91,7 @@ export class NotificationsService implements OnModuleInit {
       number: n.remark.number,
       description: n.remark.description,
       kind: n.kind,
-      url: `${origin}/p/${n.projectId}/r/${n.remark.round.number}/remarks/${n.remarkId}`,
+      url: `${origin}/${n.project.slug}/round-${n.remark.round.number}/${n.remark.number}`,
     }));
     try {
       await this.mail.send(digestMail(user.email, user.name, items, `${origin}/profile`));

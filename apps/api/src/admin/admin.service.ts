@@ -15,7 +15,7 @@ export interface AdminUserView {
   isInstanceAdmin: boolean;
   disabledAt: string | null;
   createdAt: string;
-  memberships: Array<{ projectId: string; projectName: string; role: Role }>;
+  memberships: Array<{ projectId: string; projectName: string; projectSlug: string; role: Role }>;
 }
 
 export interface AdminProjectView {
@@ -46,7 +46,7 @@ export class AdminService {
     });
     return rows.map((u) => ({
       ...toView(u),
-      memberships: u.memberships.map((m) => ({ projectId: m.projectId, projectName: m.project.name, role: m.role })),
+      memberships: u.memberships.map((m) => ({ projectId: m.projectId, projectName: m.project.name, projectSlug: m.project.slug, role: m.role })),
     }));
   }
 

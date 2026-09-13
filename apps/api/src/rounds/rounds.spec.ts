@@ -31,6 +31,14 @@ describe('rounds: close, export, reopen', () => {
     expect(res.body.message).toMatch(/В работе — 1/);
   });
 
+  it('карточка по адресу SPA: номер раунда + номер замечания; чужой номер — 404', async () => {
+    const at = await h.http.get(url('/remarks/at/1/970')).set(h.auth('pm')).expect(200);
+    expect(at.body).toMatchObject({ id: defectId, number: 970, roundNumber: 1 });
+    await h.http.get(url('/remarks/at/1/999')).set(h.auth('pm')).expect(404);
+    await h.http.get(url('/remarks/at/2/970')).set(h.auth('pm')).expect(404);
+    await h.http.get(url('/remarks/at/one/970')).set(h.auth('pm')).expect(400);
+  });
+
   it('новый раунд не открыть, пока есть нерешённые: 409; список раундов отдаёт pending', async () => {
     const res = await h.http.post(url('/rounds')).set(h.auth('pm')).send({}).expect(409);
     expect(res.body.message).toBe('Новый раунд можно открыть, когда в раунде 1 не останется нерешённых замечаний (ещё 1)');

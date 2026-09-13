@@ -4,6 +4,7 @@ import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { APP_NAME, NAV, ROLE_TITLE, ROUND } from '../core/copy';
 import { homeUrlFor } from '../core/guards';
+import { links, sectionOf, type Section } from '../core/links';
 import { filterRemarks } from '../core/journal-filter';
 import type { Role } from '../core/models';
 import { AccountService } from '../core/account.service';
@@ -17,8 +18,6 @@ import { Icon } from './icons';
 import { Menu, MenuItem } from './menu';
 import { SegmentItem, Segmented } from './segmented';
 import { ThemeToggle } from './theme-toggle';
-
-type Section = 'journal' | 'documents' | 'import' | 'team' | 'dev';
 
 /** Цвет буквы в кружке аватара по роли; профиль берёт тот же тон по стороне. */
 export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', admin: 'accent', business: 'wait', developer: 'work' };
@@ -59,7 +58,7 @@ export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'acc
         }
         <div class="bar__right">
           @if (!brandOnly() && role() === 'business' && projectId()) {
-            <a class="btn btn--primary btn--sm bar__add" [routerLink]="link('r', roundParam(), 'remarks', 'new')">
+            <a class="btn btn--primary btn--sm bar__add" [routerLink]="newRemarkLink()">
               <rr-icon name="plus" [size]="16" />
               {{ nav.addRemark }}
             </a>
@@ -75,11 +74,11 @@ export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'acc
     </header>
     @if (tabs() && !brandOnly() && projectId() && role() !== 'developer') {
       <nav class="tabs" [attr.aria-label]="nav.sections">
-        <a class="tabs__link" [class.tabs__link--on]="section() === 'journal'" [attr.aria-current]="section() === 'journal' ? 'page' : null" [routerLink]="link('r', roundParam())">{{ nav.journal }}</a>
-        <a class="tabs__link" [class.tabs__link--on]="section() === 'documents'" [attr.aria-current]="section() === 'documents' ? 'page' : null" [routerLink]="link('documents')">{{ nav.documents }}</a>
-        <a class="tabs__link" [class.tabs__link--on]="section() === 'import'" [attr.aria-current]="section() === 'import' ? 'page' : null" [routerLink]="link('r', roundParam(), 'import')">{{ nav.import }}</a>
+        <a class="tabs__link" [class.tabs__link--on]="section() === 'journal'" [attr.aria-current]="section() === 'journal' ? 'page' : null" [routerLink]="journalLink()">{{ nav.journal }}</a>
+        <a class="tabs__link" [class.tabs__link--on]="section() === 'documents'" [attr.aria-current]="section() === 'documents' ? 'page' : null" [routerLink]="docsLink()">{{ nav.documents }}</a>
+        <a class="tabs__link" [class.tabs__link--on]="section() === 'import'" [attr.aria-current]="section() === 'import' ? 'page' : null" [routerLink]="importLink()">{{ nav.import }}</a>
         @if (canManage()) {
-          <a class="tabs__link" [class.tabs__link--on]="section() === 'team'" [attr.aria-current]="section() === 'team' ? 'page' : null" [routerLink]="link('team')">{{ nav.team }}</a>
+          <a class="tabs__link" [class.tabs__link--on]="section() === 'team'" [attr.aria-current]="section() === 'team' ? 'page' : null" [routerLink]="teamLink()">{{ nav.team }}</a>
         }
       </nav>
     }
@@ -247,7 +246,6 @@ export class AppBar {
   private readonly canOpenRound = computed(() => this.role() === 'pm' || this.role() === 'business' || this.role() === 'admin');
   protected readonly tone = computed(() => (this.role() ? TONE_BY_ROLE[this.role()!] : 'accent'));
   protected readonly initial = computed(() => (this.user()?.name ?? '?').charAt(0).toUpperCase());
-  protected readonly roundParam = computed(() => this.store.roundNumber() ?? 'latest');
   protected readonly projectName = computed(() => this.session.membership(this.projectId())?.projectName ?? '');
   protected readonly roundLabel = computed(() => (this.store.roundNumber() ? ROUND.label(this.store.roundNumber()!) : ''));
 
@@ -309,15 +307,15 @@ export class AppBar {
     const role = this.role();
     if (role === 'developer') {
       const count = this.store.devQueue().filter((r) => r.status === 'defect').length;
-      return [{ id: 'dev', label: NAV.dev, count, link: this.link('dev') }];
+      return [{ id: 'dev', label: NAV.dev, count, link: links.dev(this.slug()) }];
     }
     const count = filterRemarks(this.store.remarks(), 'Ждут меня', role).length;
     const items: SegmentItem[] = [
-      { id: 'journal', label: NAV.journal, count, link: this.link('r', this.roundParam()) },
-      { id: 'documents', label: NAV.documents, link: this.link('documents') },
-      { id: 'import', label: NAV.import, link: this.link('r', this.roundParam(), 'import') },
+      { id: 'journal', label: NAV.journal, count, link: this.journalLink() },
+      { id: 'documents', label: NAV.documents, link: this.docsLink() },
+      { id: 'import', label: NAV.import, link: this.importLink() },
     ];
-    if (this.canManage()) items.push({ id: 'team', label: NAV.team, link: this.link('team') });
+    if (this.canManage()) items.push({ id: 'team', label: NAV.team, link: this.teamLink() });
     return items;
   });
 
@@ -344,18 +342,15 @@ export class AppBar {
     ),
     { initialValue: this.router.url },
   );
-  protected readonly section = computed<Section>(() => {
-    const url = this.url();
-    if (url.includes('/documents')) return 'documents';
-    if (url.includes('/import')) return 'import';
-    if (url.includes('/team')) return 'team';
-    if (url.includes('/dev')) return 'dev';
-    return 'journal';
-  });
+  protected readonly section = computed<Section>(() => sectionOf(this.url()));
 
-  protected link(...parts: (string | number)[]): unknown[] {
-    return ['/p', this.projectId() ?? '', ...parts];
-  }
+  /** Адреса разделов — человеческие: /klientskiy-kabinet/round-2/import (core/links.ts). */
+  private readonly slug = computed(() => this.session.slugOf(this.projectId()));
+  protected readonly journalLink = computed(() => links.journal(this.slug(), this.store.roundNumber()));
+  protected readonly newRemarkLink = computed(() => links.newRemark(this.slug(), this.store.roundNumber()));
+  protected readonly importLink = computed(() => links.import(this.slug(), this.store.roundNumber()));
+  protected readonly docsLink = computed(() => links.documents(this.slug()));
+  protected readonly teamLink = computed(() => links.team(this.slug()));
 
   protected onContextPick(id: string): void {
     if (id === 'projects:all' || id === 'projects:new') {
@@ -379,7 +374,7 @@ export class AppBar {
       return;
     }
     if (id.startsWith('round:')) {
-      void this.router.navigate(['/p', this.projectId(), 'r', id.slice('round:'.length)]);
+      void this.router.navigate(links.journal(this.slug(), id.slice('round:'.length)));
     }
   }
 
@@ -434,7 +429,7 @@ export class AppBar {
     const projectId = this.projectId();
     if (!projectId) return;
     const round = await this.store.createRound(projectId);
-    if (round) void this.router.navigate(['/p', projectId, 'r', round.number]);
+    if (round) void this.router.navigate(links.journal(this.slug(), round.number));
   }
 
   protected skipToMain(e: Event): void {

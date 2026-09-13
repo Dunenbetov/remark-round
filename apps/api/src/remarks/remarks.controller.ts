@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { AgentService } from '../agent/agent.service';
 import { RunEvents } from '../agent/run-events';
 import { MembershipGuard } from '../tenancy/membership.guard';
@@ -49,6 +49,12 @@ export class RemarksController {
   @Get('remarks/:remarkId')
   get(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string): Promise<RemarkView> {
     return this.remarks.get(ctx, remarkId);
+  }
+
+  /** Карточка по человеческому адресу /<slug>/round-2/12: номер раунда + номер замечания. Тот же ACL, что у GET по id. */
+  @Get('remarks/at/:roundNumber/:number')
+  getAt(@Ctx() ctx: ProjectContext, @Param('roundNumber', ParseIntPipe) roundNumber: number, @Param('number', ParseIntPipe) number: number): Promise<RemarkView> {
+    return this.remarks.getAt(ctx, roundNumber, number);
   }
 
   /** История переходов: кто, когда, из какого статуса в какой, каким прогоном (аудит: remark-history). Тот же ACL, что у карточки. */

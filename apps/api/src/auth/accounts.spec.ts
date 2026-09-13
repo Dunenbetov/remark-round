@@ -44,7 +44,7 @@ describe('accounts', () => {
     expect(login.body.memberships).toEqual([]);
     await h.prisma.membership.create({ data: { userId: login.body.user.id, projectId: h.projectId, role: 'business' } });
     const me = await h.http.get('/api/v1/auth/me').set(bearer(login.body.accessToken)).expect(200);
-    expect(me.body.memberships).toEqual([{ projectId: h.projectId, projectName: expect.any(String), role: 'business' }]);
+    expect(me.body.memberships).toEqual([{ projectId: h.projectId, projectName: expect.any(String), projectSlug: expect.any(String), role: 'business' }]);
   });
 
   it('профиль: имя и сторона меняются', async () => {
@@ -80,9 +80,13 @@ describe('accounts', () => {
     const project = await h.http.post('/api/v1/projects').set(bearer(pm.body.accessToken)).send({ name: `Новый ${tag}` }).expect(201);
     expect(project.body.role).toBe('pm');
     const me = await h.http.get('/api/v1/auth/me').set(bearer(pm.body.accessToken)).expect(200);
-    expect(me.body.memberships).toEqual([{ projectId: project.body.id, projectName: `Новый ${tag}`, role: 'pm' }]);
-    await h.prisma.membership.deleteMany({ where: { projectId: project.body.id } });
-    await h.prisma.project.delete({ where: { id: project.body.id } });
+    expect(project.body.slug).toBe(`novyy-${tag}`);
+    expect(me.body.memberships).toEqual([{ projectId: project.body.id, projectName: `Новый ${tag}`, projectSlug: `novyy-${tag}`, role: 'pm' }]);
+    // одноимённый проект получает следующий свободный адрес, а не 500 на unique
+    const twin = await h.http.post('/api/v1/projects').set(bearer(pm.body.accessToken)).send({ name: `Новый ${tag}` }).expect(201);
+    expect(twin.body.slug).toBe(`novyy-${tag}-2`);
+    await h.prisma.membership.deleteMany({ where: { projectId: { in: [project.body.id, twin.body.id] } } });
+    await h.prisma.project.deleteMany({ where: { id: { in: [project.body.id, twin.body.id] } } });
   });
 
   it('без пароля (passwordHash null) вход невозможен; /auth/options публичен и сообщает режим регистрации', async () => {

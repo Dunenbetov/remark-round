@@ -182,6 +182,11 @@ export class ApiService {
     return this.run(this.http.get<Remark>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}`));
   }
 
+  /** Карточка по адресу /<slug>/round-2/12: номер раунда и номер замечания. */
+  remarkAt(projectId: string, roundNumber: number | string, number: number | string): Promise<Remark> {
+    return this.run(this.http.get<Remark>(`${API_BASE}/projects/${projectId}/remarks/at/${roundNumber}/${number}`));
+  }
+
   remarkHistory(projectId: string, remarkId: string): Promise<RemarkHistoryEntry[]> {
     return this.run(this.http.get<RemarkHistoryEntry[]>(`${API_BASE}/projects/${projectId}/remarks/${remarkId}/history`));
   }

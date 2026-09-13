@@ -99,6 +99,19 @@ export class RemarksStore {
     return created;
   }
 
+  /** id карточки по адресу /<slug>/round-2/12: из уже загруженных списков, иначе GET …/remarks/at/2/12. Ошибка — null, не баннер: решает резолвер. */
+  async remarkIdAt(projectId: string, roundNumber: number, number: number): Promise<string | null> {
+    const known = [...this.remarks(), ...this.devQueue(), ...this.advisoryQueue()].find((r) => r.projectId === projectId && r.roundNumber === roundNumber && r.number === number);
+    if (known) return known.id;
+    try {
+      const remark = await this.api.remarkAt(projectId, roundNumber, number);
+      this.upsert(remark);
+      return remark.id;
+    } catch {
+      return null;
+    }
+  }
+
   async loadRemark(projectId: string, remarkId: string): Promise<Remark | null> {
     this.projectId.set(projectId);
     const remark = await this.guard(() => this.api.remark(projectId, remarkId));

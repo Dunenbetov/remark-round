@@ -67,6 +67,19 @@ export class SessionService {
     return this.memberships().find((m) => m.projectId === projectId) ?? null;
   }
 
+  /** Проект по первому сегменту адреса: slug, а для старых ссылок /p/<uuid> и сессий без slug — id. */
+  membershipByKey(key: string | null | undefined): Membership | null {
+    if (!key) return null;
+    const list = this.memberships();
+    return list.find((m) => m.projectSlug === key) ?? list.find((m) => m.projectId === key) ?? null;
+  }
+
+  /** Сегмент адреса проекта; пока сессия не знает slug (старая, до GET /auth/me) — id, guard его поймёт. */
+  slugOf(projectId: string | null | undefined): string {
+    if (!projectId) return '';
+    return this.membership(projectId)?.projectSlug || projectId;
+  }
+
   roleIn(projectId: string | null | undefined): Role | null {
     return this.membership(projectId)?.role ?? null;
   }

@@ -7,6 +7,7 @@ import { errorMessage } from '../core/errors';
 import { homeUrlFor } from '../core/guards';
 import type { Membership } from '../core/models';
 import { SessionService } from '../core/session.service';
+import { links, toUrl } from '../core/links';
 import { AppBar } from '../ui/app-bar';
 import { BrandMark } from '../ui/brand-mark';
 import { Sheet } from '../ui/sheet';
@@ -202,7 +203,7 @@ export class ProjectsPage {
       await this.account.refresh();
       this.session.selectProject(project.id);
       this.name.set('');
-      await this.router.navigateByUrl(`/p/${project.id}/r/latest`);
+      await this.router.navigateByUrl(toUrl(links.project(project.slug)));
     } catch (err) {
       this.error.set(errorMessage(err));
     } finally {

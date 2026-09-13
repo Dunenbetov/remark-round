@@ -14,6 +14,7 @@ import { TriageRun, TriageService } from '../core/triage.service';
 import { UiStateService } from '../core/ui-state.service';
 import { WsService, initialPhase } from '../core/ws.service';
 import { ApiService } from '../core/api.service';
+import { links } from '../core/links';
 import { AppBar } from '../ui/app-bar';
 import { BrandMark } from '../ui/brand-mark';
 import { CardHeader, HeaderStamp } from '../ui/card-header';
@@ -1000,11 +1001,14 @@ export class RemarkCardPage {
   protected readonly backLink = computed<(string | number)[]>(() => {
     const snap = this.queue.snapshot();
     if (snap && snap.ids.includes(this.remarkId())) return snap.backLink;
-    return this.role() === 'developer' ? ['/p', this.projectId(), 'dev'] : ['/p', this.projectId(), 'r', this.store.roundNumber() ?? this.round()];
+    return this.role() === 'developer' ? links.dev(this.slug()) : links.journal(this.slug(), this.store.roundNumber() ?? this.round());
   });
 
-  private cardLinkFor(r: Pick<Remark, 'id' | 'roundNumber'>): (string | number)[] {
-    return ['/p', this.projectId(), 'r', r.roundNumber || this.store.roundNumber() || this.round(), 'remarks', r.id];
+  private readonly slug = computed(() => this.session.slugOf(this.projectId()));
+
+  /** /klientskiy-kabinet/round-2/12 — номер замечания уникален в раунде. */
+  private cardLinkFor(r: Pick<Remark, 'number' | 'roundNumber'>): string[] {
+    return links.remark(this.slug(), r.roundNumber || this.store.roundNumber() || this.round(), r.number);
   }
 
   protected go(dir: 'prev' | 'next'): void {
@@ -1160,7 +1164,7 @@ export class RemarkCardPage {
     const target = this.reopenTarget();
     if (!r || !target) return;
     const created = await this.store.reopenRemark(r.id, target.id);
-    if (created) await this.router.navigate(['/p', this.projectId(), 'r', created.roundNumber, 'remarks', created.id]);
+    if (created) await this.router.navigate(links.remark(this.slug(), created.roundNumber, created.number));
   }
 
   protected readonly recordView = computed<DecisionRecord | null>(() => {
@@ -1278,7 +1282,7 @@ export class RemarkCardPage {
 
   protected readonly specCitation = computed(() => this.remark()!.citations.find((c) => c.source === 'spec') ?? null);
   protected readonly otherCitations = computed(() => this.remark()!.citations.filter((c) => c.source !== 'spec'));
-  protected readonly documentsLink = computed(() => ['/p', this.projectId(), 'documents']);
+  protected readonly documentsLink = computed(() => links.documents(this.slug()));
 
   protected readonly retestVerdict = computed(() => {
     const r = this.remark()!;

@@ -85,7 +85,7 @@ describe('members and invitations', () => {
     await h.http.get(`/api/v1/invitations/${fresh.body.token}`).expect(200);
 
     const biz = await register(`biz-${tag}@test.dev`, 'business', fresh.body.token);
-    expect(biz.memberships).toEqual([{ projectId: h.projectId, projectName: expect.any(String), role: 'business' }]);
+    expect(biz.memberships).toEqual([{ projectId: h.projectId, projectName: expect.any(String), projectSlug: expect.any(String), role: 'business' }]);
     await h.http.get(`/api/v1/invitations/${fresh.body.token}`).expect(410);
     await h.http.post(url('/invitations/00000000-0000-4000-8000-000000000000/link')).set(h.auth('pm')).expect(404);
     const after = await h.http.get(url('/members')).set(h.auth('pm')).expect(200);

@@ -15,12 +15,12 @@
 |---|---|---|---|
 | POST | `/auth/login` | — | JWT + `user` (`preferredRole`, `canCreateProjects`, `isInstanceAdmin`) + `memberships`. Отключённый администратором — 403. Лимит `THROTTLE_AUTH_LIMIT`/мин с IP |
 | POST | `/auth/register` | — | `{ name, email, password ≥ 8, preferredRole: business \| pm \| developer, inviteToken? }` → 201, ответ как у входа; дубликат e-mail — 409. Режим (ADR 006): `open` — всем; `invite_only` (в production по умолчанию) — только с живым `inviteToken` (мёртвая ссылка — 404, аккаунт не создаётся), с домена из `REGISTRATION_DOMAINS` или e-mail из `ADMIN_EMAILS`; иначе 403. Приглашение принимается только по ссылке |
-| GET | `/auth/me` | any | Свежие `{ user, memberships }` без перелогина — страница ожидания опрашивает это |
+| GET | `/auth/me` | any | Свежие `{ user, memberships }` без перелогина — страница ожидания опрашивает это. Membership: `{ projectId, projectName, projectSlug, role }`; `projectSlug` — первый сегмент адреса SPA |
 | PATCH | `/auth/profile` | any | `{ name?, preferredRole?, notifyByEmail? }` — `notifyByEmail` выключает письма «вас ждёт кнопка» (ADR 009) |
 | POST | `/auth/password` | any | `{ current, next ≥ 8 }` → `{ accessToken }`; неверный текущий — 422; все прежние токены (и MCP) недействительны |
 | GET | `/auth/options` | — | `{ demoLogins, registration: open \| invite_only, mail }` — карточки демо-персон на входе (в production выключены), режим регистрации, настроена ли почта |
-| GET | `/projects` | any | Список membership |
-| POST | `/projects` | `canCreateProjects` | Создать: только с правом от администратора инстанса (иначе 403); создатель становится `pm` проекта |
+| GET | `/projects` | any | Список membership: `{ id, name, slug, role, createdAt }` |
+| POST | `/projects` | `canCreateProjects` | Создать: только с правом от администратора инстанса (иначе 403); создатель становится `pm` проекта. `slug` — транслит названия (`Клиентский кабинет` → `klientskiy-kabinet`), занятый — с суффиксом `-2`; при переименовании не меняется |
 | GET | `/projects/:projectId` | member | Карточка |
 | GET | `/projects/:projectId/members` | pm, admin | `{ members[], invitations[] }` — участники и ожидающие приглашения (без токена: в БД только хэш) |
 | POST | `/projects/:projectId/members` | pm, admin | `{ email, role }`: зарегистрированный → `{ kind: 'member', member }` сразу (повтор меняет роль, ожидающая ссылка снимается); незнакомый e-mail → `{ kind: 'invitation', invitation }` с сырым `token` для `/join/<token>` — показывается один раз; `invitation.emailed` — письмо со ссылкой ушло (SMTP настроен) |
@@ -46,6 +46,7 @@
 | GET | `/projects/:projectId/rounds/:roundId/remarks` | по роли фильтр | Список. Developer — только defect+ |
 | POST | `/projects/:projectId/rounds/:roundId/remarks` | business, pm | Ручное замечание + upload screenshot |
 | GET | `/projects/:projectId/remarks/:remarkId` | member + ACL очереди | Карточка; `runFailure` — причина последнего сбоя прогона по-русски (модель перегружена, ключ не принят, файл не найден…). Developer — defect+ и `awaiting_pm` (чтобы посоветовать); в ответе `advice[]` — советы разработчиков. Заказчику (business) карточка собирается без `advice`, `verdict.comment`, `traceUrl`, `proposedClass`, а `draft`/`seen` — только после вердикта (ADR 007); то же для списков |
+| GET | `/projects/:projectId/remarks/at/:roundNumber/:number` | member + ACL очереди | Та же карточка по номеру раунда и номеру замечания — для адреса SPA `/<slug>/round-2/12`; нет такого номера или роль его не видит — 404 |
 | GET | `/projects/:projectId/remarks/:remarkId/history` | member + ACL карточки | История переходов: `[{ at, action, fromStatus?, toStatus, by?: { userId, name, role }, runId?, detail? }]` — строка на каждый переход (create, triage, proposal, verdict, ready_for_retest, retest, retest_result, close, not_fixed, cancel, run_failed, fix_row, attach_screenshot, reopen, import); `by` пуст — переход сделала система. Заказчику `detail` предложений модели не отдаётся (ADR 007) |
 | GET | `/projects/:projectId/advisory-queue` | developer | Что сейчас на приёмке у PM (`awaiting_pm`) — можно посоветовать; не очередь работы |
 | PUT | `/projects/:projectId/remarks/:id/advice` | developer | `{ code, comment? }` — совет PM (`code` — те же пять кнопок, без `duplicate`; ≤ 500 символов). Один на человека: повтор меняет. Только для `awaiting_pm`, иначе 409. Статус не меняет; в комнату уходит `remark.advice` |
@@ -105,4 +106,4 @@
 
 ## Уведомления (ADR 009)
 
-Отдельных маршрутов нет. Переход, после которого у роли появляется кнопка, пишет `Notification` каждому участнику этой роли (кроме того, кто нажал) и через `NOTIFY_DIGEST_MS` шлёт **одно** письмо на всё накопившееся: `awaiting_pm` → pm; `defect` (вердикт или «не исправлено») → developer; `ready_for_retest`, `awaiting_business_close`, `cannot_tell` → business. Письмо содержит номер, короткое описание, что именно ждёт, и ссылку `/p/:projectId/r/:round/remarks/:remarkId`. Без `SMTP_URL` уведомления помечаются `skipped`, `GET /auth/options` отдаёт `mail: false`.
+Отдельных маршрутов нет. Переход, после которого у роли появляется кнопка, пишет `Notification` каждому участнику этой роли (кроме того, кто нажал) и через `NOTIFY_DIGEST_MS` шлёт **одно** письмо на всё накопившееся: `awaiting_pm` → pm; `defect` (вердикт или «не исправлено») → developer; `ready_for_retest`, `awaiting_business_close`, `cannot_tell` → business. Письмо содержит номер, короткое описание, что именно ждёт, и ссылку на человеческий адрес карточки `/<slug>/round-<n>/<номер>` (например `/klientskiy-kabinet/round-2/12`). Без `SMTP_URL` уведомления помечаются `skipped`, `GET /auth/options` отдаёт `mail: false`.

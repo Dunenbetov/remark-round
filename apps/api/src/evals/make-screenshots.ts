@@ -19,7 +19,8 @@ const PORT = 9333;
 
 interface Shot {
   file: string;
-  path: (ctx: { projectId: string; remarks: Array<{ id: string; number: number; status: string }> }) => string;
+  /** Человеческий адрес SPA: /<slug>/round-2/12 (apps/web/src/app/core/links.ts). */
+  path: (ctx: { slug: string }) => string;
   as: 'pm' | 'business' | 'developer' | null;
   width?: number;
   height?: number;
@@ -29,27 +30,26 @@ interface Shot {
   queue?: boolean;
 }
 
-const byNumber = (remarks: Array<{ id: string; number: number }>, n: number) => remarks.find((r) => r.number === n)!.id;
-
 const SHOTS: Shot[] = [
   { file: 'login.png', path: () => `/login`, as: null },
-  { file: 'journal.png', path: ({ projectId }) => `/p/${projectId}/r/2`, as: 'pm' },
-  { file: 'remark-card.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 12)}`, as: 'pm', height: 1000, queue: true },
-  { file: 'remark-card-dark.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 12)}`, as: 'pm', height: 1000, dark: true, queue: true },
-  { file: 'retest.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 2)}`, as: 'business', height: 900 },
-  { file: 'documents.png', path: ({ projectId }) => `/p/${projectId}/documents`, as: 'pm' },
-  { file: 'import.png', path: ({ projectId }) => `/p/${projectId}/r/2/import`, as: 'business' },
-  { file: 'new-remark.png', path: ({ projectId }) => `/p/${projectId}/r/2/remarks/new`, as: 'business' },
-  { file: 'dev-queue.png', path: ({ projectId }) => `/p/${projectId}/dev`, as: 'developer' },
-  { file: 'dev-card.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 5)}`, as: 'developer', height: 900 },
-  { file: 'dev-advice.png', path: ({ projectId, remarks }) => `/p/${projectId}/r/2/remarks/${byNumber(remarks, 14)}`, as: 'developer', height: 900 },
+  { file: 'journal.png', path: ({ slug }) => `/${slug}/round-2`, as: 'pm' },
+  { file: 'remark-card.png', path: ({ slug }) => `/${slug}/round-2/12`, as: 'pm', height: 1000, queue: true },
+  { file: 'remark-card-dark.png', path: ({ slug }) => `/${slug}/round-2/12`, as: 'pm', height: 1000, dark: true, queue: true },
+  { file: 'retest.png', path: ({ slug }) => `/${slug}/round-2/2`, as: 'business', height: 900 },
+  { file: 'documents.png', path: ({ slug }) => `/${slug}/documents`, as: 'pm' },
+  { file: 'import.png', path: ({ slug }) => `/${slug}/round-2/import`, as: 'business' },
+  { file: 'new-remark.png', path: ({ slug }) => `/${slug}/round-2/new`, as: 'business' },
+  { file: 'dev-queue.png', path: ({ slug }) => `/${slug}/dev`, as: 'developer' },
+  { file: 'dev-card.png', path: ({ slug }) => `/${slug}/round-2/5`, as: 'developer', height: 900 },
+  { file: 'dev-advice.png', path: ({ slug }) => `/${slug}/round-2/14`, as: 'developer', height: 900 },
 ];
 
-async function login(email: string): Promise<{ session: unknown; projectId: string; token: string }> {
+async function login(email: string): Promise<{ session: unknown; projectId: string; slug: string; token: string }> {
   const res = await fetch(`${API}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'remarkround' }) });
   if (!res.ok) throw new Error(`login ${email}: ${res.status}`);
-  const body = (await res.json()) as { accessToken: string; user: unknown; memberships: Array<{ projectId: string }> };
-  return { session: { accessToken: body.accessToken, user: body.user, memberships: body.memberships }, projectId: body.memberships[0]!.projectId, token: body.accessToken };
+  const body = (await res.json()) as { accessToken: string; user: unknown; memberships: Array<{ projectId: string; projectSlug: string }> };
+  const first = body.memberships[0]!;
+  return { session: { accessToken: body.accessToken, user: body.user, memberships: body.memberships }, projectId: first.projectId, slug: first.projectSlug, token: body.accessToken };
 }
 
 class Cdp {
@@ -133,10 +133,10 @@ async function main(): Promise<void> {
       const hints = ['journal.pm', 'journal.business', 'card.pm', 'card.business', 'card.developer', 'tour.pm', 'tour.business'].map((k) => `localStorage.setItem('rr.hint.${userId}.${k}', '1');`).join('');
       // очередь «Ждут вас»: все awaiting_pm по убыванию номера, как в журнале
       const waiting = remarks.filter((r) => r.status === 'awaiting_pm').sort((a, b) => b.number - a.number).map((r) => r.id);
-      const queue = shot.queue ? `sessionStorage.setItem('rr.queue', ${JSON.stringify(JSON.stringify({ ids: waiting, label: 'Ждут вас', backLink: ['/p', pm.projectId, 'r', 2] }))});` : `sessionStorage.removeItem('rr.queue');`;
+      const queue = shot.queue ? `sessionStorage.setItem('rr.queue', ${JSON.stringify(JSON.stringify({ ids: waiting, label: 'Ждут вас', backLink: ['/', pm.slug, 'round-2'] }))});` : `sessionStorage.removeItem('rr.queue');`;
       await cdp.send('Runtime.evaluate', { expression: session + theme + hints + queue });
       const loaded2 = cdp.once('Page.loadEventFired');
-      await cdp.send('Page.navigate', { url: `${WEB}${shot.path({ projectId: pm.projectId, remarks })}` });
+      await cdp.send('Page.navigate', { url: `${WEB}${shot.path({ slug: pm.slug })}` });
       await loaded2;
       await sleep(2500);
       const { data } = await cdp.send<{ data: string }>('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });

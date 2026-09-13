@@ -41,12 +41,12 @@ export async function seed(prisma: PrismaClient, options: { index?: boolean } = 
 
   await prisma.project.upsert({
     where: { id: SEED.projectId },
-    create: { id: SEED.projectId, name: 'Клиентский кабинет' },
+    create: { id: SEED.projectId, name: 'Клиентский кабинет', slug: 'klientskiy-kabinet' },
     update: { name: 'Клиентский кабинет' },
   });
   await prisma.project.upsert({
     where: { id: SEED.otherProjectId },
-    create: { id: SEED.otherProjectId, name: 'Чужой проект' },
+    create: { id: SEED.otherProjectId, name: 'Чужой проект', slug: 'chuzhoy-proekt' },
     update: {},
   });
 

@@ -97,6 +97,7 @@ describe('tenancy sweep', () => {
       { name: 'очередь разработчика', method: 'get', path: `${P}/dev-queue`, as: 'developer' },
       { name: 'советы', method: 'get', path: `${P}/advisory-queue`, as: 'developer' },
       { name: 'карточка', method: 'get', path: `${P}/remarks/${B.remarkId}` },
+      { name: 'карточка по номеру', method: 'get', path: `${P}/remarks/at/1/1` },
       { name: 'история', method: 'get', path: `${P}/remarks/${B.remarkId}/history` },
       { name: 'совет', method: 'put', path: `${P}/remarks/${B.remarkId}/advice`, as: 'developer', body: { code: 'defect' } },
       { name: 'снять совет', method: 'delete', path: `${P}/remarks/${B.remarkId}/advice`, as: 'developer' },

@@ -44,6 +44,8 @@ export interface AuthUser {
 export interface MembershipSummary {
   projectId: string;
   projectName: string;
+  /** Имя проекта в адресе SPA (/<slug>/round-2/12); фронт по нему находит projectId. */
+  projectSlug: string;
   role: Role;
 }
 
@@ -241,7 +243,7 @@ export class AuthService {
 
   private async membershipsOf(userId: string): Promise<MembershipSummary[]> {
     const rows = await this.prisma.membership.findMany({ where: { userId }, include: { project: true }, orderBy: { createdAt: 'asc' } });
-    return rows.map((m) => ({ projectId: m.projectId, projectName: m.project.name, role: m.role }));
+    return rows.map((m) => ({ projectId: m.projectId, projectName: m.project.name, projectSlug: m.project.slug, role: m.role }));
   }
 }
 

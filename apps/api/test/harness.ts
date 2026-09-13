@@ -65,7 +65,7 @@ export async function createHarness(): Promise<Harness> {
   const tag = randomUUID().slice(0, 8);
   const passwordHash = await hashPassword(PASSWORD);
 
-  const project = await prisma.project.create({ data: { name: `H-${tag}` } });
+  const project = await prisma.project.create({ data: { name: `H-${tag}`, slug: `h-${tag}` } });
   const round = await prisma.round.create({ data: { projectId: project.id, number: 1 } });
   const users = {} as Harness['users'];
   for (const role of ['pm', 'business', 'developer', 'admin'] as Role[]) {

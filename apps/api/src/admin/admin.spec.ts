@@ -51,7 +51,7 @@ describe('instance admin', () => {
     const users = await h.http.get('/api/v1/admin/users').set(bearer(adminToken)).expect(200);
     const pm = users.body.find((u: { id: string }) => u.id === h.users.pm.id);
     expect(pm).toMatchObject({ email: h.users.pm.email, canCreateProjects: false, isInstanceAdmin: false, disabledAt: null });
-    expect(pm.memberships).toEqual([{ projectId: h.projectId, projectName: expect.any(String), role: 'pm' }]);
+    expect(pm.memberships).toEqual([{ projectId: h.projectId, projectName: expect.any(String), projectSlug: expect.any(String), role: 'pm' }]);
 
     const projects = await h.http.get('/api/v1/admin/projects').set(bearer(adminToken)).expect(200);
     const mine = projects.body.find((p: { id: string }) => p.id === h.projectId);
