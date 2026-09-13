@@ -140,9 +140,9 @@ export interface Tile {
     /* Число плиты — главный объект журнала: вдвое крупнее тихих тайлов, на всю высоту плиты.
        line-height меньше кегля: цифра садится на нижний паддинг в одну линию с кнопкой. */
     .tile[data-tone='accent-2'] .tile__count {
-      font-size: 128px;
+      font-size: 104px;
       line-height: 0.79;
-      margin-left: -6px;
+      margin-left: -5px;
     }
     .tile[data-tone='accent-2'] .tile__count:not(.tile__count--zero) {
       color: var(--rr-accent-ink);
@@ -247,7 +247,7 @@ export interface Tile {
           'cta';
       }
       .tile[data-tone='accent-2'] .tile__count {
-        font-size: 72px;
+        font-size: 58px;
       }
       .tile__cta {
         justify-self: start;

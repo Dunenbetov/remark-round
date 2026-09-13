@@ -180,6 +180,8 @@ export interface Round {
   number: number;
   status: 'open' | 'closed';
   remarks: number;
+  /** Нерешённых замечаний (не закрыто, не новое желание, не повтор). Пока хоть у одного раунда > 0, новый не открыть. */
+  pending: number;
   closedAt?: string | null;
 }
 

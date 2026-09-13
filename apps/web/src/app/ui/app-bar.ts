@@ -20,7 +20,8 @@ import { ThemeToggle } from './theme-toggle';
 
 type Section = 'journal' | 'documents' | 'import' | 'team' | 'dev';
 
-const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', admin: 'accent', business: 'wait', developer: 'work' };
+/** Цвет буквы в кружке аватара по роли; профиль берёт тот же тон по стороне. */
+export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', admin: 'accent', business: 'wait', developer: 'work' };
 
 /**
  * Верхняя панель — плавающая белая полоса со скруглением: бренд-знак + RemarkRound + контекст «Проект · Раунд ▾» | сегменты |
@@ -257,6 +258,9 @@ export class AppBar {
     return parts.filter(Boolean).join(' · ');
   });
 
+  /** Раунды с нерешёнными замечаниями: пока они есть, новый раунд не открыть (сервер ответит тем же 409). */
+  private readonly blockingRounds = computed(() => this.store.rounds().filter((r) => (r.pending ?? 0) > 0));
+
   /** Одно меню с двумя группами: проекты (список, «Все проекты», «Создать проект» у стороны pm) и раунды (+ «Новый раунд»). */
   protected readonly contextItems = computed<MenuItem[]>(() => {
     const items: MenuItem[] = [];
@@ -279,7 +283,16 @@ export class AppBar {
           separatorBefore: i === 0,
         }),
       );
-      if (this.canOpenRound()) items.push({ id: 'round:new', label: NAV.newRound });
+      if (this.canOpenRound()) {
+        const blocking = this.blockingRounds();
+        const pending = blocking.reduce((sum, r) => sum + r.pending, 0);
+        items.push({
+          id: 'round:new',
+          label: NAV.newRound,
+          disabled: blocking.length > 0,
+          hint: blocking.length ? NAV.newRoundBlocked(pending, blocking.map((r) => r.number)) : undefined,
+        });
+      }
       const current = this.store.round();
       if (current) {
         items.push({ id: 'round:export', label: NAV.exportRound(current.number), separatorBefore: true });
@@ -350,7 +363,7 @@ export class AppBar {
       return;
     }
     if (id === 'round:new') {
-      void this.newRound();
+      if (!this.blockingRounds().length) void this.newRound();
       return;
     }
     if (id === 'round:close' || id === 'round:reopen' || id === 'round:export') {

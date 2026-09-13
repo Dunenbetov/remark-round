@@ -9,8 +9,9 @@ import { Icon } from '../ui/icons';
 import { PageHeader } from '../ui/page-header';
 
 /**
- * Новое замечание (бизнес): слева лист-форма «Что не так · Где · Как должно быть», справа дропзона для скрина
- * (перетащить, нажать, Ctrl+V) и тихая карточка «Что будет дальше». Ctrl/Cmd+Enter в любом поле — сохранить.
+ * Новое замечание (бизнес): две равные колонки одной высоты. Слева лист-форма «Что не так · Где · Как должно быть»,
+ * справа дропзона для скрина (перетащить, нажать, Ctrl+V) или превью, под ней тихая карточка «Что будет дальше».
+ * Ctrl/Cmd+Enter в любом поле — сохранить.
  * Закрытый раунд — поля выключены и подсказка danger-тоном; таб-бар шапки выключен.
  */
 @Component({
@@ -20,7 +21,7 @@ import { PageHeader } from '../ui/page-header';
   template: `
     <div class="page">
       <rr-app-bar [tabs]="false" />
-      <main id="main" class="page__body page__body--loose nr-body">
+      <main id="main" class="page__body page__body--loose">
         <a class="link nr-back" [routerLink]="journalLink()">
           <rr-icon name="arrow-left" [size]="16" />
           {{ copy.back }}
@@ -79,9 +80,9 @@ import { PageHeader } from '../ui/page-header';
               </div>
             } @else {
               <rr-drop-zone
-                class="rise"
+                class="nr-drop rise"
                 [style.--i]="1"
-                size="wide"
+                size="tall"
                 [title]="copy.dropTitle"
                 [hint]="needShot"
                 accept="image/*"
@@ -101,9 +102,6 @@ import { PageHeader } from '../ui/page-header';
     </div>
   `,
   styles: `
-    .nr-body {
-      width: min(1400px, 100% - 48px);
-    }
     .nr-back {
       display: inline-flex;
       align-items: center;
@@ -111,11 +109,12 @@ import { PageHeader } from '../ui/page-header';
       width: max-content;
       margin-bottom: var(--sp-4);
     }
+    /* две равные колонки одной высоты: высоту задаёт форма, скрин и «Что будет дальше» заполняют правую */
     .nr-grid {
       display: grid;
-      grid-template-columns: 560px minmax(0, 1fr);
-      gap: var(--sp-8);
-      align-items: start;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--sp-6);
+      align-items: stretch;
     }
     .nr-form {
       padding: var(--sp-7);
@@ -138,23 +137,34 @@ import { PageHeader } from '../ui/page-header';
       justify-content: flex-end;
       align-items: center;
       gap: var(--sp-2);
+      margin-top: auto;
     }
     .nr-side {
       display: flex;
       flex-direction: column;
-      gap: var(--sp-4);
+      gap: var(--sp-6);
       min-width: 0;
     }
+    .nr-drop {
+      flex: 1 0 auto;
+      min-height: 320px;
+    }
     .nr-shot {
+      flex: 1 0 auto;
+      min-height: 320px;
       padding: var(--sp-4);
       display: flex;
       flex-direction: column;
       gap: var(--sp-3);
     }
+    /* кадр занимает всё, что осталось от высоты формы; contain: size — высокий скрин не растягивает колонку;
+       object-fit: contain — скрин целиком, поля цвета бумаги */
     .nr-shot__img {
       display: block;
+      flex: 1 1 0;
+      min-height: 0;
+      contain: size;
       width: 100%;
-      aspect-ratio: 16 / 10;
       object-fit: contain;
       border-radius: var(--rr-r-sm);
       border: 1px solid var(--rr-line);
@@ -193,12 +203,20 @@ import { PageHeader } from '../ui/page-header';
       max-width: 60ch;
     }
     @media (max-width: 900px) {
-      .nr-body {
-        width: calc(100% - 24px);
-      }
       .nr-grid {
         grid-template-columns: minmax(0, 1fr);
         gap: var(--sp-5);
+      }
+      .nr-drop {
+        min-height: 240px;
+      }
+      .nr-shot {
+        min-height: 0;
+      }
+      .nr-shot__img {
+        flex: none;
+        contain: none;
+        aspect-ratio: 16 / 10;
       }
       .nr-form {
         padding: var(--sp-5);

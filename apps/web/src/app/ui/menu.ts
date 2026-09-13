@@ -10,6 +10,8 @@ export interface MenuItem {
   separatorBefore?: boolean;
   /** Подпись группы над пунктом (eyebrow), например «Проект» / «Раунд». */
   group?: string;
+  /** Пункт виден, но не срабатывает; причина — в hint. Фокус на нём остаётся, чтобы подсказку прочитали. */
+  disabled?: boolean;
 }
 
 export interface MenuHead {
@@ -64,10 +66,12 @@ export interface MenuHead {
             type="button"
             class="menu__item"
             [class.menu__item--on]="it.selected"
+            [class.menu__item--off]="it.disabled"
             [attr.role]="it.selected === undefined ? 'menuitem' : it.kind === 'check' ? 'menuitemcheckbox' : 'menuitemradio'"
             [attr.aria-checked]="it.selected === undefined ? null : it.selected"
+            [attr.aria-disabled]="it.disabled ? 'true' : null"
             tabindex="-1"
-            (click)="choose(it.id)"
+            (click)="it.disabled || choose(it.id)"
           >
             <span class="menu__label">{{ it.label }}</span>
             @if (it.hint) {
@@ -156,6 +160,15 @@ export interface MenuHead {
     }
     .menu__hint {
       white-space: nowrap;
+    }
+    .menu__item--off {
+      color: var(--rr-ink-3);
+      cursor: default;
+    }
+    /* причина недоступности длиннее обычной подсказки: переносится, а не режет подпись */
+    .menu__item--off .menu__hint {
+      white-space: normal;
+      text-align: right;
     }
     .menu__check {
       color: var(--rr-accent-text);

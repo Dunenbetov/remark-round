@@ -294,6 +294,8 @@ export const NAV = {
   allProjects: 'Все проекты',
   newProject: 'Создать проект',
   newRound: 'Новый раунд',
+  /** Причина серого «Новый раунд»: «сначала решите 10 в раунде 2». */
+  newRoundBlocked: (pending: number, rounds: number[]) => `сначала решите ${pending} ${rounds.length > 1 ? `в раундах ${rounds.join(', ')}` : `в раунде ${rounds[0]}`}`,
   closeRound: (n: number) => `Закрыть раунд ${n}`,
   reopenRound: (n: number) => `Открыть раунд ${n} снова`,
   exportRound: (n: number) => `Выгрузить раунд ${n} (.xlsx)`,
@@ -364,7 +366,6 @@ export const ROLE_SHORT: Record<Role, string> = {
 export const LOGIN_EXTRA = { demoPassword: 'пароль remarkround' };
 
 export const EMPTY = {
-  noSpec: 'Сначала загрузите ТЗ — без него разбирать замечания не будем.',
   noRemarks: 'Замечаний пока нет. Добавьте с экрана или загрузите журнал по шаблону.',
   needShot: 'Для претензии про цвет или вёрстку нужен скрин.',
   importUnparsed: 'Эти строки не разобрали. Допишите сами — мы ничего не выдумываем.',
@@ -584,14 +585,18 @@ export const DOCUMENTS = {
     addendum: 'Доп. соглашение',
     journal_source: 'Журнал',
   } satisfies Record<DocumentKind, string>,
-  uploadTitle: 'Загрузить',
-  dropHint: 'Перетащите PDF, DOCX или MD — или нажмите',
-  kindLabel: 'Тип',
+  /** Пустые места полки: у каждого типа своя дропзона, выбирать тип отдельно не нужно. */
+  slot: {
+    spec: { title: 'Добавьте ТЗ', hint: 'Без него замечания не разбираем · PDF, DOCX или MD' },
+    protocol: { title: 'Добавьте протокол', hint: 'Если был · PDF, DOCX или MD' },
+    addendum: { title: 'Добавьте доп. соглашение', hint: 'Если было · PDF, DOCX или MD' },
+  },
+  newVersion: 'Новая версия',
+  moreTitle: 'Ещё в пакете',
   searchTitle: 'Проверить, что найдётся',
   searchPlaceholder: 'Например: цвет кнопки «Сохранить»',
   searchEmpty: 'Ничего похожего в документах нет',
   searchDisabled: 'Поиск заработает, когда появится ТЗ',
-  emptySlot: 'Доп. соглашение — если было',
   retryUpload: 'Загрузите файл ещё раз',
 };
 
@@ -757,12 +762,15 @@ export const TEAM = {
 
 export const PROFILE = {
   title: 'Профиль',
+  dataTitle: 'Данные',
+  projects: 'Проекты и роли',
+  noProjects: 'Пока ни в одном проекте — руководитель приёмки пришлёт приглашение.',
   name: 'Имя',
   save: 'Сохранить',
   saved: 'Сохранено',
   who: 'Кто вы',
   whoHint: 'Подсказка для приглашений. Роль в каждом проекте назначает руководитель приёмки.',
-  passwordTitle: 'Сменить пароль',
+  passwordTitle: 'Пароль',
   current: 'Текущий пароль',
   next: 'Новый пароль',
   repeat: 'Ещё раз',
@@ -770,10 +778,6 @@ export const PROFILE = {
   changed: 'Пароль изменён. На других устройствах нужно войти заново.',
   wrongCurrent: 'Текущий пароль не подходит',
   mismatch: 'Пароли не совпадают',
-  notifyTitle: 'Письма',
-  notifyLabel: 'Писать мне, когда замечание ждёт моей кнопки',
-  notifyHint: 'Одно письмо на всё, что накопилось за несколько минут: вердикт, дефект в работу, новый кадр для ретеста, закрытие. Приглашений это не касается.',
-  notifyOff: 'Почта на этом сервере не настроена — писем не будет, пока администратор не задаст SMTP.',
 };
 
 export const JOIN = {

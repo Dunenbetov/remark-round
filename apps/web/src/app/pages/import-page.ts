@@ -114,7 +114,7 @@ const POLL_MS = 2000;
             </section>
           </div>
         } @else {
-          <!-- До загрузки: зона 5 / шаблон и шаги 7 -->
+          <!-- До загрузки: сетка из трёх равных колонок — зона 1 / шаблон 2; шаги ряд ниже, по одному под каждой колонкой -->
           <div class="grid">
             <div class="col col--drop">
               <rr-drop-zone
@@ -133,55 +133,53 @@ const POLL_MS = 2000;
               }
             </div>
 
-            <div class="col">
-              <section class="paper tpl">
-                <div class="eyebrow tpl__eyebrow">{{ copy.templateTitle }}</div>
-                <div class="tbl-wrap">
-                  <table class="tbl tpl__tbl">
-                    <caption class="visually-hidden">{{ copy.templateTitle }}</caption>
-                    <thead>
+            <section class="paper tpl">
+              <div class="eyebrow tpl__eyebrow">{{ copy.templateTitle }}</div>
+              <div class="tbl-wrap">
+                <table class="tbl tpl__tbl">
+                  <caption class="visually-hidden">{{ copy.templateTitle }}</caption>
+                  <thead>
+                    <tr>
+                      @for (c of copy.templateColumns; track c) {
+                        <th scope="col">{{ c }}</th>
+                      }
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (line of copy.templateExample; track $index) {
                       <tr>
-                        @for (c of copy.templateColumns; track c) {
-                          <th scope="col">{{ c }}</th>
+                        @for (cell of line; track $index) {
+                          @if (cell) {
+                            <td>{{ cell }}</td>
+                          } @else {
+                            <td class="tpl__empty">—</td>
+                          }
                         }
                       </tr>
-                    </thead>
-                    <tbody>
-                      @for (line of copy.templateExample; track $index) {
-                        <tr>
-                          @for (cell of line; track $index) {
-                            @if (cell) {
-                              <td>{{ cell }}</td>
-                            } @else {
-                              <td class="tpl__empty">—</td>
-                            }
-                          }
-                        </tr>
-                      }
-                    </tbody>
-                  </table>
-                </div>
-                <div class="tpl__foot">
-                  <span class="meta">{{ copy.templateEmptyNote }}</span>
-                  <span class="tpl__links">
-                    <a class="btn btn--text" href="template.xlsx" download="journal-template.xlsx"><rr-icon name="upload" [size]="14" />{{ copy.template }} · xlsx</a>
-                    <a class="btn btn--text" href="template.csv" download="journal-template.csv">csv</a>
-                  </span>
-                </div>
-              </section>
+                    }
+                  </tbody>
+                </table>
+              </div>
+              <div class="tpl__foot">
+                <span class="meta">{{ copy.templateEmptyNote }}</span>
+                <span class="tpl__links">
+                  <a class="btn btn--text" href="template.xlsx" download="journal-template.xlsx"><rr-icon name="upload" [size]="14" />{{ copy.template }} · xlsx</a>
+                  <a class="btn btn--text" href="template.csv" download="journal-template.csv">csv</a>
+                </span>
+              </div>
+            </section>
 
-              <section class="sunken how">
-                <div class="eyebrow">{{ copy.howTitle }}</div>
-                <ol class="steps">
-                  @for (s of copy.steps(roundNo()); track $index; let i = $index) {
-                    <li class="steps__item rise" [style.--i]="i">
-                      <span class="steps__n num" aria-hidden="true">{{ i + 1 }}</span>
-                      <span>{{ s }}</span>
-                    </li>
-                  }
-                </ol>
-              </section>
-            </div>
+            <section class="how" [attr.aria-label]="copy.howTitle">
+              <div class="eyebrow">{{ copy.howTitle }}</div>
+              <ol class="steps">
+                @for (s of copy.steps(roundNo()); track $index; let i = $index) {
+                  <li class="sunken steps__item rise" [style.--i]="i">
+                    <span class="steps__n num" aria-hidden="true">{{ i + 1 }}</span>
+                    <span>{{ s }}</span>
+                  </li>
+                }
+              </ol>
+            </section>
           </div>
         }
       </main>
@@ -191,9 +189,9 @@ const POLL_MS = 2000;
     /* ---------- до загрузки ---------- */
     .grid {
       display: grid;
-      grid-template-columns: minmax(320px, 5fr) minmax(0, 7fr);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: var(--sp-6);
-      align-items: start;
+      align-items: stretch;
     }
     .col {
       display: flex;
@@ -201,12 +199,15 @@ const POLL_MS = 2000;
       gap: var(--sp-4);
       min-width: 0;
     }
-    /* дропзона выше стандартной tall (220) — на этой странице она главный объект; grid растягивает label на весь хост */
+    /* дропзона выше стандартной tall (220) — на этой странице она главный объект; ряд делит высоту с шаблоном,
+       поэтому не выше, чем нужно шаблону с запасом (иначе в «Что в шаблоне» пустота над подвалом) */
     .drop {
-      display: grid;
-      min-height: 320px;
+      flex: 1 0 auto;
+      min-height: 248px;
     }
     .tpl {
+      grid-column: span 2;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       gap: var(--sp-3);
@@ -239,6 +240,7 @@ const POLL_MS = 2000;
       justify-content: space-between;
       gap: var(--sp-4);
       flex-wrap: wrap;
+      margin-top: auto;
     }
     .tpl__links {
       display: inline-flex;
@@ -248,24 +250,26 @@ const POLL_MS = 2000;
     .tpl__links .btn--text {
       gap: 6px;
     }
+    /* шаги — ряд из трёх тайлов ровно под колонками верхнего ряда (тот же repeat(3) и тот же зазор) */
     .how {
+      grid-column: 1 / -1;
       display: flex;
       flex-direction: column;
       gap: var(--sp-3);
-      padding: var(--sp-5);
     }
     .steps {
       margin: 0;
       padding: 0;
       list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: var(--sp-2);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--sp-6);
     }
     .steps__item {
       display: flex;
       align-items: flex-start;
       gap: var(--sp-3);
+      padding: var(--sp-4) var(--sp-5);
       color: var(--rr-ink-2);
     }
     .steps__n {
@@ -380,7 +384,15 @@ const POLL_MS = 2000;
     /* ---------- узкий экран ---------- */
     @media (max-width: 900px) {
       .grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--sp-4);
+      }
+      .tpl {
+        grid-column: auto;
+      }
+      .steps {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--sp-3);
       }
       .drop {
         min-height: 240px;

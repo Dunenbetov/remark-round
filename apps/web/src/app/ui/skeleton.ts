@@ -6,7 +6,7 @@ export type SkeletonKind = 'table' | 'cards' | 'block' | 'tiles' | 'rows72' | 'r
 /**
  * Скелетон загрузки: спокойный пульс прозрачности, без градиентной волны (VISUAL.md).
  * Формы повторяют плотность живых экранов: тайлы 88, строки журнала 72, рельс 60,
- * карточка с тремя колонками, карточки документов 160, карточки очереди 104.
+ * карточка с тремя колонками, полка документов (три карточки 184), карточки очереди 104.
  * `rows` — число строк/карточек там, где оно имеет смысл.
  */
 @Component({
@@ -97,7 +97,7 @@ export type SkeletonKind = 'table' | 'cards' | 'block' | 'tiles' | 'rows72' | 'r
       }
       @case ('doc-cards') {
         <div class="sk__docs">
-          @for (i of two; track i) {
+          @for (i of three; track i) {
             <div class="paper sk__doc">
               <span class="sk__bar sk__bar--thin" style="width: 72px"></span>
               <span class="sk__bar sk__bar--title" [style.width.%]="55 + ((i * 17) % 30)"></span>
@@ -306,15 +306,21 @@ export type SkeletonKind = 'table' | 'cards' | 'block' | 'tiles' | 'rows72' | 'r
       gap: var(--sp-2);
     }
 
-    /* ---------- doc-cards: две карточки 160 ---------- */
+    /* ---------- doc-cards: полка документов, три карточки 184 ---------- */
     .sk__docs {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: var(--sp-4);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--sp-6);
+    }
+    @media (max-width: 900px) {
+      .sk__docs {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--sp-4);
+      }
     }
     .sk__doc {
       position: relative;
-      min-height: 160px;
+      min-height: 184px;
       display: flex;
       flex-direction: column;
       gap: 12px;
@@ -404,7 +410,7 @@ export class Skeleton {
   readonly rows = input(5);
   protected readonly label = COMMON.loading;
   protected readonly list = computed(() => Array.from({ length: this.rows() }, (_, i) => i));
-  protected readonly two = [0, 1];
+  protected readonly three = [0, 1, 2];
   protected readonly four = [0, 1, 2, 3];
   protected readonly five = [0, 1, 2, 3, 4];
 }

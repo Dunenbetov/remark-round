@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { DOCUMENTS, DOC_STATUS_LABEL, DOC_STATUS_TONE } from '../core/copy';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { COMMON, DOCUMENTS, DOC_STATUS_LABEL, DOC_STATUS_TONE } from '../core/copy';
 import type { ProjectDocument } from '../core/models';
 import { Icon, type IconName } from './icons';
 import { StatusPill } from './status-pill';
@@ -11,6 +11,7 @@ const TEXT_EXT = new Set(['md', 'txt', 'markdown']);
  * Карточка документа проекта: eyebrow типа, имя файла, «дата · N фрагментов», пилюля статуса.
  * Число фрагментов — то, что реально попадёт в поиск; страниц нет (у сервера их нет).
  * Пульс на uploaded/parsed — документ ещё читаем; failed — под пилюлей подсказка загрузить снова.
+ * С `versionLabel` справа внизу — «Новая версия»: выбор файла того же типа.
  */
 @Component({
   selector: 'rr-doc-card',
@@ -30,9 +31,18 @@ const TEXT_EXT = new Set(['md', 'txt', 'markdown']);
     <div class="dc__name" [title]="doc().fileName">{{ doc().fileName }}</div>
     <div class="meta num dc__meta">{{ metaLine() }}</div>
     <div class="dc__foot">
-      <rr-status-pill [label]="statusLabel[doc().status]" [toneOverride]="statusTone[doc().status]" [dot]="true" [pulse]="pulse()" />
-      @if (doc().status === 'failed') {
-        <span class="meta dc__retry">{{ retryUpload }}</span>
+      <div class="dc__state">
+        <rr-status-pill [label]="statusLabel[doc().status]" [toneOverride]="statusTone[doc().status]" [dot]="true" [pulse]="pulse()" />
+        @if (doc().status === 'failed') {
+          <span class="meta dc__retry">{{ retryUpload }}</span>
+        }
+      </div>
+      @if (versionLabel(); as label) {
+        <label class="btn btn--text btn--sm dc__version" [class.dc__version--busy]="busy()">
+          <input type="file" class="visually-hidden" [accept]="accept()" [disabled]="busy()" (change)="onPick($event)" />
+          <rr-icon name="upload" [size]="16" />
+          {{ busy() ? uploading : label }}
+        </label>
       }
     </div>
   `,
@@ -41,7 +51,7 @@ const TEXT_EXT = new Set(['md', 'txt', 'markdown']);
       display: flex;
       flex-direction: column;
       gap: var(--sp-2);
-      min-height: 160px;
+      min-height: 184px;
       padding: var(--sp-5);
       min-width: 0;
     }
@@ -78,11 +88,32 @@ const TEXT_EXT = new Set(['md', 'txt', 'markdown']);
     }
     .dc__foot {
       display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: var(--sp-3);
+      margin-top: auto;
+      padding-top: var(--sp-2);
+    }
+    .dc__state {
+      display: flex;
       flex-direction: column;
       align-items: flex-start;
       gap: var(--sp-2);
-      margin-top: auto;
-      padding-top: var(--sp-2);
+      min-width: 0;
+    }
+    /* «Новая версия» — label над скрытым input[type=file], как в rr-drop-zone: клик открывает выбор файла */
+    .dc__version {
+      flex: none;
+      gap: var(--sp-1);
+      cursor: pointer;
+    }
+    .dc__version:has(:focus-visible) {
+      outline: 2px solid var(--rr-focus);
+      outline-offset: 2px;
+    }
+    .dc__version--busy {
+      cursor: progress;
+      color: var(--rr-ink-2);
     }
     :host([data-status='failed']) .dc__icon {
       color: var(--rr-danger);
@@ -93,10 +124,24 @@ export class DocCard {
   readonly doc = input.required<ProjectDocument>();
   /** Индекс в сетке — задержка лестницы появления (.rise). */
   readonly index = input(0);
+  /** Подпись кнопки загрузки новой версии этого типа; без неё кнопки нет. */
+  readonly versionLabel = input<string | null>(null);
+  readonly accept = input('');
+  readonly busy = input(false);
+  /** Файл новой версии; тип документа знает страница (слот полки). */
+  readonly file = output<File>();
 
   protected readonly statusLabel = DOC_STATUS_LABEL;
   protected readonly statusTone = DOC_STATUS_TONE;
   protected readonly retryUpload = DOCUMENTS.retryUpload;
+  protected readonly uploading = COMMON.loading;
+
+  protected onPick(e: Event): void {
+    const el = e.target as HTMLInputElement;
+    const f = el.files?.[0];
+    if (f) this.file.emit(f);
+    el.value = '';
+  }
 
   protected readonly kindLabel = computed(() => DOCUMENTS.kinds[this.doc().kind]);
   protected readonly pulse = computed(() => this.doc().status === 'uploaded' || this.doc().status === 'parsed');

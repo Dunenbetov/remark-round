@@ -54,10 +54,13 @@ const EDITABLE = 'input, textarea, [contenteditable=""], [contenteditable="true"
     </label>
   `,
   styles: `
+    /* flex-колонка: если родитель растянул хост (ряд сетки, flex: 1), зона заполняет его по высоте */
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
     }
     .dz {
+      flex: 1 0 auto;
       position: relative;
       display: flex;
       flex-direction: column;
