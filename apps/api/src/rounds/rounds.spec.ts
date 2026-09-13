@@ -31,6 +31,14 @@ describe('rounds: close, export, reopen', () => {
     expect(res.body.message).toMatch(/В работе — 1/);
   });
 
+  it('новый раунд не открыть, пока есть нерешённые: 409; список раундов отдаёт pending', async () => {
+    const res = await h.http.post(url('/rounds')).set(h.auth('pm')).send({}).expect(409);
+    expect(res.body.message).toBe('Новый раунд можно открыть, когда в раунде 1 не останется нерешённых замечаний (ещё 1)');
+    const list = await h.http.get(url('/rounds')).set(h.auth('pm')).expect(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0]).toMatchObject({ id: roundId, remarks: 2, pending: 1 });
+  });
+
   it('когда всё решено — закрывается; повтор — тот же ответ; в закрытый нельзя добавить и импортировать', async () => {
     const run = await h.prisma.agentRun.create({ data: { remarkId: defectId, projectId: h.projectId, status: 'persisted', mode: 'triage' } });
     await h.prisma.$transaction([

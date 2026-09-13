@@ -38,7 +38,7 @@
 | GET/POST | `/projects/:projectId/documents` | admin, pm | Пакет документов |
 | GET | `/projects/:projectId/documents/:id` | member | Мета + статус индекса |
 | POST | `/projects/:projectId/documents/:id/reindex` | admin, pm | |
-| GET/POST | `/projects/:projectId/rounds` | member POST: pm/business | Раунды: `{ id, number, status, remarks, closedAt }` |
+| GET/POST | `/projects/:projectId/rounds` | member POST: pm/business | Раунды: `{ id, number, status, remarks, pending, closedAt }`; `pending` — нерешённые замечания (всё, кроме `closed` / `change_request` / `duplicate`). Новый раунд — 409, пока в проекте есть нерешённые: «Новый раунд можно открыть, когда в раунде N не останется нерешённых замечаний (ещё K)» |
 | POST | `/projects/:projectId/rounds/:roundId/close` | pm, business | «Здесь мы остановились»: только когда все замечания решены (`closed` / `change_request` / `duplicate`), иначе 409 с перечнем нерешённого. В закрытый раунд нельзя добавить замечание и импортировать журнал (409) |
 | POST | `/projects/:projectId/rounds/:roundId/reopen` | pm, business | Открыть раунд снова |
 | GET | `/projects/:projectId/rounds/:roundId/export.xlsx` | member | Итог раунда для акта: xlsx из тех же карточек, что видит читатель (заказчик — без комментариев решений и советов, ADR 007); кадры — ссылками |
