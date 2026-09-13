@@ -161,6 +161,7 @@ export interface VerdictView {
   userId: string;
   userName?: string;
   userRole?: Role;
+  /** ISO 8601 (ADR 011): дату и время форматирует читатель в своём поясе. */
   at: string;
   comment?: string;
 }
@@ -171,6 +172,7 @@ export interface AdviceView {
   userId: string;
   userName?: string;
   role: Role;
+  /** ISO 8601. */
   at: string;
   comment?: string;
 }
@@ -178,16 +180,76 @@ export interface AdviceView {
 /** Строка истории замечания (GET /remarks/:id/history). `by` пуст — переход сделала система (граф, сбой прогона). */
 export interface HistoryEntry {
   id: string;
+  /** ISO 8601, UTC. */
   at: string;
   action: string;
   fromStatus?: RemarkStatus;
   toStatus: RemarkStatus;
-  by?: { userId: string; name: string; role?: Role };
+  /** Кто: имя на момент действия (ADR 011); userId пуст, если аккаунт с тех пор удалён. */
+  by?: { userId?: string; name: string; role?: Role };
   runId?: string;
   /** Короткая пометка: что предложила модель, итог ретеста, причина сбоя. Заказчику предложения модели не показываются. */
   detail?: string;
-  /** Слова человека при действии (комментарий к закрытию). Заказчику — только слова заказчика (ADR 007). */
+  /** Слова человека при действии (решение PM, «не та цитата», закрытие). Заказчику — только слова заказчика (ADR 007). */
   comment?: string;
+  /** Кадр этого действия; `current: false` — его потом заменили, но улика осталась (ADR 011). */
+  shot?: { kind: ScreenshotKind; url: string; current: boolean };
+}
+
+/** Строка RemarkStatusChange так, как её читают история карточки и выгрузка журнала. */
+export interface HistoryRow {
+  id: string;
+  createdAt: Date;
+  action: string;
+  fromStatus: RemarkStatus | null;
+  toStatus: RemarkStatus;
+  userId: string | null;
+  actorName: string | null;
+  role: Role | null;
+  runId: string | null;
+  detail: string | null;
+  comment: string | null;
+  screenshotId: string | null;
+  user?: { name: string } | null;
+}
+
+/**
+ * Что из строки истории видит читатель (ADR 007): заказчику — ни предложений модели, ни слов команды (комментарий PM
+ * к решению — рабочий), свои слова и всё остальное — да. Одна функция для экрана и для выгрузки журнала.
+ */
+export function historyVisibility(h: Pick<HistoryRow, 'action' | 'role' | 'detail' | 'comment'>, audience: Audience): { detail?: string; comment?: string } {
+  const customer = audience === 'customer';
+  return {
+    detail: customer && h.action === 'proposal' ? undefined : (h.detail ?? undefined),
+    comment: customer && h.role !== 'business' ? undefined : (h.comment ?? undefined),
+  };
+}
+
+/** Имя в строке истории: снимок на момент действия, для строк до снимков — живое имя. */
+export function historyActor(h: Pick<HistoryRow, 'userId' | 'actorName' | 'role' | 'user'>): HistoryEntry['by'] {
+  const name = h.actorName ?? h.user?.name;
+  if (!h.userId && !name) return undefined;
+  return { userId: h.userId ?? undefined, name: name ?? '', role: h.role ?? undefined };
+}
+
+export function toHistoryEntry(
+  h: HistoryRow,
+  audience: Audience,
+  projectId: string,
+  shots: ReadonlyMap<string, { kind: ScreenshotKind; storageKey: string; supersededAt: Date | null }>,
+): HistoryEntry {
+  const shot = h.screenshotId ? shots.get(h.screenshotId) : undefined;
+  return {
+    id: h.id,
+    at: h.createdAt.toISOString(),
+    action: h.action,
+    fromStatus: h.fromStatus ?? undefined,
+    toStatus: h.toStatus,
+    by: historyActor(h),
+    runId: h.runId ?? undefined,
+    ...historyVisibility(h, audience),
+    shot: shot ? { kind: shot.kind, url: mediaUrl(projectId, shot.storageKey), current: shot.supersededAt === null } : undefined,
+  };
 }
 
 /**
@@ -238,6 +300,7 @@ export interface RemarkView {
   devNote?: string;
   fixedByUserId?: string;
   closedByUserId?: string;
+  /** ISO 8601. */
   closedAt?: string;
   /** Как закрыли: после ретеста или заказчик проверил сам, без нового кадра (ADR 010). */
   closedVia?: ClosedVia;
@@ -377,7 +440,7 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience 
           userId: verdict.userId,
           userName: extra.names.get(verdict.userId),
           userRole: extra.roles?.get(verdict.userId),
-          at: hhmm(verdict.createdAt),
+          at: verdict.createdAt.toISOString(),
           comment: customer ? undefined : (verdict.comment ?? undefined),
         }
       : undefined,
@@ -385,13 +448,13 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience 
       ? []
       : [...r.advices]
           .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
-          .map((a) => ({ code: a.code, userId: a.userId, userName: extra.names.get(a.userId), role: extra.roles?.get(a.userId) ?? 'developer', at: hhmm(a.updatedAt), comment: a.comment ?? undefined })),
+          .map((a) => ({ code: a.code, userId: a.userId, userName: extra.names.get(a.userId), role: extra.roles?.get(a.userId) ?? 'developer', at: a.updatedAt.toISOString(), comment: a.comment ?? undefined })),
     retest: r.retestOutcome ? { outcome: r.retestOutcome, explanation: r.retestExplanation ?? '' } : undefined,
     duplicateOfNumber: extra.duplicateOfNumber,
     devNote: r.expected ?? undefined,
     fixedByUserId: r.fixedByUserId ?? undefined,
     closedByUserId: r.closedByUserId ?? undefined,
-    closedAt: r.closedAt ? hhmm(r.closedAt) : undefined,
+    closedAt: r.closedAt ? r.closedAt.toISOString() : undefined,
     closedVia: closeRow ? closedViaOf(closeRow.fromStatus) : undefined,
     closeComment: closeRow?.comment ?? undefined,
     runId: run?.id,
@@ -445,10 +508,6 @@ function firstLine(s: string): string {
 /** Строка журнала без описания: заголовок карточки до того, как человек её допишет. */
 function untitled(externalId: string | null): string {
   return externalId ? `Строка ${externalId} журнала без описания` : 'Строка журнала без описания';
-}
-
-function hhmm(d: Date): string {
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 function ddmm(d: Date): string {

@@ -220,6 +220,9 @@ export const CARD = {
   history: 'История',
   historyEmpty: 'Пока пусто',
   historySystem: 'RemarkRound',
+  /** Кадр действия в истории: открыть в просмотрщике; заменённый — «прежний», но улика осталась (ADR 011). */
+  historyShot: { original: 'кадр', retest: 'новый кадр', diff: 'дифф' } as Record<'original' | 'retest' | 'diff', string>,
+  historyShotReplaced: 'заменён',
   reopenedIn: (number: number, round: number) => `Открыто снова: №${number} в раунде ${round}`,
   reopenIn: (round: number) => `Открыть снова в раунде ${round}`,
   reopenNoRound: 'Чтобы открыть снова, сначала создайте новый раунд',
@@ -840,6 +843,8 @@ export const HISTORY_ACTION: Record<string, string> = {
   /** Строка `close` из ready_for_retest (ADR 010): карточка подменяет подпись по fromStatus. */
   close_checked: 'Закрыто без нового кадра: заказчик проверил сам',
   not_fixed: 'Не исправлено — снова в работу',
+  link_duplicate: 'Связано с оригиналом',
+  reopened_as: 'Претензию предъявили снова',
   cancel: 'Разбор остановлен',
   run_failed: 'Разбор не удался',
 };

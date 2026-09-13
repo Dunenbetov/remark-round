@@ -131,6 +131,7 @@ model User {
   advices      DeveloperAdvice[]
   notifications Notification[]
   statusChanges RemarkStatusChange[]
+  roundEvents   RoundEvent[]
   authoredRemarks Remark[]     @relation("RemarkAuthor")
   fixedRemarks    Remark[]     @relation("RemarkFixedBy")
   closedRemarks   Remark[]     @relation("RemarkClosedBy")
@@ -157,6 +158,7 @@ model Project {
   runs        AgentRun[]
   chunks      DocumentChunk[]
   importJobs  ImportJob[]
+  roundEvents RoundEvent[]
   createdAt   DateTime       @default(now())
 }
 
@@ -246,6 +248,10 @@ model Round {
   closedBy  User?       @relation("RoundClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
   remarks   Remark[]
   imports   ImportJob[]
+  /// Когда раунд открыт (ADR 011); у раундов до миграции — по первому замечанию
+  createdAt DateTime    @default(now())
+  /// Открыт / закрыт / открыт снова — кто и когда (ADR 011): closedAt у раунда перезаписывается, история — нет
+  events    RoundEvent[]
 
   @@unique([projectId, number])
   /// Составной ключ для FK (roundId, projectId) у Remark и ImportJob: замечание не попадёт в раунд чужого проекта даже ручным SQL
@@ -315,6 +321,9 @@ model RemarkScreenshot {
   height    Int?
   remark    Remark         @relation(fields: [remarkId], references: [id], onDelete: Cascade)
   createdAt DateTime       @default(now())
+  /// Заменён новым кадром того же вида (ADR 011): «не исправлено», новый ретест, отмена. Строка остаётся уликой и
+  /// ссылкой из истории; текущие кадры карточки — supersededAt IS NULL. Удалить кадр нельзя (триггер rr_append_only).
+  supersededAt DateTime?
 
   @@index([remarkId])
 }
@@ -519,6 +528,8 @@ model Notification {
 
 /// Строка на каждый переход замечания (аудит: remark-history): откуда, куда, кто (и в какой роли), каким прогоном,
 /// короткая человеческая пометка (что предложила модель, почему упал прогон). Пишется в той же транзакции, что и статус.
+/// Только дописывается (ADR 011): UPDATE и DELETE запрещает триггер rr_append_only — кроме каскада FK при удалении
+/// самого замечания или человека. Всё, что строке нужно, известно в момент вставки.
 model RemarkStatusChange {
   id         String        @id @default(uuid())
   remarkId   String
@@ -533,9 +544,34 @@ model RemarkStatusChange {
   /// Слова человека при действии (ADR 010): комментарий к закрытию. Как закрыли — по fromStatus строки `close`:
   /// ready_for_retest — заказчик проверил сам, без нового кадра; awaiting_business_close — после ретеста с кадром
   comment    String?
+  /// Имя человека на момент действия (ADR 011): переименование и удаление аккаунта историю не меняют
+  actorName  String?
+  /// Кадр, приложенный действием (attach_screenshot, retest) или построенный им (retest_result — дифф); без FK, как runId
+  screenshotId String?
   createdAt  DateTime      @default(now())
   remark     Remark        @relation(fields: [remarkId], references: [id], onDelete: Cascade)
   user       User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([remarkId, createdAt])
+}
+
+/// События раунда (ADR 011): открыт, закрыт, открыт снова — кто, в какой роли, когда. Только дописывается (триггер
+/// rr_append_only), удаляется лишь вместе с раундом. Лист «Раунды» выгрузки и страница «Раунды» читают отсюда.
+model RoundEvent {
+  id        String   @id @default(uuid())
+  roundId   String
+  projectId String
+  /// open | close | reopen
+  action    String
+  userId    String?
+  /// Имя на момент действия — как в истории замечания
+  actorName String?
+  role      Role?
+  createdAt DateTime @default(now())
+  round     Round    @relation(fields: [roundId, projectId], references: [id, projectId], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([roundId, createdAt])
+  @@index([projectId])
 }

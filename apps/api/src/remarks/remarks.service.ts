@@ -1,17 +1,18 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import type { Prisma, ProposedClass, Remark, RemarkStatus, RetestOutcome, Role, VerdictCode } from '@remarkround/db';
+import type { Prisma, ProposedClass, Remark, RemarkStatus, RetestOutcome, Role, ScreenshotKind, VerdictCode } from '@remarkround/db';
 import type { LlmUsage } from '../llm/triage-llm';
 import { ObservabilityService } from '../observability/observability.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
-import { AdviceDto, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, audienceFor, quote, toRemarkView, type HistoryEntry } from './remark.dto';
+import { AdviceDto, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, audienceFor, quote, toHistoryEntry, toRemarkView, type HistoryEntry } from './remark.dto';
 import { PROPOSED_LABEL_RU } from './labels';
 
 const REMARK_INCLUDE = {
   round: { select: { number: true } },
-  screenshots: true,
+  // Текущие кадры: заменённые остаются уликой и ссылкой из истории, но на карточку не выходят (ADR 011)
+  screenshots: { where: { supersededAt: null } },
   citations: { select: { id: true, chunkId: true, quoteText: true, section: true, documentTitle: true, documentKind: true, effectiveAt: true } },
   verdicts: { select: { code: true, userId: true, comment: true, createdAt: true } },
   advices: { select: { code: true, userId: true, comment: true, updatedAt: true } },
@@ -100,14 +101,22 @@ export class RemarksService {
    * Номер в раунде под блокировкой строки раунда: два одновременных замечания иначе получали один номер
    * (@@unique(roundId, number) → P2002). На всякий случай — повтор.
    */
-  private async createNumbered(roundId: string, data: Omit<Prisma.RemarkUncheckedCreateInput, 'number' | 'roundId'>, by: HistoryBy & { action: 'create' | 'import' | 'reopen' }): Promise<Remark> {
+  private async createNumbered(
+    roundId: string,
+    data: Omit<Prisma.RemarkUncheckedCreateInput, 'number' | 'roundId'>,
+    by: HistoryBy & { action: 'create' | 'import' | 'reopen' },
+    /** Дописать ещё что-то в той же транзакции (повтор претензии — строку на оригинале). */
+    also?: (tx: Prisma.TransactionClient, created: Remark) => Promise<void>,
+  ): Promise<Remark> {
     for (let attempt = 1; ; attempt++) {
       try {
         return await this.prisma.$transaction(async (tx) => {
           await tx.$queryRaw`SELECT "id" FROM "Round" WHERE "id" = ${roundId} FOR UPDATE`;
           const last = await tx.remark.findFirst({ where: { roundId }, orderBy: { number: 'desc' }, select: { number: true } });
-          const created = await tx.remark.create({ data: { ...data, roundId, number: (last?.number ?? 0) + 1 } });
-          await tx.remarkStatusChange.create({ data: { remarkId: created.id, fromStatus: null, toStatus: created.status, action: by.action, userId: by.userId ?? null, role: by.role ?? null } });
+          const created = await tx.remark.create({ data: { ...data, roundId, number: (last?.number ?? 0) + 1 }, include: { screenshots: { select: { id: true } } } });
+          // Строка «создано» ссылается на кадр, с которым замечание пришло
+          await this.writeHistory(tx, { ...by, remarkId: created.id, fromStatus: null, toStatus: created.status, screenshotId: created.screenshots[0]?.id ?? null });
+          if (also) await also(tx, created);
           return created;
         });
       } catch (e) {
@@ -168,23 +177,18 @@ export class RemarksService {
     return row.status;
   }
 
-  /** История переходов (аудит: remark-history): тот же ACL, что у карточки; заказчику — без содержания предложений модели (ADR 007). */
+  /**
+   * История переходов (аудит: remark-history, ADR 011): тот же ACL, что у карточки. Имя — снимком на момент действия,
+   * кадр действия — ссылкой, даже если его потом заменили. Заказчику — без предложений модели и слов команды (ADR 007).
+   */
   async history(ctx: ProjectContext, remarkId: string): Promise<HistoryEntry[]> {
     await this.get(ctx, remarkId);
     const rows = await this.prisma.remarkStatusChange.findMany({ where: { remarkId }, orderBy: { createdAt: 'asc' }, include: { user: { select: { name: true } } } });
-    const customer = audienceFor(ctx.role) === 'customer';
-    return rows.map((h) => ({
-      id: h.id,
-      at: h.createdAt.toISOString(),
-      action: h.action,
-      fromStatus: h.fromStatus ?? undefined,
-      toStatus: h.toStatus,
-      by: h.userId ? { userId: h.userId, name: h.user?.name ?? '', role: h.role ?? undefined } : undefined,
-      runId: h.runId ?? undefined,
-      detail: customer && h.action === 'proposal' ? undefined : (h.detail ?? undefined),
-      // Заказчик читает свои слова, но не внутренние комментарии команды (ADR 007)
-      comment: customer && h.role !== 'business' ? undefined : (h.comment ?? undefined),
-    }));
+    const shotIds = rows.map((h) => h.screenshotId).filter((id): id is string => Boolean(id));
+    const shots = shotIds.length ? await this.prisma.remarkScreenshot.findMany({ where: { remarkId, id: { in: shotIds } }, select: { id: true, kind: true, storageKey: true, supersededAt: true } }) : [];
+    const shotById = new Map(shots.map((s) => [s.id, s]));
+    const audience = audienceFor(ctx.role);
+    return rows.map((h) => toHistoryEntry(h, audience, ctx.projectId, shotById));
   }
 
   // ---------- создание ----------
@@ -251,13 +255,16 @@ export class RemarksService {
       authorId: ctx.userId,
       originRemarkId: row.id,
       screenshots: shot ? { create: { kind: 'original', ...shot } } : undefined,
-    }, { action: 'reopen', userId: ctx.userId, role: ctx.role });
+    }, { action: 'reopen', userId: ctx.userId, role: ctx.role, detail: `Повтор № ${row.number} из раунда ${row.round.number}` }, async (tx, created) => {
+      // Оригинал остаётся закрытым, но в его истории видно, что претензию предъявили снова (ADR 011)
+      await this.writeHistory(tx, { remarkId: row.id, fromStatus: row.status, toStatus: row.status, action: 'reopened_as', userId: ctx.userId, role: ctx.role, detail: `Повтор в раунде ${target.number} — № ${created.number}` });
+    });
     return this.get(ctx, created.id);
   }
 
   /** Раунд этого проекта, в который ещё можно писать: закрытый — 409 (RoundsService.close). */
-  private async openRound(ctx: ProjectContext, roundId: string): Promise<{ id: string; status: 'open' | 'closed' }> {
-    const round = await this.prisma.round.findFirst({ where: { id: roundId, projectId: ctx.projectId }, select: { id: true, status: true } });
+  private async openRound(ctx: ProjectContext, roundId: string): Promise<{ id: string; number: number; status: 'open' | 'closed' }> {
+    const round = await this.prisma.round.findFirst({ where: { id: roundId, projectId: ctx.projectId }, select: { id: true, number: true, status: true } });
     if (!round) throw new NotFoundException();
     if (round.status === 'closed') throw new ConflictException(ROUND_CLOSED);
     return round;
@@ -285,11 +292,12 @@ export class RemarksService {
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['cannot_tell', 'imported'], 'attach_screenshot');
     await this.assertShot(ctx, screenshotKey);
-    await this.prisma.$transaction([
-      this.prisma.remarkScreenshot.deleteMany({ where: { remarkId, kind: 'original' } }),
-      this.prisma.remarkScreenshot.create({ data: { remarkId, kind: 'original', storageKey: screenshotKey } }),
-      this.prisma.remarkStatusChange.create({ data: { remarkId, fromStatus: row.status, toStatus: row.status, action: 'attach_screenshot', userId: ctx.userId, role: ctx.role } }),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      // Прежний кадр не удаляется, а помечается заменённым: на него могла ссылаться история и решение (ADR 011)
+      await supersede(tx, remarkId, ['original']);
+      const shot = await tx.remarkScreenshot.create({ data: { remarkId, kind: 'original', storageKey: screenshotKey } });
+      await this.writeHistory(tx, { remarkId, fromStatus: row.status, toStatus: row.status, action: 'attach_screenshot', userId: ctx.userId, role: ctx.role, screenshotId: shot.id });
+    });
     return this.get(ctx, remarkId);
   }
 
@@ -423,14 +431,15 @@ export class RemarksService {
         }
         if (run.mode === 'retest' && (row.status === 'ready_for_retest' || row.status === 'awaiting_business_close')) {
           next = 'ready_for_retest';
-          await tx.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } });
           changed = await tx.remark.updateMany({ where: { id: remarkId, status: { in: ['ready_for_retest', 'awaiting_business_close'] } }, data: { status: next, retestOutcome: null, retestExplanation: null } });
+          // Кадр остановленного ретеста остаётся в базе заменённым — с карточки уходит, из истории нет (ADR 011)
+          if (changed.count === 1) await supersede(tx, remarkId, ['retest', 'diff']);
         }
       }
       // Прогон, который параллельный вердикт уже перевёл в persisted, отменой не трогаем
       const cancelled = await tx.agentRun.updateMany({ where: { id: runId, status: { in: ['running', 'awaiting_human'] } }, data: { status: 'cancelled' } });
       if (cancelled.count === 1 || changed.count === 1) {
-        await tx.remarkStatusChange.create({ data: { remarkId, fromStatus: row.status, toStatus: changed.count === 1 ? next : row.status, action: 'cancel', userId: ctx.userId, role: ctx.role, runId } });
+        await this.writeHistory(tx, { remarkId, fromStatus: row.status, toStatus: changed.count === 1 ? next : row.status, action: 'cancel', userId: ctx.userId, role: ctx.role, runId });
       }
     });
     return this.get(ctx, remarkId);
@@ -457,7 +466,7 @@ export class RemarksService {
       if (!dto.comment?.trim()) throw new ConflictException('Для «не та цитата» нужен комментарий');
       const comment = dto.comment.trim();
       await this.prisma.$transaction(async (tx) => {
-        await this.transition(tx, remarkId, ['awaiting_pm'], 'rejected_binding', { status: 'triaging' }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: dto.runId });
+        await this.transition(tx, remarkId, ['awaiting_pm'], 'rejected_binding', { status: 'triaging' }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: dto.runId, comment });
         await tx.humanVerdict.create({ data: { remarkId, runId: dto.runId, userId: ctx.userId, code: 'rejected_binding', comment, idempotencyKey: dto.idempotencyKey } });
         await tx.agentRun.update({ where: { id: dto.runId }, data: { status: 'running' } });
       });
@@ -470,7 +479,7 @@ export class RemarksService {
       : null;
     // Условная запись: два одновременных решения не дадут «произвольного победителя» — второе получит 409 и перечитает карточку
     await this.prisma.$transaction(async (tx) => {
-      await this.transition(tx, remarkId, [row.status], 'verdict', { status: next, duplicateOfId: duplicateOf?.id ?? row.duplicateOfId }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: dto.runId });
+      await this.transition(tx, remarkId, [row.status], 'verdict', { status: next, duplicateOfId: duplicateOf?.id ?? row.duplicateOfId }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: dto.runId, comment: dto.comment?.trim() || null });
       await tx.humanVerdict.create({ data: { remarkId, runId: dto.runId, userId: ctx.userId, code: dto.verdict, comment: dto.comment?.trim() || null, idempotencyKey: dto.idempotencyKey } });
       await tx.agentRun.update({ where: { id: dto.runId }, data: { status: 'persisted' } });
       await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, next, ctx.userId);
@@ -495,7 +504,11 @@ export class RemarksService {
     const row = await this.load(ctx, remarkId);
     const original = await this.prisma.remark.findFirst({ where: { roundId: row.roundId, number: duplicateOfNumber } });
     if (!original || original.id === row.id) throw new NotFoundException('Оригинал не найден в этом раунде');
-    await this.prisma.remark.update({ where: { id: remarkId }, data: { duplicateOfId: original.id } });
+    // Статус не меняется, но связь — решение человека: в истории видно, кто и с каким номером связал (ADR 011)
+    await this.prisma.$transaction(async (tx) => {
+      await tx.remark.update({ where: { id: remarkId }, data: { duplicateOfId: original.id } });
+      await this.writeHistory(tx, { remarkId, fromStatus: row.status, toStatus: row.status, action: 'link_duplicate', userId: ctx.userId, role: ctx.role, detail: `Оригинал — № ${original.number}` });
+    });
     return this.get(ctx, remarkId);
   }
 
@@ -538,19 +551,21 @@ export class RemarksService {
 
   // ---------- ретест ----------
 
-  /** Новый кадр от бизнеса: старый ретест и дифф снимаются, стартует AgentRun mode=retest. Статус — до диффа. */
+  /** Новый кадр от бизнеса: старый ретест и дифф помечаются заменёнными, стартует AgentRun mode=retest. Статус — до диффа. */
   async beginRetest(ctx: ProjectContext, remarkId: string, screenshotKey: string, model: string): Promise<{ runId: string }> {
     if (ctx.role !== 'business') throw new ForbiddenException();
     const row = await this.load(ctx, remarkId);
     this.assertTransition(row.status, ['ready_for_retest'], 'retest');
-    if (row.runs.some((r) => r.mode === 'retest' && r.status === 'running')) throw new ConflictException('Кадры уже сравниваются');
+    if (row.runs.some((r) => r.mode === 'retest' && r.status === 'running')) throw new ConflictException(RETEST_RUNNING);
     await this.assertShot(ctx, screenshotKey);
     const run = await this.prisma.$transaction(async (tx) => {
       const created = await tx.agentRun.create({ data: { remarkId, projectId: ctx.projectId, mode: 'retest', status: 'running', model } });
-      // Статус не меняется, но замечание должно быть всё ещё ready_for_retest в момент записи кадра (SET status=status считает строку)
-      await this.transition(tx, remarkId, ['ready_for_retest'], 'retest', { status: 'ready_for_retest' }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: created.id });
-      await tx.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } });
-      await tx.remarkScreenshot.create({ data: { remarkId, kind: 'retest', storageKey: screenshotKey } });
+      // Прежний круг ретеста остаётся уликой (ADR 011): кадры не удаляются, строка истории ссылается на новый кадр —
+      // поэтому кадр пишется раньше строки. Статус не меняется, но условная запись (SET status=status) проверит, что
+      // замечание всё ещё ready_for_retest; 409 откатит и кадр.
+      await supersede(tx, remarkId, ['retest', 'diff']);
+      const shot = await tx.remarkScreenshot.create({ data: { remarkId, kind: 'retest', storageKey: screenshotKey } });
+      await this.transition(tx, remarkId, ['ready_for_retest'], 'retest', { status: 'ready_for_retest' }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: created.id, screenshotId: shot.id });
       return created;
     });
     return { runId: run.id };
@@ -578,10 +593,11 @@ export class RemarksService {
     if (!run) throw new ConflictException('Прогон уже завершён или остановлен');
     const retest = [...row.screenshots].filter((s) => s.kind === 'retest').sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
     await this.prisma.$transaction(async (tx) => {
-      await this.transition(tx, remarkId, ['ready_for_retest'], 'retest_result', { status: 'awaiting_business_close', retestOutcome: result.outcome, retestExplanation: result.explanation }, { userId: null, role: null, fromStatus: row.status, runId, detail: [retestLabel(result.outcome), result.explanation].filter(Boolean).join(' — ').slice(0, 300) });
       if (retest && result.retestSize) await tx.remarkScreenshot.update({ where: { id: retest.id }, data: result.retestSize });
-      await tx.remarkScreenshot.deleteMany({ where: { remarkId, kind: 'diff' } });
-      if (result.diffShot) await tx.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...result.diffShot } });
+      await supersede(tx, remarkId, ['diff']);
+      // Дифф — улика этого сравнения: строка истории ссылается на него, поэтому кадр пишется первым
+      const diff = result.diffShot ? await tx.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...result.diffShot } }) : null;
+      await this.transition(tx, remarkId, ['ready_for_retest'], 'retest_result', { status: 'awaiting_business_close', retestOutcome: result.outcome, retestExplanation: result.explanation }, { userId: null, role: null, fromStatus: row.status, runId, detail: [retestLabel(result.outcome), result.explanation].filter(Boolean).join(' — ').slice(0, 300), screenshotId: diff?.id ?? null });
       await tx.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human', ...usageData(result.usage) } });
       // Ретест запускает сам заказчик и, пока граф сравнивает кадры, мог уйти: письмо — и ему тоже (actor = null)
       await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'awaiting_business_close', null);
@@ -617,7 +633,8 @@ export class RemarksService {
     this.assertTransition(row.status, ['awaiting_business_close'], 'not_fixed');
     await this.prisma.$transaction(async (tx) => {
       await this.transition(tx, remarkId, ['awaiting_business_close'], 'not_fixed', { status: 'defect', retestOutcome: null, retestExplanation: null }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status });
-      await tx.remarkScreenshot.deleteMany({ where: { remarkId, kind: { in: ['retest', 'diff'] } } });
+      // Кадр, которым заказчик доказал «не исправлено», остаётся уликой (ADR 011): с карточки уходит, из базы — нет
+      await supersede(tx, remarkId, ['retest', 'diff']);
       await tx.agentRun.updateMany({ where: { remarkId, mode: 'retest', status: 'awaiting_human' }, data: { status: 'persisted' } });
       await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'defect', ctx.userId);
     });
@@ -641,15 +658,34 @@ export class RemarksService {
     if (count === 1) {
       // История — в той же транзакции, что и статус (аудит: remark-history): строка на переход, кто, в какой роли, каким прогоном
       const toStatus = typeof data.status === 'string' ? data.status : undefined;
-      if (toStatus) {
-        await tx.remarkStatusChange.create({
-          data: { remarkId, fromStatus: by.fromStatus ?? (from.length === 1 ? from[0]! : null), toStatus, action, userId: by.userId ?? null, role: by.role ?? null, runId: by.runId ?? null, detail: by.detail ?? null, comment: by.comment ?? null },
-        });
-      }
+      if (toStatus) await this.writeHistory(tx, { ...by, remarkId, action, fromStatus: by.fromStatus ?? (from.length === 1 ? from[0]! : null), toStatus });
       return;
     }
     const now = await tx.remark.findUnique({ where: { id: remarkId }, select: { status: true } });
     throw new ConflictException(`Переход «${action}» из статуса ${now?.status ?? '?'} запрещён (docs/STATUS.md): карточка изменилась, обновите её`);
+  }
+
+  /**
+   * Строка истории (ADR 011). Postgres не даст её потом поправить (триггер rr_append_only), поэтому всё известно
+   * сейчас: имя человека — снимком (переименование и удаление аккаунта историю не меняют), кадр действия — ссылкой.
+   */
+  private async writeHistory(tx: Prisma.TransactionClient, h: Omit<HistoryBy, 'fromStatus'> & { remarkId: string; action: string; fromStatus: RemarkStatus | null; toStatus: RemarkStatus }): Promise<void> {
+    const actorName = h.userId ? ((await tx.user.findUnique({ where: { id: h.userId }, select: { name: true } }))?.name ?? null) : null;
+    await tx.remarkStatusChange.create({
+      data: {
+        remarkId: h.remarkId,
+        fromStatus: h.fromStatus,
+        toStatus: h.toStatus,
+        action: h.action,
+        userId: h.userId ?? null,
+        actorName,
+        role: h.role ?? null,
+        runId: h.runId ?? null,
+        detail: h.detail ?? null,
+        comment: h.comment ?? null,
+        screenshotId: h.screenshotId ?? null,
+      },
+    });
   }
 
   private async load(ctx: ProjectContext, remarkId: string): Promise<RemarkRow> {
@@ -692,8 +728,15 @@ interface HistoryBy {
   fromStatus?: RemarkStatus;
   runId?: string | null;
   detail?: string | null;
-  /** Слова человека (комментарий к закрытию). */
+  /** Слова человека: комментарий к решению PM, к «не та цитата», к закрытию. */
   comment?: string | null;
+  /** Кадр, который действие приложило или построило (attach_screenshot, retest, retest_result). */
+  screenshotId?: string | null;
+}
+
+/** Текущие кадры вида `kinds` становятся заменёнными (ADR 011): строка остаётся уликой, с карточки кадр уходит. */
+async function supersede(tx: Prisma.TransactionClient, remarkId: string, kinds: ScreenshotKind[]): Promise<void> {
+  await tx.remarkScreenshot.updateMany({ where: { remarkId, kind: { in: kinds }, supersededAt: null }, data: { supersededAt: new Date() } });
 }
 
 /** Короткая пометка «что предложила модель»: класс и первый абзац черновика без заголовка. */

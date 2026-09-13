@@ -29,6 +29,7 @@ import { QueueRail, RailItem } from '../ui/queue-rail';
 import { RunSteps } from '../ui/run-steps';
 import { Shot } from '../ui/shot';
 import { ShotViewer, ViewerFrame } from '../ui/shot-viewer';
+import { dateTimeRu } from '../core/format';
 import { ProcessStrip } from '../ui/process-strip';
 
 /** fix — строка журнала без описания: человек дописывает её прямо на карточке. */
@@ -310,7 +311,8 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                       <a class="link card__trace" [href]="r.traceUrl" target="_blank" rel="noopener">{{ traceLabel }} <rr-icon name="external" [size]="12" /></a>
                     }
                   </footer>
-                  <details class="history" (toggle)="onHistoryToggle($event)">
+                  <!-- История — дело целиком (ADR 011): на закрытом замечании раскрыта сразу, это главное, что на нём читают -->
+                  <details class="history" [open]="r.status === 'closed'" (toggle)="onHistoryToggle($event)">
                     <summary class="history__summary">{{ copy.history }}</summary>
                     @if (historyLoading()) {
                       <p class="meta history__note">…</p>
@@ -333,6 +335,11 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                               @if (e.comment) {
                                 <span class="history__comment">«{{ e.comment }}»</span>
                               }
+                              @if (e.shot; as shot) {
+                                <button type="button" class="btn btn--text history__shot" (click)="openHistoryShot(e)">
+                                  {{ copy.historyShot[shot.kind] }}@if (!shot.current) {<span class="meta"> · {{ copy.historyShotReplaced }}</span>}
+                                </button>
+                              }
                             </div>
                           </li>
                         }
@@ -346,6 +353,9 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
           <input #file type="file" class="visually-hidden" accept="image/*" (change)="onFile($event)" />
           @if (viewer() !== null) {
             <rr-shot-viewer [title]="'№ ' + r.number + ' · ' + r.title" [frames]="frames()" [initial]="viewer()!" (closed)="viewer.set(null)" />
+          }
+          @if (historyShot(); as hs) {
+            <rr-shot-viewer [title]="'№ ' + r.number + ' · ' + hs.title" [frames]="[hs.frame]" (closed)="historyShot.set(null)" />
           }
         </div>
       } @else {
@@ -624,7 +634,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
     }
     .history__row {
       display: grid;
-      grid-template-columns: 9ch minmax(0, 1fr);
+      grid-template-columns: 21ch minmax(0, 1fr);
       gap: var(--sp-3);
       font-size: var(--fs-13);
       line-height: var(--lh-13);
@@ -649,6 +659,19 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
     .history__detail {
       flex-basis: 100%;
       overflow-wrap: anywhere;
+    }
+    /* кадр действия — тихая текстовая кнопка в строке */
+    .history__shot {
+      padding: 0;
+      min-height: 0;
+      font-size: inherit;
+      line-height: inherit;
+    }
+    @media (max-width: 900px) {
+      .history__row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 2px;
+      }
     }
     /* слова человека — как комментарий записи решения: курсив, вторичный цвет */
     .history__comment {
@@ -794,6 +817,8 @@ export class RemarkCardPage {
   protected readonly role = computed(() => this.session.roleIn(this.projectId()));
   protected readonly remark = computed<Remark | undefined>(() => this.store.byId(this.remarkId()));
   protected readonly viewer = signal<number | null>(null);
+  /** Кадр строки истории, открытый в просмотрщике. */
+  protected readonly historyShot = signal<{ title: string; frame: ViewerFrame } | null>(null);
   /** Кто ещё в комнате замечания (presence из WS), кроме меня. */
   protected readonly presence = signal<Presence[]>([]);
   private readonly runSig = signal<TriageRun | null>(null);
@@ -1199,17 +1224,17 @@ export class RemarkCardPage {
         changeable: false,
         stamp: STAMP_LABEL.ready,
         tone: 'work',
-        sub: v ? [DECISION.record + ' ' + VERDICT_LABEL[v.code], v.userName, v.at].filter(Boolean).join(' · ') : undefined,
+        sub: v ? [DECISION.record + ' ' + VERDICT_LABEL[v.code], v.userName, dateTimeRu(v.at)].filter(Boolean).join(' · ') : undefined,
       };
     }
     if (r.status === 'closed') {
       const via = r.closedVia === 'business_check' ? DECISION.closedWithoutFrame : r.closedVia === 'retest' ? DECISION.closedAfterRetest : undefined;
-      return { label: DECISION.closedRecord, who: r.closedByName ?? '', at: r.closedAt ?? '', changeable: false, stamp: STAMP_LABEL.closed, tone: 'ok', comment: r.closeComment, sub: via };
+      return { label: DECISION.closedRecord, who: r.closedByName ?? '', at: dateTimeRu(r.closedAt), changeable: false, stamp: STAMP_LABEL.closed, tone: 'ok', comment: r.closeComment, sub: via };
     }
     if (!r.verdict) return null;
     const code = r.verdict.code;
     const label = code === 'rejected_binding' ? STATUS_LABEL[r.status] : VERDICT_LABEL[code];
-    return { label, who: r.verdict.userName ?? '', at: r.verdict.at, changeable: false, stamp: STAMP_LABEL[code], tone: STAMP_TONE[code], comment: r.verdict.comment };
+    return { label, who: r.verdict.userName ?? '', at: dateTimeRu(r.verdict.at), changeable: false, stamp: STAMP_LABEL[code], tone: STAMP_TONE[code], comment: r.verdict.comment };
   });
 
   protected readonly headerStamp = computed<HeaderStamp | null>(() => (this.remark()!.status === 'closed' ? { label: STAMP_LABEL.closed, tone: 'ok' } : null));
@@ -1333,7 +1358,7 @@ export class RemarkCardPage {
       case 'awaiting_business_close':
         return role === 'business' ? PHASE_TEXT.awaiting_business_close : PHASE_EXTRA.awaitingBusinessOther;
       case 'closed':
-        return PHASE_EXTRA.closedAt(r.closedByName ?? '', r.closedAt ?? '');
+        return PHASE_EXTRA.closedAt(r.closedByName ?? '', dateTimeRu(r.closedAt));
       default:
         return STATUS_LABEL[r.status];
     }
@@ -1497,8 +1522,17 @@ export class RemarkCardPage {
     return HISTORY_ACTION[e.action] ?? e.action;
   }
 
+  /** Дата с годом и время в поясе читателя (ADR 011): через год по истории должно быть видно, какой это был сентябрь. */
   protected when(iso: string): string {
-    return new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return dateTimeRu(iso);
+  }
+
+  /** Кадр действия из истории — в том же просмотрщике; заменённый кадр по-прежнему открывается (ADR 011). */
+  protected openHistoryShot(e: RemarkHistoryEntry): void {
+    if (!e.shot) return;
+    const variant = e.shot.kind === 'diff' ? 'diff' : e.shot.kind === 'retest' ? 'blue' : 'grey';
+    // Подпись вида кадра показывает сам просмотрщик — в заголовке только момент действия
+    this.historyShot.set({ title: this.when(e.at), frame: { label: CARD.historyShot[e.shot.kind], variant, src: e.shot.url } });
   }
 
 }

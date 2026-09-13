@@ -88,6 +88,51 @@ describe('remark history', () => {
     expect(failRows[0]!.detail).toMatch(/не ответила/);
   });
 
+  it('имя — снимок на момент действия (ADR 011); комментарий PM виден команде, но не заказчику (ADR 007)', async () => {
+    const remark = await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: h.roundId, number: 9304, description: 'Снимок имени', status: 'awaiting_pm', rationale: 'Черновик.' } });
+    const run = await h.prisma.agentRun.create({ data: { remarkId: remark.id, projectId: h.projectId, status: 'awaiting_human', mode: 'triage' } });
+    await h.http.post(url(`/remarks/${remark.id}/verdict`)).set(h.auth('pm')).send({ runId: run.id, verdict: 'defect', comment: 'Внутренняя пометка PM', idempotencyKey: randomUUID() }).expect(200);
+    await h.prisma.user.update({ where: { id: h.users.pm.id }, data: { name: 'Новое имя PM' } });
+    try {
+      const asPm = await h.http.get(url(`/remarks/${remark.id}/history`)).set(h.auth('pm')).expect(200);
+      const verdictRow = (asPm.body as Array<Record<string, any>>).find((r) => r.action === 'verdict')!;
+      expect(verdictRow.by).toEqual({ userId: h.users.pm.id, name: 'pm', role: 'pm' });
+      expect(verdictRow.comment).toBe('Внутренняя пометка PM');
+      const asCustomer = await h.http.get(url(`/remarks/${remark.id}/history`)).set(h.auth('business')).expect(200);
+      const customerRow = (asCustomer.body as Array<Record<string, any>>).find((r) => r.action === 'verdict')!;
+      expect(customerRow.by.name).toBe('pm');
+      expect(customerRow.comment).toBeUndefined();
+    } finally {
+      await h.prisma.user.update({ where: { id: h.users.pm.id }, data: { name: 'pm' } });
+    }
+  });
+
+  it('связь с дублем и повтор претензии — тоже строки истории, повтор виден и на закрытом оригинале', async () => {
+    await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: h.roundId, number: 9305, description: 'Оригинал', status: 'defect' } });
+    const dup = await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: h.roundId, number: 9306, description: 'Повтор', status: 'duplicate' } });
+    await h.http.post(url(`/remarks/${dup.id}/link-duplicate`)).set(h.auth('pm')).send({ duplicateOfNumber: 9305 }).expect(200);
+    const linkRows = await h.prisma.remarkStatusChange.findMany({ where: { remarkId: dup.id } });
+    expect(linkRows).toEqual([expect.objectContaining({ action: 'link_duplicate', fromStatus: 'duplicate', toStatus: 'duplicate', userId: h.users.pm.id, actorName: 'pm', role: 'pm', detail: 'Оригинал — № 9305' })]);
+
+    const closed = await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: h.roundId, number: 9307, description: 'Закрыто в раунде 1', status: 'closed' } });
+    const round2 = await h.prisma.round.create({ data: { projectId: h.projectId, number: 2 } });
+    const reopened = await h.http.post(url(`/remarks/${closed.id}/reopen`)).set(h.auth('business')).send({ roundId: round2.id }).expect(201);
+    const onOriginal = await h.prisma.remarkStatusChange.findMany({ where: { remarkId: closed.id } });
+    expect(onOriginal).toEqual([expect.objectContaining({ action: 'reopened_as', fromStatus: 'closed', toStatus: 'closed', role: 'business', actorName: 'business', detail: `Повтор в раунде 2 — № ${reopened.body.number}` })]);
+    expect(await h.prisma.remarkStatusChange.findFirstOrThrow({ where: { remarkId: reopened.body.id } })).toMatchObject({ action: 'reopen', toStatus: 'reopened', detail: 'Повтор № 9307 из раунда 1' });
+  });
+
+  it('приложенный скрин — в строке истории ссылкой на кадр', async () => {
+    const remark = await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: h.roundId, number: 9308, description: 'Нужен скрин', status: 'cannot_tell' } });
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const media = await h.http.post(url('/media')).set(h.auth('business')).attach('file', png, 'shot.png').expect(201);
+    await h.http.post(url(`/remarks/${remark.id}/screenshot`)).set(h.auth('business')).send({ screenshotKey: media.body.storageKey }).expect(200);
+    const history = await h.http.get(url(`/remarks/${remark.id}/history`)).set(h.auth('business')).expect(200);
+    const attach = (history.body as Array<Record<string, any>>).find((r) => r.action === 'attach_screenshot')!;
+    expect(attach.shot).toMatchObject({ kind: 'original', current: true });
+    expect(attach.shot.url).toContain(media.body.storageKey.split('/').pop());
+  });
+
   it('второй вердикт на ту же карточку (гонка) не оставляет лишней строки истории', async () => {
     const remark = await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: h.roundId, number: 9303, description: 'Гонка истории', status: 'awaiting_pm', rationale: 'Черновик.' } });
     const run = await h.prisma.agentRun.create({ data: { remarkId: remark.id, projectId: h.projectId, status: 'awaiting_human', mode: 'triage' } });

@@ -191,15 +191,19 @@ export interface Round {
 /** Строка истории замечания (GET /remarks/:id/history): `by` пуст — переход сделала система (граф, сбой). */
 export interface RemarkHistoryEntry {
   id: string;
+  /** ISO 8601 — форматирует core/format.ts. */
   at: string;
   action: string;
   fromStatus?: RemarkStatus;
   toStatus: RemarkStatus;
-  by?: { userId: string; name: string; role?: Role };
+  /** Имя на момент действия (ADR 011); userId пуст, если аккаунт с тех пор удалён. */
+  by?: { userId?: string; name: string; role?: Role };
   runId?: string;
   detail?: string;
-  /** Слова человека при действии (комментарий к закрытию); заказчику — только слова заказчика. */
+  /** Слова человека при действии (решение, закрытие); заказчику — только слова заказчика. */
   comment?: string;
+  /** Кадр этого действия; current: false — его потом заменили, но улика осталась. */
+  shot?: { kind: ScreenshotKind; url: string; current: boolean };
 }
 
 /** Ссылка между закрытым замечанием и его повтором в новом раунде (docs/STATUS.md closed → reopened). */
@@ -238,7 +242,7 @@ export interface Verdict {
   userId: string;
   userName?: string;
   userRole?: Role;
-  /** «14:02» — локальное время решения. */
+  /** ISO 8601 — момент решения; на экране через core/format.ts (дата с годом и время). */
   at: string;
   comment?: string;
 }
@@ -249,7 +253,7 @@ export interface Advice {
   userId: string;
   userName?: string;
   role: Role;
-  /** «14:02» — когда совет дан или изменён. */
+  /** ISO 8601 — когда совет дан или изменён. */
   at: string;
   comment?: string;
 }

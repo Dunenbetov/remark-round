@@ -85,7 +85,7 @@ export class ImportService {
     const remarks = remarkIds.length
       ? await this.prisma.remark.findMany({
           where: { id: { in: remarkIds }, projectId: ctx.projectId },
-          select: { id: true, number: true, status: true, screenshots: { select: { id: true }, where: { kind: 'original' } } },
+          select: { id: true, number: true, status: true, screenshots: { select: { id: true }, where: { kind: 'original', supersededAt: null } } },
         })
       : [];
     const byId = new Map(remarks.map((r) => [r.id, r]));

@@ -3,6 +3,7 @@ import { Title } from '@angular/platform-browser';
 import { Router, RouterLink } from '@angular/router';
 import type { Remark, Screenshot } from '../core/models';
 import { APP_NAME, CARD, EMPTY, JOURNAL, JournalChip, NAV, PHASE_EXTRA, QUEUE, ROLE_TITLE, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
+import { dateRu } from '../core/format';
 import { filterRemarks } from '../core/journal-filter';
 import { OnboardingService } from '../core/onboarding.service';
 import { QueueService } from '../core/queue.service';
@@ -546,7 +547,7 @@ export class JournalPage {
       case 'awaiting_business_close':
         return r.fixedByName ? CARD.fixedBy(r.fixedByName) : STATUS_LABEL[r.status];
       case 'closed':
-        return r.closedByName && r.closedAt ? PHASE_EXTRA.closedAt(r.closedByName, r.closedAt) : STATUS_LABEL.closed;
+        return r.closedByName && r.closedAt ? PHASE_EXTRA.closedAt(r.closedByName, dateRu(r.closedAt)) : STATUS_LABEL.closed;
     }
     if (r.verdict && r.verdict.code !== 'rejected_binding') {
       const label = VERDICT_LABEL[r.verdict.code];

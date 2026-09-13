@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { RemarkStatus } from '@remarkround/db';
+import type { Prisma, RemarkStatus } from '@remarkround/db';
 import { config } from '../config';
 import { PrismaService } from '../prisma/prisma.service';
 import { STATUS_LABEL_RU, TERMINAL_STATUSES } from '../remarks/labels';
@@ -56,7 +56,9 @@ export class RoundsService {
         throw new ConflictException(`Новый раунд можно открыть, когда ${where} не останется нерешённых замечаний (ещё ${total})`);
       }
       const last = await tx.round.findFirst({ where: { projectId: ctx.projectId }, orderBy: { number: 'desc' } });
-      return tx.round.create({ data: { projectId: ctx.projectId, number: number ?? (last ? last.number + 1 : 1) } });
+      const created = await tx.round.create({ data: { projectId: ctx.projectId, number: number ?? (last ? last.number + 1 : 1) } });
+      await roundEvent(tx, ctx, created.id, 'open');
+      return created;
     });
     return { id: round.id, number: round.number, status: round.status, remarks: 0, pending: 0, closedAt: null };
   }
@@ -75,15 +77,22 @@ export class RoundsService {
       const parts = pending.map((p) => `${STATUS_LABEL_RU[p.status as RemarkStatus]} — ${p._count._all}`).join(', ');
       throw new ConflictException(`Раунд нельзя закрыть: ещё не решено (${parts})`);
     }
-    const { count } = await this.prisma.round.updateMany({ where: { id: round.id, status: 'open' }, data: { status: 'closed', closedAt: new Date(), closedByUserId: ctx.userId } });
-    if (count === 0) throw new ConflictException('Раунд уже закрыт');
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.round.updateMany({ where: { id: round.id, status: 'open' }, data: { status: 'closed', closedAt: new Date(), closedByUserId: ctx.userId } });
+      if (count === 0) throw new ConflictException('Раунд уже закрыт');
+      await roundEvent(tx, ctx, round.id, 'close');
+    });
     return this.summary(round.id);
   }
 
   async reopen(ctx: ProjectContext, roundId: string): Promise<RoundSummary> {
     if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
     const round = await this.load(ctx, roundId);
-    await this.prisma.round.updateMany({ where: { id: round.id, status: 'closed' }, data: { status: 'open', closedAt: null, closedByUserId: null } });
+    // closedAt/closedBy у раунда обнуляются, но в событиях раунда прежнее закрытие остаётся (ADR 011)
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.round.updateMany({ where: { id: round.id, status: 'closed' }, data: { status: 'open', closedAt: null, closedByUserId: null } });
+      if (count === 1) await roundEvent(tx, ctx, round.id, 'reopen');
+    });
     return this.summary(round.id);
   }
 
@@ -116,4 +125,10 @@ export class RoundsService {
     });
     return new Map(rows.map((r) => [r.roundId, r._count._all]));
   }
+}
+
+/** Событие раунда (ADR 011): только дописывается, имя — снимком на момент действия, как в истории замечания. */
+async function roundEvent(tx: Prisma.TransactionClient, ctx: ProjectContext, roundId: string, action: 'open' | 'close' | 'reopen'): Promise<void> {
+  const user = await tx.user.findUnique({ where: { id: ctx.userId }, select: { name: true } });
+  await tx.roundEvent.create({ data: { roundId, projectId: ctx.projectId, action, userId: ctx.userId, actorName: user?.name ?? null, role: ctx.role } });
 }

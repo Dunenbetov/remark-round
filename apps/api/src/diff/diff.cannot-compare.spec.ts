@@ -142,10 +142,17 @@ describe('retest через API', () => {
     const media = await h.http.get(diffShot.url).set(h.auth('pm')).expect(200);
     expect(media.headers['content-type']).toMatch(/image\/png/);
 
-    // «Не исправлено» убирает новый кадр и дифф, замечание снова в работе.
+    // «Не исправлено» снимает новый кадр и дифф с карточки, но не из базы: круг ретеста остаётся уликой (ADR 011).
     const back = await h.http.post(`/api/v1/projects/${h.projectId}/remarks/${id}/not-fixed`).set(h.auth('business')).expect(200);
     expect(back.body.status).toBe('defect');
     expect(back.body.screenshots.map((s: { kind: string }) => s.kind)).toEqual(['original']);
+    expect(await h.prisma.remarkScreenshot.count({ where: { remarkId: id, supersededAt: { not: null } } })).toBe(2);
+    const history = await h.http.get(`/api/v1/projects/${h.projectId}/remarks/${id}/history`).set(h.auth('pm')).expect(200);
+    const rows = history.body as Array<Record<string, any>>;
+    expect(rows.find((r) => r.action === 'retest')!.shot).toMatchObject({ kind: 'retest', current: false });
+    const result = rows.find((r) => r.action === 'retest_result')!;
+    expect(result.shot).toMatchObject({ kind: 'diff', current: false });
+    await h.http.get(result.shot.url).set(h.auth('pm')).expect(200);
   });
 
   it('кадр другого экрана (zoom) → cannot_tell с причиной, диффа нет, закрыть всё равно может только бизнес', async () => {

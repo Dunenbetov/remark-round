@@ -57,6 +57,10 @@ describe('rounds: close, export, reopen', () => {
     expect(closed.body).toMatchObject({ id: roundId, status: 'closed' });
     expect(closed.body.closedAt).toBeTruthy();
     await h.http.post(url(`/rounds/${roundId}/close`)).set(h.auth('pm')).expect(200);
+    // Событие раунда — одно на действие: повтор по закрытому ничего не дописывает (ADR 011)
+    expect(await h.prisma.roundEvent.findMany({ where: { roundId }, select: { action: true, userId: true, actorName: true, role: true } })).toEqual([
+      { action: 'close', userId: h.users.business.id, actorName: 'business', role: 'business' },
+    ]);
 
     const add = await h.http.post(url(`/rounds/${roundId}/remarks`)).set(h.auth('business')).send({ description: 'Ещё одно' }).expect(409);
     expect(add.body.message).toMatch(/закрыт/);
@@ -114,7 +118,15 @@ describe('rounds: close, export, reopen', () => {
     await h.waitFor(reopened.body.id, ['awaiting_pm', 'imported'], 'pm');
 
     await h.http.post(url(`/rounds/${roundId}/reopen`)).set(h.auth('business')).expect(200);
+    await h.http.post(url(`/rounds/${roundId}/reopen`)).set(h.auth('business')).expect(200);
     const list = await h.http.get(url('/rounds')).set(h.auth('pm')).expect(200);
     expect(list.body.find((r: { id: string }) => r.id === roundId)).toMatchObject({ status: 'open', closedAt: null });
+    // closedAt у раунда обнулился, но закрытие осталось в событиях; открытие нового раунда — тоже событие
+    const events = await h.prisma.roundEvent.findMany({ where: { projectId: h.projectId }, orderBy: { createdAt: 'asc' }, select: { roundId: true, action: true, role: true } });
+    expect(events).toEqual([
+      { roundId, action: 'close', role: 'business' },
+      { roundId: next.body.id, action: 'open', role: 'pm' },
+      { roundId, action: 'reopen', role: 'business' },
+    ]);
   });
 });

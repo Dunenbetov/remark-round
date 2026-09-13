@@ -38,12 +38,12 @@ export async function buildRoundXlsx(input: { projectName: string; roundNumber: 
       expected: r.expected ?? '',
       status: STATUS_LABEL_RU[r.status],
       verdict: r.verdict ? VERDICT_LABEL_RU[r.verdict.code] : '',
-      who: r.verdict ? [r.verdict.userName, r.verdict.at].filter(Boolean).join(' · ') : '',
+      who: r.verdict ? [r.verdict.userName, when(r.verdict.at)].filter(Boolean).join(' · ') : '',
       comment: r.verdict?.comment ?? '',
       citation: r.citations.map((c) => `${c.heading} ${c.text}`).join('\n'),
       retest: r.retest ? [retestLabel(r.retest.outcome), r.retest.explanation].filter(Boolean).join(' — ') : '',
       fixedBy: r.fixedByName ?? '',
-      closedBy: r.closedByName ? [r.closedByName, r.closedAt].filter(Boolean).join(' · ') : '',
+      closedBy: r.closedByName ? [r.closedByName, when(r.closedAt)].filter(Boolean).join(' · ') : '',
       shots: r.screenshots.map((s) => `${shotLabel(s.kind)}: ${input.publicOrigin}${s.url}`).join('\n'),
     });
   }
@@ -52,6 +52,14 @@ export async function buildRoundXlsx(input: { projectName: string; roundNumber: 
   });
   const data = await workbook.xlsx.writeBuffer();
   return Buffer.from(data as ArrayBuffer);
+}
+
+/** Карточка отдаёт ISO (ADR 011): в файле — дата и время сервера «13.09.2026 15:53». */
+function when(iso: string | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 function retestLabel(outcome: 'likely_addressed' | 'likely_unchanged' | 'cannot_tell'): string {
