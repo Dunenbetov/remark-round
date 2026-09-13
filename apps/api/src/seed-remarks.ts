@@ -1,19 +1,35 @@
 /**
- * Раунд 2 проекта «Клиентский кабинет» — 13 замечаний как в дизайне (журнал, артборд 2).
- * Скрины — из fixtures/screenshots, цитаты — реальные чанки проиндексированного ТЗ и протокола.
- * Пересоздаётся при каждом seed: это демо, а не данные заказчика.
+ * Демо проекта «Клиентский кабинет»: закрытый раунд 1 (5 замечаний) и открытый раунд 2 (14 замечаний как в дизайне).
+ * Скрины — из fixtures/screenshots, дифф настоящий (pixelmatch), цитаты — реальные чанки проиндексированного ТЗ.
+ * У каждой карточки полная история (ADR 011): кто создал, что предложила модель, кто решил, кто исправил, кто и как
+ * закрыл — с датами демо-календаря (1–12 сентября 2026, время Алматы), чтобы «Раунды», «История» и xlsx-журнал было
+ * что показать. Пересоздаётся при каждом seed: это демо, а не данные заказчика.
  */
-import type { PrismaClient, ProposedClass, RemarkStatus, RetestOutcome, VerdictCode } from '@remarkround/db';
+import type { PrismaClient, ProposedClass, RemarkStatus, RetestOutcome, Role, ScreenshotKind, VerdictCode } from '@remarkround/db';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { DiffService } from './diff/diff.service';
+import { PROPOSED_LABEL_RU, RETEST_OUTCOME_RU } from './remarks/labels';
 import { StorageService } from './storage/storage.service';
 
 const ROOT = resolve(__dirname, '../../..');
 export const ROUND_ID = 'c1111111-1111-4111-8111-111111111111';
+export const ROUND_ONE_ID = 'c1111111-1111-4111-8111-111111111101';
+
+/** Время демо-календаря: день сентября 2026 и часы по Алматы (UTC+5). */
+const at = (day: number, hh: number, mm = 0): Date => new Date(Date.UTC(2026, 8, day, hh - 5, mm));
+const plusMin = (d: Date, minutes: number): Date => new Date(d.getTime() + minutes * 60_000);
+
+interface RetestSeed {
+  outcome: RetestOutcome;
+  explanation: string;
+}
 
 interface SeedRemark {
+  round: 1 | 2;
   number: number;
+  /** День сентября, когда замечание появилось. */
+  day: number;
   description: string;
   pageOrScreen: string;
   expected?: string;
@@ -23,14 +39,20 @@ interface SeedRemark {
   visionFacts?: string;
   /** Подписи разделов чанков: «§2.1 Primary», 'protocol' — первый чанк протокола. */
   cite?: string[];
-  shot?: 'gray' | 'blue';
-  retestShot?: 'blue';
+  shot?: 'gray';
   verdict?: VerdictCode;
-  verdictAt?: string;
+  /** Слова PM к решению — внутренние, заказчику не показываются (ADR 007). */
+  verdictComment?: string;
   fixed?: boolean;
-  retest?: { outcome: RetestOutcome; explanation: string };
-  closedAt?: string;
+  /** Первый круг ретеста, вернувшийся «не исправлено»: кадры остаются заменёнными (ADR 011). */
+  notFixedRetest?: RetestSeed;
+  /** Ретест с новым кадром и диффом — текущий (ждёт закрытия или закрыт после него). */
+  retest?: RetestSeed;
+  /** Закрыто: после ретеста (`retest`) или заказчик проверил сам (ADR 010). */
+  closed?: { comment?: string };
   duplicateOfNumber?: number;
+  /** Повтор претензии: номер закрытого оригинала в раунде 1. */
+  originNumber?: number;
   /** Совет разработчика (Developer) по замечанию, которое ждёт PM. */
   advice?: { code: VerdictCode; comment?: string };
 }
@@ -41,8 +63,93 @@ const DEFECT_RATIONALE = (section: string, requirement: string, seen: string): s
 ];
 
 export const SEED_REMARKS: SeedRemark[] = [
+  // ---------- раунд 1: сдан и закрыт 5 сентября ----------
   {
+    round: 1,
+    number: 1,
+    day: 1,
+    description: 'Кнопка «Войти» не реагирует на Enter',
+    pageOrScreen: 'Вход',
+    expected: 'Enter отправляет форму входа',
+    status: 'closed',
+    proposedClass: 'defect_candidate',
+    rationale: DEFECT_RATIONALE('§1', '«вход, профиль, оплата счетов» как рабочий кабинет клиента', 'после Enter форма не отправляется'),
+    cite: ['§1 Назначение'],
+    shot: 'gray',
+    verdict: 'defect',
+    fixed: true,
+    retest: { outcome: 'likely_addressed', explanation: 'Красное на диффе: область кнопки, теперь форма отправляется. Остальное без изменений.' },
+    closed: {},
+  },
+  {
+    round: 1,
+    number: 2,
+    day: 1,
+    description: 'Опечатка в подвале: «Обратная свзяь»',
+    pageOrScreen: 'Все страницы, подвал',
+    expected: '«Обратная связь»',
+    status: 'closed',
+    proposedClass: 'defect_candidate',
+    rationale: DEFECT_RATIONALE('§1', 'единый кабинет клиента', 'в подвале опечатка'),
+    cite: ['§1 Назначение'],
+    verdict: 'defect',
+    fixed: true,
+    closed: { comment: 'Проверила на стенде — в подвале уже «Обратная связь»' },
+  },
+  {
+    round: 1,
+    number: 3,
+    day: 2,
+    description: 'Хотим уведомления в Telegram',
+    pageOrScreen: 'Весь кабинет',
+    expected: 'Сообщение в Telegram, когда выставлен счёт',
+    status: 'change_request',
+    proposedClass: 'change_request_candidate',
+    rationale: ['Похоже, это новое желание.', 'ТЗ (§6) не описывает уведомления вне кабинета. Это не поломка, а новое желание — решите, брать ли его в работу отдельно.'],
+    cite: ['§6 Чего в ТЗ нет (дыры)'],
+    verdict: 'change_request',
+    verdictComment: 'Не в ТЗ — оценим отдельным доп. соглашением',
+  },
+  {
+    round: 1,
+    number: 4,
+    day: 2,
+    description: 'Счёт не скачивается в PDF',
+    pageOrScreen: 'Оплата счёта',
+    expected: 'Кнопка «Скачать PDF» открывает счёт',
+    status: 'closed',
+    proposedClass: 'defect_candidate',
+    rationale: DEFECT_RATIONALE('§1', '«оплата счетов» в рабочем кабинете', 'по кнопке «Скачать PDF» ничего не происходит'),
+    cite: ['§1 Назначение'],
+    shot: 'gray',
+    verdict: 'defect',
+    fixed: true,
+    notFixedRetest: { outcome: 'likely_unchanged', explanation: 'Красное на диффе: другая часть формы, кнопка «Скачать PDF» не изменилась. Относится ли это к претензии — решите вы.' },
+    closed: { comment: 'Со второго исправления скачивается — проверила на трёх счетах' },
+  },
+  {
+    round: 1,
+    number: 5,
+    day: 2,
+    description: 'Телефон в профиле не сохраняется',
+    pageOrScreen: 'Профиль компании',
+    expected: 'Телефон сохраняется после «Сохранить»',
+    status: 'closed',
+    proposedClass: 'defect_candidate',
+    rationale: DEFECT_RATIONALE('§2.1 Primary', 'форма профиля с кнопкой «Сохранить»', 'после сохранения поле телефона пустое'),
+    cite: ['§2.1 Primary'],
+    shot: 'gray',
+    verdict: 'defect',
+    fixed: true,
+    retest: { outcome: 'likely_addressed', explanation: 'Красное на диффе: область поля телефона. Остальное без изменений.' },
+    closed: {},
+  },
+
+  // ---------- раунд 2: идёт с 7 сентября ----------
+  {
+    round: 2,
     number: 12,
+    day: 11,
     description: 'Кнопка «Сохранить» серая',
     pageOrScreen: 'Профиль компании',
     expected: 'Синяя primary-кнопка при заполненных полях',
@@ -55,7 +162,9 @@ export const SEED_REMARKS: SeedRemark[] = [
     advice: { code: 'defect', comment: 'В ТЗ §2.1 однозначно, чиню за час' },
   },
   {
+    round: 2,
     number: 13,
+    day: 11,
     description: 'Хотим тёмную тему',
     pageOrScreen: 'Весь кабинет',
     expected: 'Чтобы ночью не слепило',
@@ -66,7 +175,9 @@ export const SEED_REMARKS: SeedRemark[] = [
     advice: { code: 'change_request', comment: 'Тёмной темы в ТЗ нет — это отдельная задача на пару дней' },
   },
   {
+    round: 2,
     number: 14,
+    day: 11,
     description: 'Выгрузка в Excel',
     pageOrScreen: 'Список заказов',
     expected: 'Как в старой 1С',
@@ -76,17 +187,20 @@ export const SEED_REMARKS: SeedRemark[] = [
     cite: ['§6 Чего в ТЗ нет (дыры)'],
   },
   {
+    round: 2,
     number: 15,
+    day: 11,
     description: 'Цвет ссылок в футере',
     pageOrScreen: 'Все страницы, футер',
     status: 'cannot_tell',
     proposedClass: 'cannot_tell',
     rationale: ['Недостаточно данных.', 'Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.'],
     verdict: 'cannot_tell',
-    verdictAt: '12:20',
   },
   {
+    round: 2,
     number: 7,
+    day: 9,
     description: 'Ошибка оплаты тостом',
     pageOrScreen: 'Оплата счёта',
     expected: 'Ошибка показывается тостом на 3 секунды, а не текстом под формой',
@@ -97,10 +211,11 @@ export const SEED_REMARKS: SeedRemark[] = [
     cite: ['§4.2 Ошибки', 'protocol'],
     shot: 'gray',
     verdict: 'defect',
-    verdictAt: '11:40',
   },
   {
+    round: 2,
     number: 5,
+    day: 9,
     description: 'Фильтр клиентов сбрасывается при обновлении',
     pageOrScreen: 'Список клиентов',
     expected: 'Фильтр должен переживать обновление страницы',
@@ -111,21 +226,24 @@ export const SEED_REMARKS: SeedRemark[] = [
     cite: ['§1 Назначение'],
     shot: 'gray',
     verdict: 'defect',
-    verdictAt: '11:52',
+    verdictComment: 'Прямой нормы нет, но без этого кабинетом не пользоваться — берём',
   },
   {
+    round: 2,
     number: 9,
+    day: 9,
     description: 'Повтор №4 про поиск',
     pageOrScreen: 'Поиск',
     status: 'duplicate',
     proposedClass: 'duplicate',
     rationale: ['Похоже на повтор №4.', 'Та же претензия к поиску по клиентам, что и в №4. Отдельной работы не нужно.'],
     verdict: 'duplicate',
-    verdictAt: '12:05',
     duplicateOfNumber: 4,
   },
   {
+    round: 2,
     number: 4,
+    day: 7,
     description: 'Поиск по клиентам не находит по БИН',
     pageOrScreen: 'Поиск',
     expected: 'Поиск по БИН находит клиента',
@@ -134,15 +252,15 @@ export const SEED_REMARKS: SeedRemark[] = [
     rationale: DEFECT_RATIONALE('§1', '«вход, профиль, оплата счетов» как рабочий кабинет клиента', 'поиск по БИН пустой'),
     cite: ['§1 Назначение'],
     shot: 'gray',
-    retestShot: 'blue',
     verdict: 'defect',
-    verdictAt: '09:20',
     fixed: true,
     retest: { outcome: 'likely_addressed', explanation: 'Красное на диффе: область результатов поиска, теперь клиент найден. Остальное без изменений.' },
-    closedAt: '15:10',
+    closed: {},
   },
   {
+    round: 2,
     number: 3,
+    day: 8,
     description: 'Сортировка списка заказов',
     pageOrScreen: 'Список заказов',
     expected: 'Сортировка по дате должна применяться',
@@ -152,11 +270,12 @@ export const SEED_REMARKS: SeedRemark[] = [
     cite: ['§1 Назначение'],
     shot: 'gray',
     verdict: 'defect',
-    verdictAt: '10:15',
     fixed: true,
   },
   {
+    round: 2,
     number: 8,
+    day: 8,
     description: 'Шапка перекрывает форму на планшете',
     pageOrScreen: 'Профиль компании, планшет',
     expected: 'Форма видна целиком',
@@ -166,11 +285,12 @@ export const SEED_REMARKS: SeedRemark[] = [
     cite: ['§1 Назначение'],
     shot: 'gray',
     verdict: 'defect',
-    verdictAt: '10:20',
     fixed: true,
   },
   {
+    round: 2,
     number: 2,
+    day: 7,
     description: 'Логотип не по центру',
     pageOrScreen: 'Шапка',
     expected: 'Логотип по центру',
@@ -179,27 +299,28 @@ export const SEED_REMARKS: SeedRemark[] = [
     rationale: DEFECT_RATIONALE('§1', 'единый кабинет с шапкой', 'логотип смещён влево'),
     cite: ['§1 Назначение'],
     shot: 'gray',
-    retestShot: 'blue',
     verdict: 'defect',
-    verdictAt: '09:50',
     fixed: true,
     retest: { outcome: 'likely_addressed', explanation: 'Красное на диффе: область логотипа, теперь по центру. Остальное без изменений.' },
   },
   {
+    // Демо закрытия без нового кадра (ADR 010): разработчик нажал «Готово», заказчик проверяет сам
+    round: 2,
     number: 6,
+    day: 8,
     description: 'Пагинация пропадает на второй странице',
     pageOrScreen: 'Список заказов',
-    status: 'awaiting_business_close',
+    status: 'ready_for_retest',
     proposedClass: 'defect_candidate',
     rationale: DEFECT_RATIONALE('§1', 'постраничный список счетов', 'со второй страницы пагинация исчезает'),
     cite: ['§1 Назначение'],
     verdict: 'defect',
-    verdictAt: '09:55',
     fixed: true,
-    retest: { outcome: 'cannot_tell', explanation: 'Кадров нет — сравнить нечем. Проверьте вручную и закройте, если исправлено.' },
   },
   {
+    round: 2,
     number: 1,
+    day: 7,
     description: 'Не открывается профиль',
     pageOrScreen: 'Профиль компании',
     expected: 'Профиль открывается по ссылке',
@@ -208,14 +329,90 @@ export const SEED_REMARKS: SeedRemark[] = [
     rationale: DEFECT_RATIONALE('§1', '«вход, профиль, оплата счетов»', 'по ссылке «Профиль» пустая страница'),
     cite: ['§1 Назначение'],
     shot: 'gray',
-    retestShot: 'blue',
     verdict: 'defect',
-    verdictAt: '09:30',
     fixed: true,
     retest: { outcome: 'likely_addressed', explanation: 'Красное на диффе: область формы, теперь профиль открывается. Остальное без изменений.' },
-    closedAt: '16:40',
+    closed: {},
+  },
+  {
+    // Повтор претензии: в раунде 1 телефон закрыли, заказчик снова видит ту же проблему (docs/STATUS.md closed → reopened)
+    round: 2,
+    number: 10,
+    day: 7,
+    description: 'Телефон в профиле не сохраняется',
+    pageOrScreen: 'Профиль компании',
+    expected: 'Телефон сохраняется после «Сохранить»',
+    status: 'awaiting_pm',
+    proposedClass: 'duplicate',
+    rationale: ['Похоже на повтор закрытого замечания.', 'Та же претензия, что № 5 раунда 1, закрытая после ретеста 4 сентября. Кадр новый — сравните с прежним и решите, работа ли это снова.'],
+    cite: ['§2.1 Primary'],
+    shot: 'gray',
+    originNumber: 5,
   },
 ];
+
+interface People {
+  pm: { id: string; name: string };
+  business: { id: string; name: string };
+  developer: { id: string; name: string };
+}
+
+type Who = 'pm' | 'business' | 'developer' | null;
+
+interface HistoryRow {
+  action: string;
+  fromStatus: RemarkStatus | null;
+  toStatus: RemarkStatus;
+  who: Who;
+  createdAt: Date;
+  detail?: string;
+  comment?: string;
+  shot?: 'original' | 'retest0' | 'diff0' | 'retest' | 'diff';
+}
+
+/**
+ * Путь замечания до его статуса — те же действия и в том же порядке, что пишет RemarksService: создано → разбор →
+ * предложение модели → решение PM → «Готово» → ретест(ы) → закрытие. Время растёт от дня создания.
+ */
+function timeline(r: SeedRemark): { rows: HistoryRow[]; closedAt: Date | null; verdictAt: Date | null; supersededAt: Date | null } {
+  const rows: HistoryRow[] = [];
+  const created = at(r.day, 10, r.number * 3);
+  const push = (row: HistoryRow) => rows.push(row);
+  const start: RemarkStatus = r.originNumber ? 'reopened' : 'imported';
+  push({ action: r.originNumber ? 'reopen' : 'create', fromStatus: null, toStatus: start, who: 'business', createdAt: created, shot: r.shot ? 'original' : undefined, detail: r.originNumber ? `Повтор № ${r.originNumber} из раунда 1` : undefined });
+  push({ action: 'triage', fromStatus: start, toStatus: 'triaging', who: 'business', createdAt: plusMin(created, 1) });
+  const proposalDetail = r.proposedClass ? `${PROPOSED_LABEL_RU[r.proposedClass]}${r.rationale?.[1] ? `: ${r.rationale[1]}` : ''}`.slice(0, 300) : undefined;
+  push({ action: 'proposal', fromStatus: 'triaging', toStatus: 'awaiting_pm', who: null, createdAt: plusMin(created, 2), detail: proposalDetail });
+  if (!r.verdict) return { rows, closedAt: null, verdictAt: null, supersededAt: null };
+
+  const verdictAt = at(r.day + 1, 11, r.number * 2);
+  const afterVerdict: RemarkStatus = r.verdict === 'rejected_binding' ? 'triaging' : r.verdict;
+  push({ action: 'verdict', fromStatus: 'awaiting_pm', toStatus: afterVerdict, who: 'pm', createdAt: verdictAt, comment: r.verdictComment });
+  if (r.duplicateOfNumber) push({ action: 'link_duplicate', fromStatus: 'duplicate', toStatus: 'duplicate', who: 'pm', createdAt: plusMin(verdictAt, 1), detail: `Оригинал — № ${r.duplicateOfNumber}` });
+  if (!r.fixed) return { rows, closedAt: null, verdictAt, supersededAt: null };
+
+  let t = at(r.day + 2, 15, r.number * 2);
+  push({ action: 'ready_for_retest', fromStatus: 'defect', toStatus: 'ready_for_retest', who: 'developer', createdAt: t });
+  let supersededAt: Date | null = null;
+  if (r.notFixedRetest) {
+    t = plusMin(t, 120);
+    push({ action: 'retest', fromStatus: 'ready_for_retest', toStatus: 'ready_for_retest', who: 'business', createdAt: t, shot: 'retest0' });
+    push({ action: 'retest_result', fromStatus: 'ready_for_retest', toStatus: 'awaiting_business_close', who: null, createdAt: plusMin(t, 1), shot: 'diff0', detail: `${RETEST_OUTCOME_RU[r.notFixedRetest.outcome]} — ${r.notFixedRetest.explanation}`.slice(0, 300) });
+    supersededAt = plusMin(t, 10);
+    push({ action: 'not_fixed', fromStatus: 'awaiting_business_close', toStatus: 'defect', who: 'business', createdAt: supersededAt });
+    t = at(r.day + 3, 12, r.number * 2);
+    push({ action: 'ready_for_retest', fromStatus: 'defect', toStatus: 'ready_for_retest', who: 'developer', createdAt: t });
+  }
+  if (r.retest) {
+    t = plusMin(t, 90);
+    push({ action: 'retest', fromStatus: 'ready_for_retest', toStatus: 'ready_for_retest', who: 'business', createdAt: t, shot: 'retest' });
+    push({ action: 'retest_result', fromStatus: 'ready_for_retest', toStatus: 'awaiting_business_close', who: null, createdAt: plusMin(t, 1), shot: 'diff', detail: `${RETEST_OUTCOME_RU[r.retest.outcome]} — ${r.retest.explanation}`.slice(0, 300) });
+  }
+  if (!r.closed) return { rows, closedAt: null, verdictAt, supersededAt };
+  const closedAt = plusMin(t, 30);
+  push({ action: 'close', fromStatus: r.retest ? 'awaiting_business_close' : 'ready_for_retest', toStatus: 'closed', who: 'business', createdAt: closedAt, comment: r.closed.comment });
+  return { rows, closedAt, verdictAt, supersededAt };
+}
 
 export async function seedRemarks(
   prisma: PrismaClient,
@@ -228,24 +425,45 @@ export async function seedRemarks(
   const grayVsBlue = diff.compare(gray, blue);
   const diffPng = grayVsBlue.kind === 'ok' ? grayVsBlue.png : null;
 
+  const users = await prisma.user.findMany({ where: { id: { in: [ids.pmId, ids.businessId, ids.developerId] } }, select: { id: true, name: true } });
+  const nameOf = (id: string) => users.find((u) => u.id === id)?.name ?? '';
+  const people: People = { pm: { id: ids.pmId, name: nameOf(ids.pmId) }, business: { id: ids.businessId, name: nameOf(ids.businessId) }, developer: { id: ids.developerId, name: nameOf(ids.developerId) } };
+
+  // Чистим оба демо-раунда. Вердикты и прогоны не каскадятся; история и кадры уходят каскадом вместе с замечанием —
+  // триггер «только дописывается» пропускает каскад (ADR 011).
+  const wipe = async (roundId: string) => {
+    const oldIds = (await prisma.remark.findMany({ where: { roundId }, select: { id: true } })).map((r) => r.id);
+    await prisma.developerAdvice.deleteMany({ where: { remarkId: { in: oldIds } } });
+    await prisma.humanVerdict.deleteMany({ where: { remarkId: { in: oldIds } } });
+    await prisma.agentRun.deleteMany({ where: { remarkId: { in: oldIds } } });
+    await prisma.remark.deleteMany({ where: { id: { in: oldIds } } });
+  };
+  await wipe(ROUND_ID);
+  // Раунд 1 пересоздаётся целиком: его события (закрыт 5 сентября) уходят каскадом и пишутся заново
+  const roundOne = await prisma.round.findUnique({ where: { projectId_number: { projectId: ids.projectId, number: 1 } }, select: { id: true } });
+  if (roundOne) {
+    await wipe(roundOne.id);
+    await prisma.importJob.deleteMany({ where: { roundId: roundOne.id } });
+    await prisma.round.delete({ where: { id: roundOne.id } });
+  }
+  await prisma.round.create({
+    data: { id: ROUND_ONE_ID, projectId: ids.projectId, number: 1, status: 'closed', createdAt: at(1, 10), closedAt: at(5, 17, 30), closedByUserId: ids.pmId },
+  });
   await prisma.round.upsert({
     where: { id: ROUND_ID },
-    create: { id: ROUND_ID, projectId: ids.projectId, number: 2 },
-    update: {},
+    create: { id: ROUND_ID, projectId: ids.projectId, number: 2, createdAt: at(7, 10) },
+    update: { status: 'open', closedAt: null, closedByUserId: null, createdAt: at(7, 10) },
   });
-  await prisma.round.upsert({
-    where: { projectId_number: { projectId: ids.projectId, number: 1 } },
-    create: { projectId: ids.projectId, number: 1, status: 'closed' },
-    update: {},
+  // События раундов с фиксированными id: удалять их нельзя (триггер), повторный seed их не дублирует
+  const event = (id: string, roundId: string, action: 'open' | 'close', createdAt: Date) => ({ id, roundId, projectId: ids.projectId, action, userId: ids.pmId, actorName: people.pm.name, role: 'pm' as Role, createdAt });
+  await prisma.roundEvent.createMany({
+    data: [
+      event('e1111111-1111-4111-8111-111111111101', ROUND_ONE_ID, 'open', at(1, 10)),
+      event('e1111111-1111-4111-8111-111111111102', ROUND_ONE_ID, 'close', at(5, 17, 30)),
+      event('e1111111-1111-4111-8111-111111111201', ROUND_ID, 'open', at(7, 10)),
+    ],
+    skipDuplicates: true,
   });
-
-  // Чистим раунд: вердикты и прогоны не каскадятся (советы каскадятся, но снимаем явно).
-  const old = await prisma.remark.findMany({ where: { roundId: ROUND_ID }, select: { id: true } });
-  const oldIds = old.map((r) => r.id);
-  await prisma.developerAdvice.deleteMany({ where: { remarkId: { in: oldIds } } });
-  await prisma.humanVerdict.deleteMany({ where: { remarkId: { in: oldIds } } });
-  await prisma.agentRun.deleteMany({ where: { remarkId: { in: oldIds } } });
-  await prisma.remark.deleteMany({ where: { id: { in: oldIds } } });
 
   const chunks = await prisma.documentChunk.findMany({
     where: { documentId: { in: [ids.specDocumentId, ids.protocolDocumentId] } },
@@ -259,29 +477,31 @@ export async function seedRemarks(
   // Цитата — снимок текста и подписи документа, как её пишет applyProposal (аудит: evidence-citation-dangling)
   const citationOf = (c: SeedChunk) => ({ chunkId: c.id, quoteText: c.content, section: c.section, documentTitle: c.document.title, documentKind: c.document.kind, effectiveAt: c.document.effectiveAt });
 
-  const today = new Date();
-  const at = (hhmm: string): Date => {
-    const [h, m] = hhmm.split(':').map(Number);
-    return new Date(today.getFullYear(), today.getMonth(), today.getDate(), h, m);
-  };
-
-  const created = new Map<number, string>();
-  // Сначала оригиналы, потом повторы — чтобы duplicateOfId было куда ссылаться.
-  const ordered = [...SEED_REMARKS].sort((a, b) => (a.duplicateOfNumber ? 1 : 0) - (b.duplicateOfNumber ? 1 : 0));
+  const created = new Map<string, { id: string; closedAt: Date | null }>();
+  const key = (round: number, number: number) => `${round}:${number}`;
+  // Раунд 1 раньше раунда 2, оригиналы раньше повторов: duplicateOfId и originRemarkId есть куда направить
+  const ordered = [...SEED_REMARKS].sort((a, b) => a.round - b.round || (a.duplicateOfNumber ? 1 : 0) - (b.duplicateOfNumber ? 1 : 0));
   for (const r of ordered) {
-    const screenshots: Array<{ kind: 'original' | 'retest' | 'diff'; storageKey: string; width: number; height: number }> = [];
-    if (r.shot) screenshots.push({ kind: 'original', storageKey: await storage.save(ids.projectId, 'before.png', gray), width: 800, height: 400 });
-    if (r.retestShot) {
-      screenshots.push({ kind: 'retest', storageKey: await storage.save(ids.projectId, 'after.png', blue), width: 800, height: 400 });
-      // Дифф в демо настоящий: pixelmatch по тем же кадрам, а не нарисованная маска.
-      if (r.shot && diffPng) screenshots.push({ kind: 'diff', storageKey: await storage.save(ids.projectId, 'diff.png', diffPng), width: 800, height: 400 });
+    const { rows, closedAt, verdictAt, supersededAt } = timeline(r);
+    const shots: Partial<Record<NonNullable<HistoryRow['shot']>, { kind: ScreenshotKind; storageKey: string; supersededAt: Date | null; createdAt: Date }>> = {};
+    const shotAt = (name: NonNullable<HistoryRow['shot']>) => rows.find((h) => h.shot === name)?.createdAt ?? at(r.day, 10);
+    if (r.shot) shots.original = { kind: 'original', storageKey: await storage.save(ids.projectId, 'before.png', gray), supersededAt: null, createdAt: shotAt('original') };
+    if (r.notFixedRetest) {
+      shots.retest0 = { kind: 'retest', storageKey: await storage.save(ids.projectId, 'after.png', blue), supersededAt, createdAt: shotAt('retest0') };
+      if (r.shot && diffPng) shots.diff0 = { kind: 'diff', storageKey: await storage.save(ids.projectId, 'diff.png', diffPng), supersededAt, createdAt: shotAt('diff0') };
+    }
+    if (r.retest) {
+      shots.retest = { kind: 'retest', storageKey: await storage.save(ids.projectId, 'after.png', blue), supersededAt: null, createdAt: shotAt('retest') };
+      // Дифф в демо настоящий: pixelmatch по тем же кадрам, а не нарисованная маска
+      if (r.shot && diffPng) shots.diff = { kind: 'diff', storageKey: await storage.save(ids.projectId, 'diff.png', diffPng), supersededAt: null, createdAt: shotAt('diff') };
     }
     const cited = (r.cite ?? []).map(chunkFor).filter((x): x is SeedChunk => Boolean(x));
+    const roundId = r.round === 1 ? ROUND_ONE_ID : ROUND_ID;
 
     const remark = await prisma.remark.create({
       data: {
         projectId: ids.projectId,
-        roundId: ROUND_ID,
+        roundId,
         number: r.number,
         description: r.description,
         pageOrScreen: r.pageOrScreen,
@@ -291,29 +511,64 @@ export async function seedRemarks(
         proposedClass: r.proposedClass ?? null,
         rationale: r.rationale?.join('\n\n') ?? null,
         visionFacts: r.visionFacts ?? null,
+        // Итог ретеста на карточке — только у текущего круга: «не исправлено» его снимает
         retestOutcome: r.retest?.outcome ?? null,
         retestExplanation: r.retest?.explanation ?? null,
         fixedByUserId: r.fixed ? ids.developerId : null,
-        closedByUserId: r.closedAt ? ids.businessId : null,
-        closedAt: r.closedAt ? at(r.closedAt) : null,
-        duplicateOfId: r.duplicateOfNumber ? (created.get(r.duplicateOfNumber) ?? null) : null,
-        screenshots: { create: screenshots },
+        closedByUserId: closedAt ? ids.businessId : null,
+        closedAt,
+        duplicateOfId: r.duplicateOfNumber ? (created.get(key(r.round, r.duplicateOfNumber))?.id ?? null) : null,
+        originRemarkId: r.originNumber ? (created.get(key(1, r.originNumber))?.id ?? null) : null,
+        createdAt: rows[0]!.createdAt,
         citations: { create: cited.map(citationOf) },
       },
     });
-    created.set(r.number, remark.id);
+    created.set(key(r.round, r.number), { id: remark.id, closedAt });
+
+    const shotIds: Partial<Record<NonNullable<HistoryRow['shot']>, string>> = {};
+    for (const [name, s] of Object.entries(shots) as Array<[NonNullable<HistoryRow['shot']>, NonNullable<(typeof shots)[keyof typeof shots]>]>) {
+      const row = await prisma.remarkScreenshot.create({ data: { remarkId: remark.id, kind: s.kind, storageKey: s.storageKey, width: 800, height: 400, createdAt: s.createdAt, supersededAt: s.supersededAt } });
+      shotIds[name] = row.id;
+    }
     if (r.advice) {
       await prisma.developerAdvice.create({ data: { remarkId: remark.id, userId: ids.developerId, code: r.advice.code, comment: r.advice.comment ?? null } });
     }
 
     const run = await prisma.agentRun.create({
-      data: { remarkId: remark.id, projectId: ids.projectId, mode: 'triage', status: r.verdict ? 'persisted' : 'awaiting_human', model: 'seed' },
+      data: { remarkId: remark.id, projectId: ids.projectId, mode: 'triage', status: r.verdict ? 'persisted' : 'awaiting_human', model: 'seed', proposedClass: r.proposedClass ?? null, rationale: r.rationale?.join('\n\n') ?? null, createdAt: rows[1]!.createdAt },
     });
-    if (r.verdict) {
+    if (r.verdict && verdictAt) {
       await prisma.humanVerdict.create({
-        data: { remarkId: remark.id, runId: run.id, userId: ids.pmId, code: r.verdict, idempotencyKey: `seed-${r.number}`, createdAt: at(r.verdictAt ?? '10:00') },
+        data: { remarkId: remark.id, runId: run.id, userId: ids.pmId, code: r.verdict, comment: r.verdictComment ?? null, idempotencyKey: `seed-${r.round}-${r.number}`, createdAt: verdictAt },
       });
     }
+
+    const person = (who: Who) => (who ? { userId: people[who].id, actorName: people[who].name, role: who as Role } : { userId: null, actorName: null, role: null });
+    await prisma.remarkStatusChange.createMany({
+      data: rows.map((h) => ({
+        remarkId: remark.id,
+        fromStatus: h.fromStatus,
+        toStatus: h.toStatus,
+        action: h.action,
+        ...person(h.who),
+        runId: ['triage', 'proposal', 'verdict'].includes(h.action) ? run.id : null,
+        detail: h.detail ?? null,
+        comment: h.comment ?? null,
+        screenshotId: h.shot ? (shotIds[h.shot] ?? null) : null,
+        createdAt: h.createdAt,
+      })),
+    });
+
+    // Оригинал повтора помнит, что претензию предъявили снова (ADR 011)
+    if (r.originNumber) {
+      const original = created.get(key(1, r.originNumber));
+      if (original) {
+        await prisma.remarkStatusChange.create({
+          data: { remarkId: original.id, fromStatus: 'closed', toStatus: 'closed', action: 'reopened_as', ...person('business'), detail: `Повтор в раунде 2 — № ${r.number}`, createdAt: rows[0]!.createdAt },
+        });
+      }
+    }
   }
-  console.log(`seed: round 2 — ${SEED_REMARKS.length} remarks`);
+  const inRound = (n: number) => SEED_REMARKS.filter((r) => r.round === n).length;
+  console.log(`seed: round 1 (closed) — ${inRound(1)} remarks, round 2 — ${inRound(2)} remarks, with history`);
 }
