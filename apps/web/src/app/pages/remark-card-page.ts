@@ -1519,6 +1519,8 @@ export class RemarkCardPage {
   protected actionLabel(e: RemarkHistoryEntry): string {
     // Закрытие сразу после «Готово» — без нового кадра, заказчик проверил сам (ADR 010)
     if (e.action === 'close' && e.fromStatus === 'ready_for_retest') return HISTORY_ACTION['close_checked']!;
+    // «Кто кому направил»: решение PM называет вариант — «В работу разработчикам», «Новое желание…»
+    if (e.action === 'verdict' && e.toStatus in VERDICT_LABEL) return `${HISTORY_ACTION['verdict']}: ${VERDICT_LABEL[e.toStatus as VerdictCode]}`;
     return HISTORY_ACTION[e.action] ?? e.action;
   }
 

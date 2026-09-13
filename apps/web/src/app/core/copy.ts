@@ -337,7 +337,7 @@ export const ROUNDS = {
       r.closed ? `закрыто ${r.closed}` : '',
       r.changeRequests ? `новых желаний ${r.changeRequests}` : '',
       r.duplicates ? `повторов ${r.duplicates}` : '',
-      r.pending ? `ждут решения ${r.pending}` : '',
+      r.pending ? `не решено ${r.pending}` : '',
     ]
       .filter(Boolean)
       .join(' · '),

@@ -117,7 +117,7 @@ describe('rounds: close, export, reopen', () => {
     expect(file.disposition).toMatch(/-journal\.xlsx/);
     expect(file.names).toEqual(['Раунды', 'Замечания', 'История']);
     const [round] = file.sheet('Раунды');
-    expect(round).toMatchObject({ Раунд: 1, 'Кто закрыл': 'business (заказчик)', Всего: 2, Закрыто: 1, 'Новые желания': 1, 'Ждут решения': 0 });
+    expect(round).toMatchObject({ Раунд: 1, 'Кто закрыл': 'business (заказчик)', Всего: 2, Закрыто: 1, 'Новые желания': 1, 'Не решено': 0 });
 
     const closeEvent = await h.prisma.roundEvent.findFirstOrThrow({ where: { roundId, action: 'close' } });
     const history = file.sheet('История');

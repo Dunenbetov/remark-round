@@ -91,7 +91,7 @@ describe('journal xlsx (ADR 011)', () => {
 
   it('«Раунды»: даты — Date в поясе отчёта, кто закрыл — с ролью', async () => {
     const [round] = rows((await load()).getWorksheet('Раунды')!);
-    expect(round).toMatchObject({ Раунд: 2, 'Кто закрыл': 'Дана (руководитель приёмки)', Всего: 3, Закрыто: 3, 'Ждут решения': 0 });
+    expect(round).toMatchObject({ Раунд: 2, 'Кто закрыл': 'Дана (руководитель приёмки)', Всего: 3, Закрыто: 3, 'Не решено': 0 });
     const closed = round!['Закрыт (GMT+5)'] as Date;
     expect(closed).toBeInstanceOf(Date);
     expect(closed.getUTCHours()).toBe(14);

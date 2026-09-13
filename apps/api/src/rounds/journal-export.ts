@@ -104,7 +104,7 @@ export async function buildJournalXlsx(input: JournalInput): Promise<Buffer> {
     { header: 'Закрыто', key: 'closed', width: 10 },
     { header: 'Новые желания', key: 'changeRequests', width: 15 },
     { header: 'Повторы', key: 'duplicates', width: 10 },
-    { header: 'Ждут решения', key: 'pending', width: 14 },
+    { header: 'Не решено', key: 'pending', width: 12 },
   ]);
   for (const r of input.rounds) {
     addRow(rounds, {
