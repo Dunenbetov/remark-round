@@ -15,8 +15,9 @@ export interface RailItem {
 }
 
 /**
- * Рельс очереди слева от карточки — индиго-объект экрана: «Ждут вас · 4», список, внизу «1 из 4» и точки.
- * Активный элемент залит аквой (закон аквы п. а); заливка переезжает view-transition.
+ * Рельс очереди слева от карточки — индиго-объект экрана: «Ждут вас · 4», список, внизу «1 из 4».
+ * Активный элемент — стекло (закон маркера); маркер переезжает view-transition. Заголовок пункта — до двух строк:
+ * рельс узкий, а по одной строке «Шапка перекрывает …» не отличить от соседей; полный текст — во всплывающей подсказке.
  * Пока идёт 5-секундный отсчёт (locked) — переходы запрещены.
  */
 @Component({
@@ -36,6 +37,7 @@ export interface RailItem {
               [class.rail__item--on]="it.id === activeId()"
               [class.rail__item--done]="it.done"
               [attr.aria-current]="it.id === activeId() ? 'page' : null"
+              [attr.title]="it.title"
               [attr.aria-disabled]="locked() ? 'true' : null"
               [attr.tabindex]="locked() ? -1 : null"
               (click)="onClick($event, it)"
@@ -121,8 +123,9 @@ export interface RailItem {
       grid-template-columns: 30px 1fr 12px;
       align-items: center;
       gap: var(--sp-2);
+      /* одна строка — прежние 52px; две строки (40px текста) + 8px сверху и снизу — 56px */
       min-height: 52px;
-      padding: 0 var(--sp-3) 0 var(--sp-3);
+      padding: var(--sp-2) var(--sp-3);
       border-radius: var(--rr-r-md);
       color: rgba(255, 255, 255, 0.86);
       text-decoration: none;
@@ -160,12 +163,17 @@ export interface RailItem {
     .rail__item--on .rail__n {
       opacity: 1;
     }
+    /* до двух строк, дальше — многоточие: текста влезает вдвое больше, а пункт вырастает на 4px */
     .rail__title {
       font-size: var(--fs-14);
       line-height: var(--lh-14);
-      white-space: nowrap;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
       overflow: hidden;
-      text-overflow: ellipsis;
+      overflow-wrap: anywhere;
+      text-wrap: pretty;
     }
     .rail__item--done .rail__title {
       opacity: 0.7;
