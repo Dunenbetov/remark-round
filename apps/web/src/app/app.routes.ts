@@ -2,7 +2,7 @@ import { inject } from '@angular/core';
 import { Routes } from '@angular/router';
 import { authGuard, homeUrl, instanceAdminGuard, legacyUrlGuard, projectGuard, projectHomeGuard, projectIdResolver, remarkIdResolver, roleGuard } from './core/guards';
 import { legacyMatcher, remarkMatcher, roundMatcher } from './core/links';
-import { ADMIN, DOCUMENTS, EMPTY, IMPORT, JOIN, LOGIN, NAV, NEW_REMARK, PROFILE, PROJECTS, REGISTER, TEAM } from './core/copy';
+import { ADMIN, DOCUMENTS, EMPTY, IMPORT, JOIN, LOGIN, NAV, NEW_REMARK, PROFILE, PROJECTS, REGISTER, ROUNDS, TEAM } from './core/copy';
 import { SessionService } from './core/session.service';
 import { AdminPage } from './pages/admin-page';
 import { DevQueuePage } from './pages/dev-queue-page';
@@ -17,6 +17,7 @@ import { ProfilePage } from './pages/profile-page';
 import { ProjectsPage } from './pages/projects-page';
 import { RegisterPage } from './pages/register-page';
 import { RemarkCardPage } from './pages/remark-card-page';
+import { RoundsPage } from './pages/rounds-page';
 import { TeamPage } from './pages/team-page';
 
 export const routes: Routes = [
@@ -43,6 +44,7 @@ export const routes: Routes = [
       { path: 'documents', component: DocumentsPage, title: DOCUMENTS.title, canActivate: [roleGuard('pm', 'business', 'admin')] },
       { path: 'team', component: TeamPage, title: TEAM.title, canActivate: [roleGuard('pm', 'admin')] },
       { path: 'dev', component: DevQueuePage, title: NAV.dev, canActivate: [roleGuard('developer')] },
+      { path: 'rounds', component: RoundsPage, title: ROUNDS.title, canActivate: [roleGuard('pm', 'business', 'admin')] },
       {
         matcher: roundMatcher,
         children: [

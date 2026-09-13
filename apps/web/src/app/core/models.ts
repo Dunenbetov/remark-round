@@ -185,7 +185,16 @@ export interface Round {
   remarks: number;
   /** Нерешённых замечаний (не закрыто, не новое желание, не повтор). Пока хоть у одного раунда > 0, новый не открыть. */
   pending: number;
+  /** Страница «Раунды» (ADR 011): сколько закрыто, новых желаний и повторов. */
+  closed?: number;
+  changeRequests?: number;
+  duplicates?: number;
+  /** ISO: когда раунд открыт. */
+  createdAt?: string;
   closedAt?: string | null;
+  /** Кто закрыл — имя и роль на момент закрытия. */
+  closedByName?: string | null;
+  closedByRole?: Role | null;
 }
 
 /** Строка истории замечания (GET /remarks/:id/history): `by` пуст — переход сделала система (граф, сбой). */

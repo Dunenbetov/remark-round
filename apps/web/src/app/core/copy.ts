@@ -316,6 +316,36 @@ export const NAV = {
   exportJournal: 'Выгрузить весь журнал (.xlsx)',
   roundClosedNow: (n: number) => `Раунд ${n} закрыт`,
   roundReopenedNow: (n: number) => `Раунд ${n} снова открыт`,
+  /** Страница «Раунды» (ADR 011). */
+  allRounds: 'Все раунды',
+};
+
+/** Страница «Раунды» и плашка закрытого раунда в журнале (ADR 011). */
+export const ROUNDS = {
+  title: 'Раунды',
+  subtitle: 'Каждая сдача со всеми решениями: откройте журнал раунда или выгрузите в Excel с историей.',
+  exportJournal: 'Выгрузить журнал (.xlsx)',
+  exportRound: 'Выгрузить (.xlsx)',
+  exportRoundAria: (n: number) => `Выгрузить раунд ${n} (.xlsx)`,
+  columns: ['№', 'Раунд', 'Замечания', ''] as const,
+  label: (n: number) => `Раунд ${n}`,
+  open: (date: string) => `идёт с ${date}`,
+  closed: (date: string, who: string) => [date ? `закрыт ${date}` : 'закрыт', who].filter(Boolean).join(' · '),
+  counts: (r: { remarks: number; closed?: number; changeRequests?: number; duplicates?: number; pending: number }) =>
+    [
+      `${r.remarks} ${plural(r.remarks, 'замечание', 'замечания', 'замечаний')}`,
+      r.closed ? `закрыто ${r.closed}` : '',
+      r.changeRequests ? `новых желаний ${r.changeRequests}` : '',
+      r.duplicates ? `повторов ${r.duplicates}` : '',
+      r.pending ? `ждут решения ${r.pending}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  /** Плашка над журналом закрытого раунда: факт, не подсказка. */
+  banner: (n: number, date: string, who: string) => [date ? `Раунд ${n} закрыт ${date}` : `Раунд ${n} закрыт`, who, 'только чтение'].filter(Boolean).join(' · '),
+  empty: 'Раундов пока нет.',
+  /** Пустой журнал закрытого раунда: добавить уже нельзя. */
+  emptyClosed: 'В этом раунде замечаний не было.',
 };
 
 /** Служебные подписи (добавлены при переработке UI, см. docs/ui/COPY.md). */

@@ -68,7 +68,10 @@ describe('rounds: close, export, reopen', () => {
     await h.http.post(url('/imports')).set(h.auth('pm')).field('roundId', roundId).attach('file', Buffer.from(csv), 'j.csv').expect(409);
 
     const list = await h.http.get(url('/rounds')).set(h.auth('pm')).expect(200);
-    expect(list.body.find((r: { id: string }) => r.id === roundId)).toMatchObject({ status: 'closed' });
+    const summary = list.body.find((r: { id: string }) => r.id === roundId);
+    // Сводка для страницы «Раунды»: когда открыт, кто и когда закрыл, из чего состоит (ADR 011)
+    expect(summary).toMatchObject({ status: 'closed', remarks: 2, pending: 0, closed: 1, changeRequests: 1, duplicates: 0, closedByName: 'business', closedByRole: 'business' });
+    expect(new Date(summary.createdAt).getTime()).toBeLessThanOrEqual(new Date(summary.closedAt).getTime());
   });
 
   /** Скачать xlsx и прочитать лист строками «шапка → значение». */
@@ -154,5 +157,13 @@ describe('rounds: close, export, reopen', () => {
       { roundId: next.body.id, action: 'open', role: 'pm' },
       { roundId, action: 'reopen', role: 'business' },
     ]);
+  });
+
+  it('закрытый раунд — только для чтения: связать повтор нельзя (409)', async () => {
+    const closedRound = await h.prisma.round.create({ data: { projectId: h.projectId, number: 7, status: 'closed', closedAt: new Date() } });
+    await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: closedRound.id, number: 1, description: 'Оригинал', status: 'closed' } });
+    const dup = await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: closedRound.id, number: 2, description: 'Повтор', status: 'duplicate' } });
+    const res = await h.http.post(url(`/remarks/${dup.id}/link-duplicate`)).set(h.auth('pm')).send({ duplicateOfNumber: 1 }).expect(409);
+    expect(res.body.message).toMatch(/закрыт/);
   });
 });

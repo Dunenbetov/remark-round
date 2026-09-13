@@ -58,6 +58,14 @@ export class RemarksStore {
     return round;
   }
 
+  /** Все раунды проекта для страницы «Раунды»: текущий раунд и его журнал не трогаем. */
+  async loadRounds(projectId: string): Promise<Round[] | null> {
+    this.projectId.set(projectId);
+    const rounds = await this.guard(() => this.api.rounds(projectId));
+    if (rounds) this.rounds.set(rounds);
+    return rounds;
+  }
+
   /** Новый раунд (pm, business, admin): следующий номер; журнал открывается пустым. */
   async createRound(projectId: string): Promise<Round | null> {
     this.projectId.set(projectId);

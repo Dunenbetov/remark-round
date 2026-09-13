@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Title } from '@angular/platform-browser';
 import { Router, RouterLink } from '@angular/router';
 import type { Remark, Screenshot } from '../core/models';
-import { APP_NAME, CARD, EMPTY, JOURNAL, JournalChip, NAV, PHASE_EXTRA, QUEUE, ROLE_TITLE, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
+import { APP_NAME, CARD, EMPTY, JOURNAL, JournalChip, NAV, PHASE_EXTRA, QUEUE, ROLE_SHORT, ROLE_TITLE, ROUNDS, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
 import { dateRu } from '../core/format';
 import { filterRemarks } from '../core/journal-filter';
 import { OnboardingService } from '../core/onboarding.service';
@@ -58,6 +58,14 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
           <rr-error-banner class="banner" [message]="err" [busy]="store.loading()" (retry)="reload()" />
         }
 
+        @if (closedBanner(); as text) {
+          <!-- Закрытый раунд — только для чтения (ADR 011): факт, не подсказка -->
+          <div class="closed-banner" role="status">
+            <span>{{ text }}</span>
+            <a class="btn btn--text closed-banner__cta" [routerLink]="roundsLink()">{{ nav.allRounds }}</a>
+          </div>
+        }
+
         @if (store.loading() && !store.remarks().length && !store.error()) {
           <rr-skeleton kind="table" [rows]="6" />
         } @else if (!store.round() && !store.loading() && !store.error()) {
@@ -68,8 +76,8 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
             }
           </rr-empty-state>
         } @else if (store.total() === 0 && !store.loading()) {
-          <rr-empty-state [title]="role() === 'business' ? empty.noRemarks : journal.waitingPm">
-            @if (role() === 'business') {
+          <rr-empty-state [title]="roundClosed() ? roundsCopy.emptyClosed : role() === 'business' ? empty.noRemarks : journal.waitingPm">
+            @if (role() === 'business' && !roundClosed()) {
               <a cta class="btn btn--primary" [routerLink]="newLink()">{{ nav.addRemark }}</a>
             }
           </rr-empty-state>
@@ -139,7 +147,7 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
                           </td>
                           <td class="journal__outcome">
                             <span class="journal__outcome-text">{{ outcomeText(r) }}</span>
-                            @if (r.status === 'duplicate' && r.duplicateOfNumber && !r.duplicateLinked && role() === 'pm') {
+                            @if (r.status === 'duplicate' && r.duplicateOfNumber && !r.duplicateLinked && role() === 'pm' && !roundClosed()) {
                               <button type="button" class="btn btn--text act" [disabled]="store.loading()" (click)="link(r)">{{ linkLabel(r.duplicateOfNumber) }}</button>
                             }
                           </td>
@@ -180,6 +188,25 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
       display: flex;
       gap: var(--sp-2);
       flex-wrap: wrap;
+    }
+    .closed-banner {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+      min-height: 44px;
+      padding: 0 var(--sp-4);
+      margin-bottom: var(--sp-4);
+      border-radius: var(--rr-r-md);
+      /* тон «закрыто» — тот же, что у штампа: на столе видно в обеих темах */
+      background: var(--rr-ok-bg);
+      color: var(--rr-ok-ink);
+      font-size: var(--fs-14);
+      line-height: var(--lh-14);
+    }
+    .closed-banner__cta {
+      margin-left: auto;
+      font-size: var(--fs-14);
+      color: var(--rr-ok-ink);
     }
     .fix-banner {
       display: flex;
@@ -375,12 +402,21 @@ export class JournalPage {
   protected readonly journal = JOURNAL;
   protected readonly empty = EMPTY;
   protected readonly nav = NAV;
+  protected readonly roundsCopy = ROUNDS;
   protected readonly filterLabel = 'Фильтр';
   protected readonly role = computed(() => this.session.roleIn(this.projectId()));
   protected readonly roleTitle = computed(() => (this.role() ? ROLE_TITLE[this.role()!] : ''));
   protected readonly explain = computed(() => (this.role() === 'business' ? JOURNAL.explain.business : JOURNAL.explain.pm));
   protected readonly filter = signal<JournalChip>(this.ui.journalFilter() ?? 'Ждут меня');
   protected readonly canOpenRound = computed(() => this.role() === 'pm' || this.role() === 'business' || this.role() === 'admin');
+  /** Закрытый раунд — только для чтения (ADR 011): без «Добавить замечание» и «Связать», с плашкой «закрыт · когда · кто». */
+  protected readonly roundClosed = computed(() => this.store.round()?.status === 'closed');
+  protected readonly closedBanner = computed(() => {
+    const r = this.store.round();
+    if (!r || r.status !== 'closed') return null;
+    const who = r.closedByName ? (r.closedByRole ? `${r.closedByName} (${ROLE_SHORT[r.closedByRole]})` : r.closedByName) : '';
+    return ROUNDS.banner(r.number, dateRu(r.closedAt), who);
+  });
   protected readonly creatingRound = signal(false);
 
   constructor() {
@@ -497,6 +533,10 @@ export class JournalPage {
     const ids = this.groups().flatMap((g) => g.rows.map((x) => x.id));
     this.queue.set(ids, this.chipLabel(this.filter()), this.backLink());
     this.ui.lastRemarkId.set(r.id);
+  }
+
+  protected roundsLink(): string[] {
+    return links.rounds(this.slug());
   }
 
   private slug(): string {

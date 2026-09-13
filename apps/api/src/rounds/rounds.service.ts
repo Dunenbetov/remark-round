@@ -14,7 +14,16 @@ export interface RoundSummary {
   remarks: number;
   /** Замечаний, которые ещё чего-то ждут (не закрыто, не новое желание, не повтор). Пока > 0, новый раунд не открыть. */
   pending: number;
+  /** Сколько закрыто, новых желаний и повторов — для страницы «Раунды» (ADR 011). */
+  closed: number;
+  changeRequests: number;
+  duplicates: number;
+  /** ISO: когда раунд открыт. */
+  createdAt: string;
   closedAt: string | null;
+  /** Кто закрыл — имя и роль на момент закрытия (событие раунда), для старых раундов — нынешние. */
+  closedByName: string | null;
+  closedByRole: Role | null;
 }
 
 export const ROUND_CLOSED = 'Раунд закрыт — добавляйте в открытый раунд';
@@ -29,16 +38,8 @@ export const ROUND_CLOSED = 'Раунд закрыт — добавляйте в
 export class RoundsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(ctx: ProjectContext): Promise<RoundSummary[]> {
-    const [rounds, pending] = await Promise.all([
-      this.prisma.round.findMany({
-        where: { projectId: ctx.projectId },
-        orderBy: { number: 'asc' },
-        include: { _count: { select: { remarks: true } } },
-      }),
-      this.pendingByRound(this.prisma, ctx.projectId),
-    ]);
-    return rounds.map((r) => ({ id: r.id, number: r.number, status: r.status, remarks: r._count.remarks, pending: pending.get(r.id) ?? 0, closedAt: r.closedAt?.toISOString() ?? null }));
+  list(ctx: ProjectContext): Promise<RoundSummary[]> {
+    return this.summaries(ctx.projectId);
   }
 
   async create(ctx: ProjectContext, number?: number): Promise<RoundSummary> {
@@ -57,14 +58,14 @@ export class RoundsService {
       await roundEvent(tx, ctx, created.id, 'open');
       return created;
     });
-    return { id: round.id, number: round.number, status: round.status, remarks: 0, pending: 0, closedAt: null };
+    return this.summary(ctx, round.id);
   }
 
   /** Закрыть раунд: заказчик или руководитель приёмки, и только когда всё решено. Повтор по закрытому — тот же ответ. */
   async close(ctx: ProjectContext, roundId: string): Promise<RoundSummary> {
     if (ctx.role !== 'business' && ctx.role !== 'pm') throw new ForbiddenException();
     const round = await this.load(ctx, roundId);
-    if (round.status === 'closed') return this.summary(round.id);
+    if (round.status === 'closed') return this.summary(ctx, round.id);
     const pending = await this.prisma.remark.groupBy({
       by: ['status'],
       where: { roundId: round.id, status: { notIn: [...TERMINAL_STATUSES] } },
@@ -79,7 +80,7 @@ export class RoundsService {
       if (count === 0) throw new ConflictException('Раунд уже закрыт');
       await roundEvent(tx, ctx, round.id, 'close');
     });
-    return this.summary(round.id);
+    return this.summary(ctx, round.id);
   }
 
   async reopen(ctx: ProjectContext, roundId: string): Promise<RoundSummary> {
@@ -90,7 +91,7 @@ export class RoundsService {
       const { count } = await tx.round.updateMany({ where: { id: round.id, status: 'closed' }, data: { status: 'open', closedAt: null, closedByUserId: null } });
       if (count === 1) await roundEvent(tx, ctx, round.id, 'reopen');
     });
-    return this.summary(round.id);
+    return this.summary(ctx, round.id);
   }
 
   /**
@@ -245,10 +246,50 @@ export class RoundsService {
     return round;
   }
 
-  private async summary(roundId: string): Promise<RoundSummary> {
-    const r = await this.prisma.round.findUniqueOrThrow({ where: { id: roundId }, include: { _count: { select: { remarks: true } } } });
-    const pending = await this.prisma.remark.count({ where: { roundId, status: { notIn: [...TERMINAL_STATUSES] } } });
-    return { id: r.id, number: r.number, status: r.status, remarks: r._count.remarks, pending, closedAt: r.closedAt?.toISOString() ?? null };
+  private async summary(ctx: ProjectContext, roundId: string): Promise<RoundSummary> {
+    const [one] = await this.summaries(ctx.projectId, roundId);
+    if (!one) throw new NotFoundException();
+    return one;
+  }
+
+  /**
+   * Сводки раундов одним набором запросов: счётчики по статусам, кто закрыл — из последнего события «закрыт»
+   * (имя и роль на момент закрытия, ADR 011), для раундов, закрытых до событий, — нынешние имя и роль.
+   */
+  private async summaries(projectId: string, roundId?: string): Promise<RoundSummary[]> {
+    const [rounds, counts, closeEvents] = await Promise.all([
+      this.prisma.round.findMany({ where: { projectId, ...(roundId ? { id: roundId } : {}) }, orderBy: { number: 'asc' } }),
+      this.prisma.remark.groupBy({ by: ['roundId', 'status'], where: { projectId, ...(roundId ? { roundId } : {}) }, _count: { _all: true } }),
+      this.prisma.roundEvent.findMany({ where: { projectId, action: 'close', ...(roundId ? { roundId } : {}) }, orderBy: { createdAt: 'desc' }, select: { roundId: true, actorName: true, role: true } }),
+    ]);
+    const legacyIds = [...new Set(rounds.filter((r) => r.status === 'closed' && r.closedByUserId && !closeEvents.some((e) => e.roundId === r.id)).map((r) => r.closedByUserId!))];
+    const [users, memberships] = legacyIds.length
+      ? await Promise.all([
+          this.prisma.user.findMany({ where: { id: { in: legacyIds } }, select: { id: true, name: true } }),
+          this.prisma.membership.findMany({ where: { projectId, userId: { in: legacyIds } }, select: { userId: true, role: true } }),
+        ])
+      : [[], []];
+    const count = (id: string, statuses?: ReadonlySet<RemarkStatus> | RemarkStatus[]) =>
+      counts.filter((c) => c.roundId === id && (!statuses || [...statuses].includes(c.status))).reduce((sum, c) => sum + c._count._all, 0);
+    return rounds.map((r) => {
+      const total = count(r.id);
+      const closedNow = r.status === 'closed';
+      const event = closedNow ? closeEvents.find((e) => e.roundId === r.id) : undefined;
+      return {
+        id: r.id,
+        number: r.number,
+        status: r.status,
+        remarks: total,
+        pending: total - count(r.id, TERMINAL_STATUSES),
+        closed: count(r.id, ['closed']),
+        changeRequests: count(r.id, ['change_request']),
+        duplicates: count(r.id, ['duplicate']),
+        createdAt: r.createdAt.toISOString(),
+        closedAt: r.closedAt?.toISOString() ?? null,
+        closedByName: event?.actorName ?? (closedNow ? (users.find((u) => u.id === r.closedByUserId)?.name ?? null) : null),
+        closedByRole: event ? event.role : closedNow ? (memberships.find((m) => m.userId === r.closedByUserId)?.role ?? null) : null,
+      };
+    });
   }
 
   /** roundId → число нерешённых замечаний; раунды, где всё решено, в карту не попадают. */

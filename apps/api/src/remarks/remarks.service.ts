@@ -502,6 +502,8 @@ export class RemarksService {
   async linkDuplicate(ctx: ProjectContext, remarkId: string, duplicateOfNumber: number): Promise<RemarkView> {
     if (ctx.role !== 'pm') throw new ForbiddenException();
     const row = await this.load(ctx, remarkId);
+    // Закрытый раунд — только для чтения: связи в нём не меняются (ADR 011)
+    await this.openRound(ctx, row.roundId);
     const original = await this.prisma.remark.findFirst({ where: { roundId: row.roundId, number: duplicateOfNumber } });
     if (!original || original.id === row.id) throw new NotFoundException('Оригинал не найден в этом раунде');
     // Статус не меняется, но связь — решение человека: в истории видно, кто и с каким номером связал (ADR 011)

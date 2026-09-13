@@ -7,7 +7,7 @@ import { UrlSegment, type UrlMatchResult } from '@angular/router';
  *   /klientskiy-kabinet/round-2/12      — карточка № 12 (номер уникален в раунде)
  *   /klientskiy-kabinet/round-2/new     — новое замечание
  *   /klientskiy-kabinet/round-2/import  — импорт журнала
- *   /klientskiy-kabinet/documents | team | dev
+ *   /klientskiy-kabinet/documents | team | dev | rounds
  * slug выдаёт сервер (Project.slug), первый сегмент — всегда он. Старые /p/<uuid>/… перенаправляет legacyUrlGuard.
  */
 
@@ -31,6 +31,8 @@ export const links = {
   documents: (slug: string): string[] => ['/', slug, 'documents'],
   team: (slug: string): string[] => ['/', slug, 'team'],
   dev: (slug: string): string[] => ['/', slug, 'dev'],
+  /** Все раунды проекта: даты, кто закрыл, выгрузка журнала (ADR 011). */
+  rounds: (slug: string): string[] => ['/', slug, 'rounds'],
 };
 
 /** Команды роутера → строка для navigateByUrl: ['/', 'a', 'b'] → '/a/b'. */

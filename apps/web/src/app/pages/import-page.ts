@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import type { ImportJob, ImportRow } from '../core/models';
-import { IMPORT, ROLE_TITLE, ROUND, STATUS_LABEL, STATUS_TONE } from '../core/copy';
+import { IMPORT, NEW_REMARK, ROLE_TITLE, ROUND, STATUS_LABEL, STATUS_TONE } from '../core/copy';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { links } from '../core/links';
@@ -43,6 +43,7 @@ const POLL_MS = 2000;
               accept=".xlsx,.csv"
               [title]="j.fileName + ' · ' + summary()"
               [busy]="uploading()"
+              [disabled]="roundClosed()"
               [buttonLabel]="copy.uploadOther"
               (file)="upload($event)"
             />
@@ -124,8 +125,9 @@ const POLL_MS = 2000;
                 icon="upload"
                 accept=".xlsx,.csv"
                 [title]="copy.drop"
-                [hint]="copy.dropHint"
+                [hint]="roundClosed() ? closedNote() : copy.dropHint"
                 [busy]="uploading()"
+                [disabled]="roundClosed()"
                 [buttonLabel]="copy.upload"
                 (file)="upload($event)"
               />
@@ -451,6 +453,9 @@ export class ImportPage {
     return bad > 0 ? IMPORT.summary(total - bad, total, bad) : IMPORT.allParsed(total);
   });
   protected readonly hasDrafts = computed(() => Object.values(this.drafts()).some((t) => t.trim()));
+  /** В закрытый раунд журнал не импортируют (сервер ответит 409): зона неактивна, вместо подсказки — почему. */
+  protected readonly roundClosed = computed(() => this.store.round()?.status === 'closed');
+  protected readonly closedNote = computed(() => NEW_REMARK.roundClosed(this.store.roundNumber() ?? 0));
 
   constructor() {
     if (!this.store.round()) {

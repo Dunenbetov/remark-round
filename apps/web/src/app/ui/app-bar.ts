@@ -58,7 +58,8 @@ export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'acc
           </nav>
         }
         <div class="bar__right">
-          @if (!brandOnly() && role() === 'business' && projectId()) {
+          <!-- В закрытый раунд не добавляют: он только для чтения (ADR 011) -->
+          @if (!brandOnly() && role() === 'business' && projectId() && store.round()?.status !== 'closed') {
             <a class="btn btn--primary btn--sm bar__add" [routerLink]="newRemarkLink()">
               <rr-icon name="plus" [size]="16" />
               {{ nav.addRemark }}
@@ -230,7 +231,7 @@ export class AppBar {
   readonly tabs = input(true);
 
   private readonly session = inject(SessionService);
-  private readonly store = inject(RemarksStore);
+  protected readonly store = inject(RemarksStore);
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
   private readonly onboarding = inject(OnboardingService);
@@ -272,7 +273,7 @@ export class AppBar {
     items.push({ id: 'projects:all', label: NAV.allProjects, group: memberships.length > 1 ? undefined : NAV.project, separatorBefore: memberships.length > 1 });
     if (this.session.canCreateProjects()) items.push({ id: 'projects:new', label: NAV.newProject });
     const rounds = this.store.rounds();
-    if (this.role() !== 'developer' && this.store.roundNumber()) {
+    if (this.role() !== 'developer' && rounds.length) {
       rounds.forEach((r, i) =>
         items.push({
           id: `round:${r.number}`,
@@ -282,6 +283,7 @@ export class AppBar {
           separatorBefore: i === 0,
         }),
       );
+      items.push({ id: 'rounds:all', label: NAV.allRounds });
       if (this.canOpenRound()) {
         const blocking = this.blockingRounds();
         const pending = blocking.reduce((sum, r) => sum + r.pending, 0);
@@ -365,6 +367,10 @@ export class AppBar {
     }
     if (id === 'round:close' || id === 'round:reopen' || id === 'round:export' || id === 'round:journal') {
       void this.roundAction(id);
+      return;
+    }
+    if (id === 'rounds:all') {
+      void this.router.navigate(links.rounds(this.slug()));
       return;
     }
     if (id.startsWith('project:')) {
