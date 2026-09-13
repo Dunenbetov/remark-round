@@ -7,7 +7,7 @@
 
 Тело любой ошибки одно: `{ statusCode, code, message, requestId }` — `code` для программ (`unauthorized`, `forbidden`, `not_found`, `conflict`, `unprocessable`, `too_many_requests`, `internal`…), `message` для людей (строка или список от валидации), `requestId` — тот же, что в заголовке `X-Request-Id` ответа и в строке лога API. Прокси может прислать свой `X-Request-Id` (8–64 символов `[\w.-]`), иначе сервер сгенерирует. Внутренняя ошибка — `500 internal` без подробностей наружу, стек — в логе по `requestId`.
 
-`cannot_tell` — **200** с телом вердикта, не 500.
+`cannot_tell` — **200** с обычным телом ответа, не 500.
 
 ## Ресурсы
 
@@ -46,7 +46,7 @@
 | POST | `/projects/:projectId/remarks/:id/reopen` | business | `{ roundId, screenshotKey? }` — повтор закрытой претензии в открытом раунде: новое замечание `reopened` с `origin` (оригинал получает `reopenedBy`); дальше обычный `triage` |
 | GET | `/projects/:projectId/rounds/:roundId/remarks` | по роли фильтр | Список. Developer — только defect+ |
 | POST | `/projects/:projectId/rounds/:roundId/remarks` | business, pm | Ручное замечание + upload screenshot |
-| GET | `/projects/:projectId/remarks/:remarkId` | member + ACL очереди | Карточка; `runFailure` — причина последнего сбоя прогона по-русски (модель перегружена, ключ не принят, файл не найден…). Developer — defect+ и `awaiting_pm` (чтобы посоветовать); в ответе `advice[]` — советы разработчиков. Заказчику (business) карточка собирается без `advice`, `verdict.comment`, `traceUrl`, `proposedClass`, а `draft`/`seen` — только после вердикта (ADR 007); то же для списков |
+| GET | `/projects/:projectId/remarks/:remarkId` | member + ACL очереди | Карточка; `runFailure` — причина последнего сбоя прогона по-русски (модель перегружена, ключ не принят, файл не найден…). Developer — defect+ и `awaiting_pm` (чтобы посоветовать); в ответе `advice[]` — советы разработчиков. Заказчику (business) карточка собирается без `advice`, `verdict.comment`, `traceUrl`, `proposedClass`, а `draft`/`seen` — только после решения PM (ADR 007); то же для списков |
 | GET | `/projects/:projectId/remarks/at/:roundNumber/:number` | member + ACL очереди | Та же карточка по номеру раунда и номеру замечания — для адреса SPA `/<slug>/round-2/12`; нет такого номера или роль его не видит — 404 |
 | GET | `/projects/:projectId/remarks/:remarkId/history` | member + ACL карточки | История (ADR 011): `[{ at (ISO), action, fromStatus?, toStatus, by?: { userId?, name, role }, runId?, detail?, comment?, shot?: { kind, url, current } }]` — строка на каждое действие (create, import, reopen, reopened_as, fix_row, attach_screenshot, triage, proposal, rejected_binding, verdict, link_duplicate, ready_for_retest, retest, retest_result, close, not_fixed, cancel, run_failed); `by.name` — имя на момент действия, `by` пуст — действие системы; `shot` — кадр действия, `current: false` — его потом заменили. Заказчику не отдаются `detail` предложений модели и `comment` команды (ADR 007) |
 | GET | `/projects/:projectId/advisory-queue` | developer | Что сейчас на приёмке у PM (`awaiting_pm`) — можно посоветовать; не очередь работы |
@@ -58,7 +58,7 @@
 | POST | `/projects/:projectId/remarks/:id/fix-row` | business, pm | «Допишите строку журнала»: `{ description, pageOrScreen?, expected? }`, `needs_human_parse` → разбор |
 | POST | `/projects/:projectId/remarks/:id/triage` | pm, business | Старт AgentRun: ответ сразу `triaging` + `runId`, фазы — в комнате WS |
 | POST | `/projects/:projectId/remarks/:id/verdict` | pm | HITL (дубль WS, идемпотентно). `rejected_binding` отвечает `triaging`: тот же run продолжает цикл bind |
-| POST | `/projects/:projectId/remarks/:id/cancel` | pm, business | `{ runId, idempotencyKey }` — дубль `run.cancel`: вердикта нет, run = cancelled, замечание → `imported` |
+| POST | `/projects/:projectId/remarks/:id/cancel` | pm, business | `{ runId, idempotencyKey }` — дубль `run.cancel`: решения нет, run = cancelled, замечание → `imported` |
 | POST | `/projects/:projectId/remarks/:id/ready-for-retest` | developer | |
 | POST | `/projects/:projectId/remarks/:id/retest` | business | Новый скрин `{ screenshotKey }` → граф ретеста в фоне (ответ: `ready_for_retest`, `runMode: retest`, `runStatus: running`; фаза `diffing` в комнате) → pixel-diff + explain: кадр `diff` в `screenshots`, `retest.outcome` (`likely_addressed` / `likely_unchanged` / `cannot_tell`), `retest.explanation` по-русски, статус `awaiting_business_close`. Разный размер, формат не PNG/JPG, слишком разные кадры → `cannot_tell` с причиной, без диффа |
 | POST | `/projects/:projectId/remarks/:id/close` | business | `{ comment? }` (до 2000). Из `awaiting_business_close` — после ретеста; из `ready_for_retest` — заказчик проверил сам, без нового кадра (ADR 010). Пока кадры сравниваются — 409. Ответ: `closed`, `closedVia` (`retest` / `business_check`), `closeComment` |
@@ -80,7 +80,7 @@
 
 Регистрация открыта: без проекта человек видит экран ожидания и опрашивает `GET /auth/me` — как только руководитель приёмки добавит его по e-mail, проект появится. Сторона `preferredRole` — подсказка (и право создавать проекты для `pm`); роль в проекте — всегда `Membership.role`, её ставит PM. Приглашение — ссылка `/join/<token>`: со SMTP письмо со ссылкой уходит само (ADR 009), без него PM копирует и шлёт сам; принимается только по ссылке (ADR 006). Ошибки: 409 — e-mail занят или единственный pm; 410 — ссылка уже принята; 422 — неверный текущий пароль или валидация.
 
-## Тело вердикта
+## Тело решения (`verdict`)
 
 ```json
 {
@@ -91,7 +91,7 @@
 }
 ```
 
-`verdict`: `defect | change_request | unspecified | duplicate | cannot_tell | rejected_binding`. Для `duplicate` можно передать `duplicateOfNumber`. `runId` берётся из ответа замечания (`runId`); повтор с тем же `idempotencyKey` возвращает тот же результат без второго вердикта.
+`verdict`: `defect | change_request | unspecified | duplicate | cannot_tell | rejected_binding`. Для `duplicate` можно передать `duplicateOfNumber`. `runId` берётся из ответа замечания (`runId`); повтор с тем же `idempotencyKey` возвращает тот же результат без второго решения.
 
 ## Тело замечания
 
@@ -107,4 +107,4 @@
 
 ## Уведомления (ADR 009)
 
-Отдельных маршрутов нет. Переход, после которого у роли появляется кнопка, пишет `Notification` каждому участнику этой роли (кроме того, кто нажал) и через `NOTIFY_DIGEST_MS` шлёт **одно** письмо на всё накопившееся: `awaiting_pm` → pm; `defect` (вердикт или «не исправлено») → developer; `ready_for_retest`, `awaiting_business_close`, `cannot_tell` → business. Письмо содержит номер, короткое описание, что именно ждёт, и ссылку на человеческий адрес карточки `/<slug>/round-<n>/<номер>` (например `/klientskiy-kabinet/round-2/12`). Без `SMTP_URL` уведомления помечаются `skipped`, `GET /auth/options` отдаёт `mail: false`.
+Отдельных маршрутов нет. Переход, после которого у роли появляется кнопка, пишет `Notification` каждому участнику этой роли (кроме того, кто нажал) и через `NOTIFY_DIGEST_MS` шлёт **одно** письмо на всё накопившееся: `awaiting_pm` → pm; `defect` (решение PM или «не исправлено») → developer; `ready_for_retest`, `awaiting_business_close`, `cannot_tell` → business. Письмо содержит номер, короткое описание, что именно ждёт, и ссылку на человеческий адрес карточки `/<slug>/round-<n>/<номер>` (например `/klientskiy-kabinet/round-2/12`). Без `SMTP_URL` уведомления помечаются `skipped`, `GET /auth/options` отдаёт `mail: false`.

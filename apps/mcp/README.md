@@ -7,8 +7,8 @@
 | Tool | Что делает | REST под капотом | Роль |
 |---|---|---|---|
 | `search_spec({ query, k? })` | Чанки ТЗ / протокола **текущего проекта** с разделом, цитатой и близостью. Пусто — значит, опоры в бумагах нет | `GET /projects/:id/search` | member |
-| `get_round_remarks({ roundId? \| roundNumber?, status? })` | Очередь раунда (по умолчанию последний): номер, статус, класс модели, цитаты, вердикт | `GET /projects/:id/rounds`, `GET .../rounds/:roundId/remarks` | member (developer видит только defect+) |
-| `apply_human_verdict({ remarkId, verdict, comment?, duplicateOfNumber? })` | Вердикт PM по замечанию в `awaiting_pm`; `runId` и `idempotencyKey` подставляет фасад | `GET .../remarks/:id`, `POST .../remarks/:id/verdict` | pm |
+| `get_round_remarks({ roundId? \| roundNumber?, status? })` | Очередь раунда (по умолчанию последний): номер, статус, класс модели, цитаты, решение человека | `GET /projects/:id/rounds`, `GET .../rounds/:roundId/remarks` | member (developer видит только defect+) |
+| `apply_human_verdict({ remarkId, verdict, comment?, duplicateOfNumber? })` | Решение PM по замечанию в `awaiting_pm`; `runId` и `idempotencyKey` подставляет фасад | `GET .../remarks/:id`, `POST .../remarks/:id/verdict` | pm |
 | `submit_retest_evidence({ remarkId, screenshotKey? \| screenshotPath? })` | Новый кадр на ретест → pixel-diff + пояснение. Локальный файл читается только в stdio | `POST .../media`, `POST .../remarks/:id/retest` | business |
 
 Prompt `uat-triage` — текст [`skills/uat-triage/SKILL.md`](../../skills/uat-triage/SKILL.md) без YAML-шапки, тот же, что подмешан в ноды `classify` / `draft` / `explain` графа.
@@ -75,7 +75,7 @@ Claude Desktop (`claude_desktop_config.json`):
 
 ## Тест-ворота
 
-[`apps/api/src/mcp/mcp.facade.spec.ts`](../../apps/api/src/mcp/mcp.facade.spec.ts): настоящий процесс `apps/mcp` по stdio поверх тестового API — четыре tool без `projectId`, чужой проект пуст (а через REST тот же документ находится), токен проекта A не видит проект B при membership, вердикт бизнеса отклонён ролью, ретест-кадр даёт дифф, tool'а закрытия нет, prompt отдаёт SKILL.md.
+[`apps/api/src/mcp/mcp.facade.spec.ts`](../../apps/api/src/mcp/mcp.facade.spec.ts): настоящий процесс `apps/mcp` по stdio поверх тестового API — четыре tool без `projectId`, чужой проект пуст (а через REST тот же документ находится), токен проекта A не видит проект B при membership, решение бизнеса отклонено ролью, ретест-кадр даёт дифф, tool'а закрытия нет, prompt отдаёт SKILL.md.
 
 ```bash
 pnpm --filter @remarkround/api test -- src/mcp

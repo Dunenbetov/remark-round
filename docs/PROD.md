@@ -64,7 +64,7 @@ docker compose ps && curl -s https://$PUBLIC_HOST/api/v1/health   # version = RR
 docker compose exec postgres psql -U remarkround -c "select count(*) as verdicts_without_run from \"HumanVerdict\" v left join \"AgentRun\" a on a.id = v.\"runId\" where a.id is null" -c "select count(*) as remarks_in_foreign_round from \"Remark\" r join \"Round\" ro on ro.id = r.\"roundId\" where ro.\"projectId\" <> r.\"projectId\""
 ```
 
-Во время `up -d` старый контейнер api получает SIGTERM: воркер очереди не берёт новых задач, даёт бегущим прогонам до 25 с и возвращает недоделанные в очередь; новый контейнер их подхватывает (задачи с протухшим `lockedAt` возвращаются в `queued` на старте). Карточки в «разбирается» доходят до вердикта сами, кнопку «запустить снова» нажимать не нужно. Перед обновлением можно глянуть `/health` → `jobs.running`: ноль — самый спокойный момент.
+Во время `up -d` старый контейнер api получает SIGTERM: воркер очереди не берёт новых задач, даёт бегущим прогонам до 25 с и возвращает недоделанные в очередь; новый контейнер их подхватывает (задачи с протухшим `lockedAt` возвращаются в `queued` на старте). Карточки в «разбирается» доходят до черновика сами, кнопку «запустить снова» нажимать не нужно. Перед обновлением можно глянуть `/health` → `jobs.running`: ноль — самый спокойный момент.
 
 Откат кода — вернуть прежний `RR_TAG` и повторить `pull && up -d` (сборки нет, минута). Откат данных — restore ниже: миграции Prisma не откатываются автоматически, поэтому миграцию, которая удаляет или переписывает данные, сначала репетируют на копии (`docs/adr/008-release-and-ownership.md`).
 

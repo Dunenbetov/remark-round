@@ -49,7 +49,7 @@
 <section class="slide" id="s1">
   <div class="kicker">nFactorial · LLM-Engineer · финальный проект</div>
   <h1>RemarkRound</h1>
-  <p class="lead">Слой приёмки веб-проекта: журнал замечаний как дела с уликами, а не Excel на почте.</p>
+  <p class="lead">Слой приёмки веб-проекта: журнал замечаний как карточки с опорой на документы, а не Excel на почте.</p>
   <p class="quote">Jira stores work. We decide whether it is work. The spec is evidence, not a verdict.</p>
   <div style="flex:1"></div>
   <div class="grid3">
@@ -86,7 +86,7 @@
 <!-- 3 -->
 <section class="slide" id="s3">
   <div class="kicker">Решение</div>
-  <h2>Дело из улик → кнопка человека → только потом работа</h2>
+  <h2>Опора в документах → кнопка человека → только потом работа</h2>
   <div class="cols">
     <div class="col">
       <div class="flow">
@@ -115,7 +115,7 @@
 <!-- 4 -->
 <section class="slide" id="s4">
   <div class="kicker">Демо</div>
-  <h2>Карточка: улики | черновик разбора | решение</h2>
+  <h2>Карточка: замечание | черновик разбора | решение</h2>
   <div class="cols">
     <div class="col"><img class="shot" style="max-height:540px;object-fit:cover;object-position:top" src="../screenshots/remark-card.png" alt="Карточка замечания"></div>
     <div class="col narrow">
@@ -184,7 +184,7 @@
       <ul>
         <li>Нужны именно циклы с лимитом и interrupt на часы или дни — чекпоинт в той же БД, thread = <code>AgentRun.id</code>.</li>
         <li>Один язык и один процесс (TypeScript, Nest): ноды зовут доменные сервисы напрямую, без второго рантайма.</li>
-        <li>Мультиагентность не нужна: одна задача, одно дело, один судья-человек.</li>
+        <li>Мультиагентность не нужна: одна задача, одно замечание, решает один человек.</li>
       </ul>
     </div>
     <div class="col">
@@ -228,10 +228,10 @@
 <!-- 8 -->
 <section class="slide" id="s8">
   <div class="kicker">Мультимодальность</div>
-  <h2>Скрин — улика, пиксели считает алгоритм</h2>
+  <h2>Скрин — источник фактов, пиксели считает алгоритм</h2>
   <div class="cols">
     <div class="col">
-      <h3>Триаж: факты кадра до вердикта</h3>
+      <h3>Триаж: факты кадра до решения</h3>
       <p>Vision-нода описывает только видимое («кнопка серая, поля заполнены»). Кейс «текст врёт, скрин спасает»: «на оплате всё зелёное» с кадром профиля → <code>cannot_tell</code>, а не дефект по §4.1.</p>
       <h3>Ретест: тройка было / стало / дифф</h3>
       <p>pixelmatch, порог 0.1, без масштабирования. Другой размер, другой экран (&gt; 35 % пикселей или рамка &gt; 40 % кадра) → <code>cannot_compare</code>. Модель отвечает только: относится ли красное к претензии.</p>
@@ -251,8 +251,8 @@
       <table>
         <tr><th>Tool</th><th>Что делает</th></tr>
         <tr><td><code>search_spec</code></td><td>Чанки ТЗ / протокола текущего проекта с разделом и близостью; пусто = опоры нет</td></tr>
-        <tr><td><code>get_round_remarks</code></td><td>Очередь раунда: статус, класс модели, цитаты, вердикт</td></tr>
-        <tr><td><code>apply_human_verdict</code></td><td>Вердикт PM по <code>awaiting_pm</code>; runId и idempotencyKey подставляет фасад</td></tr>
+        <tr><td><code>get_round_remarks</code></td><td>Очередь раунда: статус, класс модели, цитаты, решение человека</td></tr>
+        <tr><td><code>apply_human_verdict</code></td><td>Решение PM по <code>awaiting_pm</code>; runId и idempotencyKey подставляет фасад</td></tr>
         <tr><td><code>submit_retest_evidence</code></td><td>Новый кадр → pixel-diff + пояснение</td></tr>
       </table>
       <p style="margin-top:12px"><b>Почему MCP, а не просто API:</b> PM или ментор работает из IDE с тем же домом правил — проект из токена (<code>projectId</code> в аргументах нет), роли те же, tool'а «закрыть» нет. Тест поднимает настоящий процесс по stdio: чужой проект пуст.</p>
@@ -275,7 +275,7 @@
   <div class="cols">
     <div class="col">
       <ul>
-        <li>Langfuse SDK v5 поверх OpenTelemetry; traceId детерминирован из <code>runId</code> — старт и вердикт PM через часы ложатся в один trace.</li>
+        <li>Langfuse SDK v5 поверх OpenTelemetry; traceId детерминирован из <code>runId</code> — старт и решение PM через часы ложатся в один trace.</li>
         <li>Внутри: ноды графа (видны циклы rewrite / bind и interrupt), <code>generation</code> на каждый вызов OpenAI с моделью, параметрами и токенами, <code>embedding</code>, <code>retrieve</code> с найденными разделами.</li>
         <li>userId = кто нажал, sessionId = замечание, теги triage / retest, metadata projectId / runId / model.</li>
         <li>Стоимость считается и в Langfuse, и в коде по прайсу → <code>AgentRun.costUsd</code>.</li>
@@ -305,7 +305,7 @@
         <tr><td>2</td><td>classify по шагам: повтор → кадр → класс; ворота faithfulness — только процитированные разделы</td><td class="num">23/30</td><td class="num">30/30</td></tr>
         <tr><td>3</td><td>шаг «сверка»: что требует документ vs что на проде; кадр о другом экране → cannot_tell</td><td class="num"><b>25/30</b></td><td class="num"><b>30/30</b></td></tr>
       </table>
-      <p style="margin-top:12px;font-size:19px">12 типов ударов судьи: дефект с опорой, CR, дыра, конфликт, дубль, «текст врёт — скрин спасает», ретест не про претензию, несопоставимые кадры, leakage, injection, визуальная претензия без кадра, ложная цитата. Каждая правка промпта — от провала в evals.</p>
+      <p style="margin-top:12px;font-size:19px">12 типов возражений комиссии: дефект с опорой, CR, дыра, конфликт, дубль, «текст врёт — скрин спасает», ретест не про претензию, несопоставимые кадры, leakage, injection, визуальная претензия без кадра, ложная цитата. Каждая правка промпта — от провала в evals.</p>
     </div>
     <div class="col narrow">
       <div class="card">
@@ -347,7 +347,7 @@
 <!-- 13 -->
 <section class="slide" id="s13">
   <div class="kicker">Модели, стоимость, защита</div>
-  <h2>Дешёвая модель на улики, сильная на текст для человека, правила как fallback</h2>
+  <h2>Дешёвая модель на разбор, сильная на текст для человека, правила как fallback</h2>
   <div class="cols">
     <div class="col">
       <table>
@@ -357,7 +357,7 @@
         <tr><td>embeddings</td><td>text-embedding-3-small</td><td class="num">—</td><td class="num">—</td></tr>
       </table>
       <p style="margin-top:12px"><span class="tag">триаж ≈ $0.008 · 5 с</span><span class="tag">ретест ≈ $0.004 · 1.3 с</span></p>
-      <p style="font-size:19px">JSON-schema и temperature 0 там, где нужен ярлык; 0.3 — только на читаемый абзац. Ошибки на golden — про ярлык CR / unspecified, не про улики: сильная модель на classify удвоила бы цену ради того, что всё равно ставит PM. Если модель недоступна — тот же граф идёт на правилах по retrieve (binding 21/30, faithfulness 30/30), не 500.</p>
+      <p style="font-size:19px">JSON-schema и temperature 0 там, где нужен ярлык; 0.3 — только на читаемый абзац. Ошибки на golden — про ярлык CR / unspecified, не про опору: сильная модель на classify удвоила бы цену ради того, что всё равно ставит PM. Если модель недоступна — тот же граф идёт на правилах по retrieve (binding 21/30, faithfulness 30/30), не 500.</p>
     </div>
     <div class="col narrow">
       <div class="card">
@@ -402,7 +402,7 @@
   <div class="kicker">Итог</div>
   <h2>Что сделано и как проверить</h2>
   <div class="grid3">
-    <div class="card"><h3>Обязательное</h3><p style="font-size:19px">LangGraph с циклами и HITL · свой MCP (4 tool'а) · Skill · RAG на pgvector с обоснованием · PDF / DOCX / XLSX · vision как улика · Langfuse на каждый вызов · golden 30 + 13, 2 метрики, автопрогон · A/B с победителем в коде · выбор моделей с цифрами · Angular</p></div>
+    <div class="card"><h3>Обязательное</h3><p style="font-size:19px">LangGraph с циклами и HITL · свой MCP (4 tool'а) · Skill · RAG на pgvector с обоснованием · PDF / DOCX / XLSX · vision как источник фактов · Langfuse на каждый вызов · golden 30 + 13, 2 метрики, автопрогон · A/B с победителем в коде · выбор моделей с цифрами · Angular</p></div>
     <div class="card"><h3>Сверху</h3><p style="font-size:19px">Guardrails вход / выход · Docker Compose одной командой · auth и роли · CI с evals на PR · fallback на правила без модели · свой eval-раннер через продуктовые сервисы · 15 спеков-ворот (leakage, injection, «модель не закрывает», идемпотентность)</p></div>
     <div class="card"><h3>Проверить за 5 минут</h3><p style="font-size:19px"><code>docker compose up</code> → :4200, Дана / remarkround → карточка №12 → кнопка → :3000 trace. <code>pnpm evals -- --offline</code> → отчёт. <code>.cursor/mcp.json</code> → <code>search_spec</code> из Cursor.</p></div>
   </div>

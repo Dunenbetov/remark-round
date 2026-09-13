@@ -41,8 +41,8 @@ export interface ServerOptions {
   allowLocalFiles: boolean;
 }
 
-const INSTRUCTIONS = `RemarkRound — приёмка веб-проекта: замечание бизнеса становится делом из улик (цитаты пакета документов, скрин, pixel-diff).
-Проект уже выбран токеном; чужие проекты недоступны. ТЗ — улика, не вердикт: не выдумывай номера разделов, цитируй только то, что вернул search_spec.
+const INSTRUCTIONS = `RemarkRound — приёмка веб-проекта: к замечанию бизнеса система подбирает опору — цитаты пакета документов, скрин, pixel-diff.
+Проект уже выбран токеном; чужие проекты недоступны. ТЗ — опора, а не решение: не выдумывай номера разделов, цитируй только то, что вернул search_spec.
 Класс замечания и закрытие — решение человека. apply_human_verdict вызывай только когда пользователь явно принял решение; закрыть замечание через MCP нельзя.`;
 
 export function createServer(api: RemarkRoundApi, scope: TokenScope, options: ServerOptions): McpServer {
@@ -74,7 +74,7 @@ export function createServer(api: RemarkRoundApi, scope: TokenScope, options: Se
     {
       title: 'Очередь раунда',
       description:
-        'Замечания раунда приёмки текущего проекта: номер, статус, экран, класс модели, цитаты, вердикт. ' +
+        'Замечания раунда приёмки текущего проекта: номер, статус, экран, класс модели, цитаты, решение человека. ' +
         'Без roundId и roundNumber берётся последний раунд. Роль developer видит только defect и ready_for_retest.',
       inputSchema: {
         roundId: z.string().uuid().optional().describe('id раунда'),
@@ -102,11 +102,11 @@ export function createServer(api: RemarkRoundApi, scope: TokenScope, options: Se
   server.registerTool(
     'apply_human_verdict',
     {
-      title: 'Вердикт человека по замечанию',
+      title: 'Решение человека по замечанию',
       description:
         'Записывает решение PM по замечанию в статусе awaiting_pm: defect («В работу разработчикам»), change_request, unspecified, ' +
         'duplicate (нужен duplicateOfNumber), cannot_tell («Не хватает скрина»), rejected_binding («Не та цитата из ТЗ» — тот же прогон ищет другой пункт). ' +
-        'Это действие человека: вызывай только когда пользователь явно сказал, какой вердикт ставить. Роль — pm. Закрыть замечание этим tool нельзя.',
+        'Это действие человека: вызывай только когда пользователь явно сказал, какое решение принять. Роль — pm. Закрыть замечание этим tool нельзя.',
       inputSchema: {
         remarkId: z.string().uuid().describe('id замечания из get_round_remarks'),
         verdict: z.enum(VERDICTS),
@@ -120,12 +120,12 @@ export function createServer(api: RemarkRoundApi, scope: TokenScope, options: Se
         const before = await api.remark(projectId, remarkId);
         if (before.status !== 'awaiting_pm' || !before.runId) {
           return {
-            error: `Замечание №${before.number} сейчас в статусе ${before.status}: вердикт возможен только в awaiting_pm (черновик готов, ждёт человека).`,
+            error: `Замечание №${before.number} сейчас в статусе ${before.status}: решение возможно только в awaiting_pm (черновик готов, ждёт человека).`,
           };
         }
         const after = await api.verdict(projectId, remarkId, { verdict, comment, duplicateOfNumber, runId: before.runId, idempotencyKey: randomUUID() });
         const tail = verdict === 'rejected_binding' ? 'Прогон продолжает искать другой пункт (цикл bind), статус triaging.' : `Статус: ${after.status}.`;
-        return `Вердикт «${verdict}» записан по замечанию №${after.number}. ${tail}\n\n${formatRemark(after)}`;
+        return `Решение «${verdict}» записано по замечанию №${after.number}. ${tail}\n\n${formatRemark(after)}`;
       }),
   );
 
@@ -215,7 +215,7 @@ export function formatRemark(r: RemarkView): string {
   if (r.proposedClass) lines.push(`Класс модели: ${r.proposedClass}`);
   if (r.citations.length) lines.push(...r.citations.map((c) => `Цитата — ${c.heading} ${c.text}${c.soft ? ' (протокол, мягкая опора)' : ''}`));
   if (r.draft.length) lines.push(`Черновик разбора: ${oneLine(r.draft.join(' '))}`);
-  if (r.verdict) lines.push(`Вердикт: ${r.verdict.code}${r.verdict.userName ? ` · ${r.verdict.userName}` : ''} · ${r.verdict.at}${r.verdict.comment ? ` — ${r.verdict.comment}` : ''}`);
+  if (r.verdict) lines.push(`Решение: ${r.verdict.code}${r.verdict.userName ? ` · ${r.verdict.userName}` : ''} · ${r.verdict.at}${r.verdict.comment ? ` — ${r.verdict.comment}` : ''}`);
   if (r.retest) lines.push(`Ретест: ${r.retest.outcome} — ${oneLine(r.retest.explanation)}`);
   if (r.duplicateOfNumber) lines.push(`Дубль замечания №${r.duplicateOfNumber}`);
   if (r.runId) lines.push(`Прогон: ${r.runMode ?? 'triage'} ${r.runStatus ?? ''} (runId ${r.runId})`);

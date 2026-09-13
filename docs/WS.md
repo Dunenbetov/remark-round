@@ -22,7 +22,7 @@ type ServerEvent =
   | { type: 'run.citations'; runId: string; citations: Citation[] }
   | { type: 'run.proposal'; runId: string; proposedClass: ProposedClass; rationale: string }
   | { type: 'run.persisted'; runId: string; remarkStatus: string }
-  | { type: 'run.cancelled'; runId: string; remarkStatus: string }   // фаза 6: run.cancel — не вердикт и не сбой
+  | { type: 'run.cancelled'; runId: string; remarkStatus: string }   // фаза 6: run.cancel — не решение и не сбой
   | { type: 'run.failed'; runId: string; message: string }
   | { type: 'presence'; userId: string; role: string; name: string; action: 'join' | 'leave' }
   | { type: 'remark.advice'; remarkId: string; advice: AdviceView[] };   // совет разработчика записан или снят: весь список советов
@@ -60,12 +60,12 @@ type ClientEvent =
 ## Правила
 
 - Повтор `idempotencyKey` + `runId` → тот же результат, не второй `HumanVerdict`.
-- `run.cancel` не создаёт вердикт, run = `cancelled`.
+- `run.cancel` не создаёт решение, run = `cancelled`.
 - Close (`closed`) с WS **не** принимать от модели и не принимать от `developer`.
 - Токены — черновик rationale, не «ответ сотруднику».
 - Одно и то же имя события — одна и та же форма: `socket.emit(event.type, event)`, клиент слушает `onAny`.
 - REST — дубль тех же команд: `POST .../verdict`, `POST .../cancel`. Оба пути ведут в `AgentService` → `RemarksService`.
-- `remark.advice` — не прогон: его шлёт `RemarksController` после `PUT/DELETE .../advice`, клиент патчит `advice[]` на месте (без перечитывания). Разработчик входит в комнату `awaiting_pm` — чтобы советовать; вердикт из комнаты у него по-прежнему 403.
+- `remark.advice` — не прогон: его шлёт `RemarksController` после `PUT/DELETE .../advice`, клиент патчит `advice[]` на месте (без перечитывания). Разработчик входит в комнату `awaiting_pm` — чтобы советовать; решение из комнаты у него по-прежнему 403.
 
 Пины на скрине / курсоры — stretch, в MVP не делать.
 

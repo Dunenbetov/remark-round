@@ -192,7 +192,7 @@ export interface HistoryEntry {
   detail?: string;
   /** Слова человека при действии (решение PM, «не та цитата», закрытие). Заказчику — только слова заказчика (ADR 007). */
   comment?: string;
-  /** Кадр этого действия; `current: false` — его потом заменили, но улика осталась (ADR 011). */
+  /** Кадр этого действия; `current: false` — его потом заменили, но в истории он остался (ADR 011). */
   shot?: { kind: ScreenshotKind; url: string; current: boolean };
 }
 

@@ -35,23 +35,23 @@ flowchart LR
 | Auth · Tenancy | JWT, membership → `ProjectContext`; чужой проект — 404, роль — 403; второй эшелон — FK тенантных колонок и составной `(roundId, projectId)` в Postgres | `apps/api/src/{auth,tenancy}` |
 | Documents · Rag | PDF / DOCX / MD → чанки по разделам → `text-embedding-3-small` → pgvector; retrieve только `WHERE projectId` | `apps/api/src/{documents,rag}` |
 | Imports | Только официальный шаблон журнала (CSV/XLSX, картинки из ячеек); пустое описание → `needs_human_parse` | `apps/api/src/imports` |
-| Remarks | Единственный путь записи: статусы по `STATUS.md`, вердикт человека, идемпотентность `(runId, idempotencyKey)`; история переходов `RemarkStatusChange` в той же транзакции; совет разработчика `DeveloperAdvice` (не вердикт, событие `remark.advice`) | `apps/api/src/remarks` |
+| Remarks | Единственный путь записи: статусы по `STATUS.md`, решение человека (`HumanVerdict`), идемпотентность `(runId, idempotencyKey)`; история переходов `RemarkStatusChange` в той же транзакции; совет разработчика `DeveloperAdvice` (не решение, событие `remark.advice`) | `apps/api/src/remarks` |
 | Agent | Граф триажа (retrieve → vision → bind ↔ rewrite ≤ 2 → classify → draft → faithfulness ↔ bind ≤ 2 → interrupt PM) и граф ретеста (pixel-diff → explain → interrupt бизнеса); guardrail входа; чекпоинты `GraphCheckpoint` | `apps/api/src/agent` |
 | Notifications · Mail | «Вас ждёт кнопка» (ADR 009): переход пишет `Notification` участникам нужной роли, задача `notify_digest` шлёт одно письмо на окно; приглашение — письмом со ссылкой; SMTP через nodemailer, без `SMTP_URL` — `skipped` | `apps/api/src/{notifications,mail}` |
 | Jobs | Очередь фоновых задач в той же Postgres (`Job`, `FOR UPDATE SKIP LOCKED`): прогоны графа и индексация документов; повтор временной ошибки модели с паузой, возврат осиротевших задач после падения процесса, heartbeat, остановка по SIGTERM | `apps/api/src/jobs` |
 | Llm | Контракт `TriageLlm`: OpenAI (`gpt-4.1-mini` / `gpt-4.1`) или `RulesTriageLlm` без ключа; Skill `uat-triage` в промпте; стоимость по прайсу | `apps/api/src/llm` |
 | Diff | pixelmatch, `cannot_compare` на разных размерах / другом экране | `apps/api/src/diff` |
-| Gateway | socket.io комната `remark:{id}`: фазы, токены черновика, presence, вердикт, совет разработчика (`remark.advice`) | `apps/api/src/gateway` |
+| Gateway | socket.io комната `remark:{id}`: фазы, токены черновика, presence, решение PM, совет разработчика (`remark.advice`) | `apps/api/src/gateway` |
 | Observability | Langfuse SDK v5 поверх OpenTelemetry: один `AgentRun` = один trace, generation на каждый вызов | `apps/api/src/observability` |
 | Evals | Golden через те же сервисы; binding quality + faithfulness; A/B ретеста на одном коде | `apps/api/src/evals`, `evals/` |
 | MCP | Фасад тех же REST-маршрутов на официальном TypeScript SDK; `projectId` только из токена | `apps/mcp` |
-| Web | Angular: карточка = улики \| черновик \| решение; подписи кнопок дословно из `docs/ui/COPY.md` | `apps/web` |
+| Web | Angular: карточка = замечание \| черновик \| решение; подписи кнопок дословно из `docs/ui/COPY.md` | `apps/web` |
 
 ## Границы
 
 | Компонент | Можно | Нельзя |
 |---|---|---|
-| Angular | REST + WS, экраны из `docs/ui` | Свой бизнес-вердикт на клиенте |
+| Angular | REST + WS, экраны из `docs/ui` | Своё бизнес-решение на клиенте |
 | REST | CRUD + команды, которые зовут сервисы | Обходить membership |
 | WS | Фазы, токены, HITL на том же `AgentRun` | Глобальный чат |
 | `AgentModule` | Ноды графа вызывают сервисы | `prisma.*` в ноде |
@@ -85,7 +85,7 @@ sequenceDiagram
   API->>DB: HumanVerdict + status defect
 ```
 
-Как сделано (фаза 6): `AgentService.startTriage` создаёт `AgentRun` через `RemarksService.beginTriage` и кладёт задачу `graph` в очередь `JobsService`; ответ REST — `triaging` + `runId`, граф исполняет воркер очереди (см. «Очередь задач» ниже). Ноды зовут `RagService.search` (SQL с `projectId`), `LlmService` (OpenAI или правила), `RemarksService.applyProposal`; `RunEvents` раздаёт фазы, токены и цитаты в комнату `remark:{id}` через `RemarkGateway`. Вердикт — `AgentService.verdict` → `RemarksService.verdict` (идемпотентный `HumanVerdict`) → `Command({ resume })` в тот же thread. Чекпоинты — `GraphCheckpoint` (порт MemorySaver на Prisma).
+Как сделано (фаза 6): `AgentService.startTriage` создаёт `AgentRun` через `RemarksService.beginTriage` и кладёт задачу `graph` в очередь `JobsService`; ответ REST — `triaging` + `runId`, граф исполняет воркер очереди (см. «Очередь задач» ниже). Ноды зовут `RagService.search` (SQL с `projectId`), `LlmService` (OpenAI или правила), `RemarksService.applyProposal`; `RunEvents` раздаёт фазы, токены и цитаты в комнату `remark:{id}` через `RemarkGateway`. Решение PM — `AgentService.verdict` → `RemarksService.verdict` (идемпотентный `HumanVerdict`) → `Command({ resume })` в тот же thread. Чекпоинты — `GraphCheckpoint` (порт MemorySaver на Prisma).
 
 ## Путь: ретест
 
@@ -101,7 +101,7 @@ sequenceDiagram
 
 ## Очередь задач
 
-Всё, что дольше HTTP-запроса — прогон графа (старт и продолжение после вердикта) и индексация документа, — задача в таблице `Job` той же Postgres (`apps/api/src/jobs`). Отдельного брокера нет намеренно: одна база — один бэкап, один restore, одна транзакция «создать `AgentRun` и задачу к нему». Воркер живёт в каждом процессе API: берёт задачу `SELECT … FOR UPDATE SKIP LOCKED` (два процесса не возьмут одну), держит `lockedAt` heartbeat'ом, по SIGTERM даёт активным до 25 с и возвращает недоделанное в `queued`; на старте задачи с протухшим `lockedAt` (процесс упал, не дописав) возвращаются в очередь и исполняются заново — прогон графа на повторе начинает с чистого thread. Временная ошибка модели (таймаут, 429, 5xx) — `RetryJobError`: задача повторяется через 30 с, 2 мин, 8 мин, карточка всё это время «разбирается», и только после последней попытки прогон становится `failed` с текстом причины; ошибка ключа или запроса — сразу `failed`. `run.cancel` снимает ещё не начатую задачу и прерывает начатую. Обработчики регистрируют модули-владельцы (`AgentService` → `graph`, `RagService` → `index_document`): очередь не знает домена. `wait: true` (evals, тесты) исполняет граф прямо в вызове, минуя очередь. `/health` отдаёт `jobs: {queued, running}`; лимиты — `JOBS_CONCURRENCY`, `GRAPH_MAX_CONCURRENT`, `GRAPH_MAX_PER_PROJECT`. Завершённые задачи хранятся 30 дней (упавшие — 90, с `lastError`) и удаляются на старте процесса.
+Всё, что дольше HTTP-запроса — прогон графа (старт и продолжение после решения PM) и индексация документа, — задача в таблице `Job` той же Postgres (`apps/api/src/jobs`). Отдельного брокера нет намеренно: одна база — один бэкап, один restore, одна транзакция «создать `AgentRun` и задачу к нему». Воркер живёт в каждом процессе API: берёт задачу `SELECT … FOR UPDATE SKIP LOCKED` (два процесса не возьмут одну), держит `lockedAt` heartbeat'ом, по SIGTERM даёт активным до 25 с и возвращает недоделанное в `queued`; на старте задачи с протухшим `lockedAt` (процесс упал, не дописав) возвращаются в очередь и исполняются заново — прогон графа на повторе начинает с чистого thread. Временная ошибка модели (таймаут, 429, 5xx) — `RetryJobError`: задача повторяется через 30 с, 2 мин, 8 мин, карточка всё это время «разбирается», и только после последней попытки прогон становится `failed` с текстом причины; ошибка ключа или запроса — сразу `failed`. `run.cancel` снимает ещё не начатую задачу и прерывает начатую. Обработчики регистрируют модули-владельцы (`AgentService` → `graph`, `RagService` → `index_document`): очередь не знает домена. `wait: true` (evals, тесты) исполняет граф прямо в вызове, минуя очередь. `/health` отдаёт `jobs: {queued, running}`; лимиты — `JOBS_CONCURRENCY`, `GRAPH_MAX_CONCURRENT`, `GRAPH_MAX_PER_PROJECT`. Завершённые задачи хранятся 30 дней (упавшие — 90, с `lastError`) и удаляются на старте процесса.
 
 ## Стоимость, латентность, fallback
 

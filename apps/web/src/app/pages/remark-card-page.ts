@@ -43,7 +43,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
 
 /**
  * Карточка замечания — главный экран. Слева рельс очереди «i из N», на бумаге три колонки:
- * Улики | Черновик разбора | Ваше решение. Режим выбирается по статусу × роли.
+ * Замечание (на ретесте — Проверка) | Черновик разбора | Ваше решение. Режим выбирается по статусу × роли.
  * Данные и переходы — API; решения уходят через PendingActionService (5 секунд «Отменить»);
  * пока идёт отсчёт, переходы по очереди заблокированы.
  */
@@ -80,9 +80,9 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                   }
 
                   <div class="grid" [class.grid--retest]="twoCols()" [class.grid--noshot]="!original() && !twoCols()">
-                    <!-- УЛИКИ -->
+                    <!-- ЗАМЕЧАНИЕ / ПРОВЕРКА -->
                     <section class="col col--evidence">
-                      <h2 class="col-title">{{ copy.evidence }}</h2>
+                      <h2 class="col-title">{{ evidenceTitle() }}</h2>
                       @switch (layout()) {
                         @case ('retest') {
                           <rr-compare-stage [frames]="stageFrames()" [busy]="running()" [hint]="copy.diffHint" (open)="openViewer($event)" />
@@ -179,7 +179,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                             <div class="soft">{{ copy.compareHint }}</div>
                           }
                           @default {
-                            <!-- вывод черновика — первым: это предмет решения; улики и цитаты — ниже как подтверждение -->
+                            <!-- вывод черновика — первым: это предмет решения; кадр и цитаты — ниже как подтверждение -->
                             @if (!running() && visibleDraft().length) {
                               <p class="draft__p lead draft__lead fade" [style.opacity]="draftVisible() ? 1 : 0" aria-live="polite">{{ visibleDraft()[0] }}</p>
                             }
@@ -365,7 +365,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
       <ng-container *ngTemplateOutlet="denied" />
     }
 
-    <!-- «Со слов заказчика»: описание, где, как должно быть, важность — то, что человек написал сам. -->
+    <!-- «Что написал заказчик»: описание, где, как должно быть, важность — то, что человек написал сам. -->
     <ng-template #said>
       @if (saidLines().length) {
         <div class="said">
@@ -1025,8 +1025,10 @@ export class RemarkCardPage {
   protected readonly queueEmpty = computed(() => this.railItems().length > 0 && !this.nextTarget());
   /** Разработчику «Следующее» показываем только после «Готово»; до этого его кнопка — сама работа. */
   protected readonly panelNext = computed(() => (this.role() === 'developer' && this.remark()?.status === 'defect' ? null : this.nextTarget()));
-  /** Ретест и ожидание кадра — две колонки: сцена улик шире, черновик переезжает в колонку решения. */
+  /** Ретест и ожидание кадра — две колонки: сцена сравнения шире, черновик переезжает в колонку решения. */
   protected readonly twoCols = computed(() => this.layout() === 'retest' || this.layout() === 'retest-wait');
+  /** Заголовок левой колонки — шаг строки пути: «Замечание», а пока идёт проверка исправления — «Проверка». */
+  protected readonly evidenceTitle = computed(() => (this.twoCols() ? CARD.columnCheck : CARD.columnRemark));
   /** Идёт 5-секундный отсчёт — переходы по очереди заблокированы, иначе решение уйдёт мгновенно. */
   protected readonly locked = computed(() => !!this.pendingFor());
 
@@ -1254,7 +1256,7 @@ export class RemarkCardPage {
     return `${CARD.where} ${r.pageOrScreen} · ${CARD.addedBy(person(r.authorName, r.authorRole))}${journal} · ${round}`;
   });
 
-  /** «Со слов заказчика»: описание (если длиннее заголовка), где, как должно быть, важность. */
+  /** «Что написал заказчик»: описание (если длиннее заголовка), где, как должно быть, важность. */
   protected readonly saidLines = computed<Array<{ dt: string; dd: string; quote?: boolean }>>(() => {
     const r = this.remark()!;
     if (r.status === 'needs_human_parse') return [];
@@ -1276,7 +1278,7 @@ export class RemarkCardPage {
     return [r.devNote ?? '', r.pageOrScreen && r.pageOrScreen !== '—' ? `${CARD.where} ${r.pageOrScreen}` : '', r.expected ? `${NEW_REMARK.expected}: ${r.expected}` : ''].filter(Boolean);
   });
 
-  // ---------- улики ----------
+  // ---------- кадры ----------
 
   protected readonly original = computed<Screenshot | null>(() => this.remark()!.screenshots.find((x) => x.kind === 'original') ?? null);
 

@@ -58,7 +58,7 @@ describe('remark view audience', () => {
     expect(biz.advice).toEqual([]);
     expect(biz.traceUrl).toBeUndefined();
     expect(JSON.stringify(biz)).not.toContain('доплачивают');
-    // Улики (цитаты, кадры) и служебные поля прогона заказчику нужны: он сам отправляет ретест и может отменить прогон
+    // Опора (цитаты, кадры) и служебные поля прогона заказчику нужны: он сам отправляет ретест и может отменить прогон
     expect(biz.runId).toBe(runId);
     expect(biz.runStatus).toBe('awaiting_human');
 

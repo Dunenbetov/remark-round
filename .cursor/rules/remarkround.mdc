@@ -7,7 +7,7 @@ alwaysApply: true
 
 Канон: `REMARKROUND.md` в корне. Вход: `AGENTS.md`. Фазы: `docs/PHASES.md`.
 
-Доктрина: ТЗ — улика, судья — человек. Нет автозакрытия. Нет работы разработчику до кнопки PM. Скрин меняет ответ. Ретест — pixel-diff + пояснение модели, LLM не сравнивает пиксели. `unspecified` ≠ CR. `projectId` только SQL/RLS.
+Доктрина: ТЗ — опора, решает человек. Нет автозакрытия. Нет работы разработчику до кнопки PM. Скрин меняет ответ. Ретест — pixel-diff + пояснение модели, LLM не сравнивает пиксели. `unspecified` ≠ CR. `projectId` только SQL/RLS.
 
 Стек: Angular + NestJS + Prisma + PostgreSQL/pgvector + LangGraph.js in-process + MCP как фасад домена + Langfuse. Не React, не Python-ядро, не канбан.
 

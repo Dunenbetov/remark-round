@@ -11,7 +11,7 @@ import { PROPOSED_LABEL_RU, RETEST_OUTCOME_RU } from './labels';
 
 const REMARK_INCLUDE = {
   round: { select: { number: true } },
-  // Текущие кадры: заменённые остаются уликой и ссылкой из истории, но на карточку не выходят (ADR 011)
+  // Текущие кадры: заменённые остаются в базе и ссылкой из истории, но на карточку не выходят (ADR 011)
   screenshots: { where: { supersededAt: null } },
   citations: { select: { id: true, chunkId: true, quoteText: true, section: true, documentTitle: true, documentKind: true, effectiveAt: true } },
   verdicts: { select: { code: true, userId: true, comment: true, createdAt: true } },
@@ -233,7 +233,7 @@ export class RemarksService {
 
   /**
    * Повтор претензии (docs/STATUS.md closed → reopened): заказчик говорит «в новом раунде это то же самое, что вы
-   * закрыли». Закрытое замечание не трогаем — оно остаётся записью с уликами и решением; в открытом раунде появляется
+   * закрыли». Закрытое замечание не трогаем — оно остаётся записью с кадрами, цитатами и решением; в открытом раунде появляется
    * новое со ссылкой на оригинал, тем же текстом и кадром (или новым), статус `reopened` → дальше обычный триаж.
    */
   async reopen(ctx: ProjectContext, remarkId: string, roundId: string, screenshotKey?: string | null): Promise<RemarkView> {
@@ -562,7 +562,7 @@ export class RemarksService {
     await this.assertShot(ctx, screenshotKey);
     const run = await this.prisma.$transaction(async (tx) => {
       const created = await tx.agentRun.create({ data: { remarkId, projectId: ctx.projectId, mode: 'retest', status: 'running', model } });
-      // Прежний круг ретеста остаётся уликой (ADR 011): кадры не удаляются, строка истории ссылается на новый кадр —
+      // Прежний круг ретеста остаётся в истории (ADR 011): кадры не удаляются, строка истории ссылается на новый кадр —
       // поэтому кадр пишется раньше строки. Статус не меняется, но условная запись (SET status=status) проверит, что
       // замечание всё ещё ready_for_retest; 409 откатит и кадр.
       await supersede(tx, remarkId, ['retest', 'diff']);
@@ -597,7 +597,7 @@ export class RemarksService {
     await this.prisma.$transaction(async (tx) => {
       if (retest && result.retestSize) await tx.remarkScreenshot.update({ where: { id: retest.id }, data: result.retestSize });
       await supersede(tx, remarkId, ['diff']);
-      // Дифф — улика этого сравнения: строка истории ссылается на него, поэтому кадр пишется первым
+      // Дифф — результат этого сравнения: строка истории ссылается на него, поэтому кадр пишется первым
       const diff = result.diffShot ? await tx.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...result.diffShot } }) : null;
       await this.transition(tx, remarkId, ['ready_for_retest'], 'retest_result', { status: 'awaiting_business_close', retestOutcome: result.outcome, retestExplanation: result.explanation }, { userId: null, role: null, fromStatus: row.status, runId, detail: [RETEST_OUTCOME_RU[result.outcome], result.explanation].filter(Boolean).join(' — ').slice(0, 300), screenshotId: diff?.id ?? null });
       await tx.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human', ...usageData(result.usage) } });
@@ -630,12 +630,12 @@ export class RemarksService {
   async notFixed(ctx: ProjectContext, remarkId: string): Promise<RemarkView> {
     if (ctx.role !== 'business') throw new ForbiddenException();
     const row = await this.load(ctx, remarkId);
-    // Вернуть разработчику — только с уликой: без нового кадра «не исправлено» ничем не подтверждено (ADR 010)
+    // Вернуть разработчику — только с новым кадром: без него «не исправлено» ничем не подтверждено (ADR 010)
     if (row.status === 'ready_for_retest') throw new ConflictException('«Не исправлено» — только с новым кадром: сначала прикрепите кадр ретеста');
     this.assertTransition(row.status, ['awaiting_business_close'], 'not_fixed');
     await this.prisma.$transaction(async (tx) => {
       await this.transition(tx, remarkId, ['awaiting_business_close'], 'not_fixed', { status: 'defect', retestOutcome: null, retestExplanation: null }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status });
-      // Кадр, которым заказчик доказал «не исправлено», остаётся уликой (ADR 011): с карточки уходит, из базы — нет
+      // Кадр, которым заказчик показал «не исправлено», остаётся в истории (ADR 011): с карточки уходит, из базы — нет
       await supersede(tx, remarkId, ['retest', 'diff']);
       await tx.agentRun.updateMany({ where: { remarkId, mode: 'retest', status: 'awaiting_human' }, data: { status: 'persisted' } });
       await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'defect', ctx.userId);
@@ -736,7 +736,7 @@ interface HistoryBy {
   screenshotId?: string | null;
 }
 
-/** Текущие кадры вида `kinds` становятся заменёнными (ADR 011): строка остаётся уликой, с карточки кадр уходит. */
+/** Текущие кадры вида `kinds` становятся заменёнными (ADR 011): строка остаётся в базе и в истории, с карточки кадр уходит. */
 async function supersede(tx: Prisma.TransactionClient, remarkId: string, kinds: ScreenshotKind[]): Promise<void> {
   await tx.remarkScreenshot.updateMany({ where: { remarkId, kind: { in: kinds }, supersededAt: null }, data: { supersededAt: new Date() } });
 }

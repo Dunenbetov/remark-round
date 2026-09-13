@@ -1,7 +1,7 @@
 /**
  * remarks.integrity.spec — аудит: concurrent-verdict-races и evidence-citation-dangling.
  * 1) Два одновременных решения по одной карточке дают одну запись и один 409 — статус пишется условно.
- * 2) Цитата-улика — снимок: переиндексация ТЗ (новые id чанков) не отнимает обоснование у решения.
+ * 2) Цитата — снимок: переиндексация ТЗ (новые id чанков) не отнимает обоснование у решения.
  */
 import { randomUUID } from 'node:crypto';
 import { createHarness, type Harness } from '../../test/harness';
@@ -79,7 +79,7 @@ describe('remark integrity', () => {
     expect(after.citations[0].text).toBe(before.citations[0].text);
     expect(after.citations[0].section).toBe(before.citations[0].section);
     expect(after.citations[0].chunkId).toBeNull();
-    // И для заказчика (после решения он видит улики)
+    // И для заказчика (после решения он видит цитаты)
     const biz = (await h.http.get(url(`/remarks/${remark.id}`)).set(h.auth('business')).expect(200)).body;
     expect(biz.citations[0].text).toBe(before.citations[0].text);
   });

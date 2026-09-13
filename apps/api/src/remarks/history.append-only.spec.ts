@@ -19,7 +19,7 @@ describe('evidentiary history is append-only (ADR 011)', () => {
   });
 
   async function remarkWithHistory(number: number) {
-    const remark = await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: h.roundId, number, description: 'Улика', status: 'imported' } });
+    const remark = await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: h.roundId, number, description: 'Кадр в истории', status: 'imported' } });
     const shot = await h.prisma.remarkScreenshot.create({ data: { remarkId: remark.id, kind: 'original', storageKey: `${h.projectId}/${randomUUID()}.png` } });
     const row = await h.prisma.remarkStatusChange.create({ data: { remarkId: remark.id, toStatus: 'imported', action: 'create', userId: h.users.business.id, actorName: 'business', role: 'business', screenshotId: shot.id } });
     return { remark, shot, row };

@@ -211,7 +211,7 @@ export interface RemarkHistoryEntry {
   detail?: string;
   /** Слова человека при действии (решение, закрытие); заказчику — только слова заказчика. */
   comment?: string;
-  /** Кадр этого действия; current: false — его потом заменили, но улика осталась. */
+  /** Кадр этого действия; current: false — его потом заменили, но в истории он остался. */
   shot?: { kind: ScreenshotKind; url: string; current: boolean };
 }
 

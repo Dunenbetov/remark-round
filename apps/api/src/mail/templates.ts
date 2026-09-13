@@ -10,7 +10,7 @@ export const KIND_LABEL: Record<NotificationKind, string> = {
   defect: 'принят как дефект — в работу',
   ready_for_retest: 'исправлено — проверьте: закройте или приложите новый кадр',
   awaiting_business_close: 'ретест готов — закройте или верните',
-  cannot_tell: 'не хватает кадра или улики — добавьте',
+  cannot_tell: 'не хватает скрина — добавьте',
 };
 
 export interface DigestItem {

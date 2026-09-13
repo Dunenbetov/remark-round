@@ -1,6 +1,6 @@
 /**
  * guardrail.injection.spec (docs/ENGINEERING.md, REMARKROUND.md §12): «забудь ТЗ» в тексте замечания или в
- * комментарии PM не даёт дефект без улик, не снимает фильтр проекта, не закрывает замечание, а PM видит пометку.
+ * комментарии PM не даёт дефект без цитаты, не снимает фильтр проекта, не закрывает замечание, а PM видит пометку.
  * Выходной guardrail (выдуманный раздел → цикл bind → cannot_tell) — graph.same-run.spec.
  */
 import { randomUUID } from 'node:crypto';

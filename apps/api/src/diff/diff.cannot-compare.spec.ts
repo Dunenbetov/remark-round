@@ -142,7 +142,7 @@ describe('retest через API', () => {
     const media = await h.http.get(diffShot.url).set(h.auth('pm')).expect(200);
     expect(media.headers['content-type']).toMatch(/image\/png/);
 
-    // «Не исправлено» снимает новый кадр и дифф с карточки, но не из базы: круг ретеста остаётся уликой (ADR 011).
+    // «Не исправлено» снимает новый кадр и дифф с карточки, но не из базы: круг ретеста остаётся в истории (ADR 011).
     const back = await h.http.post(`/api/v1/projects/${h.projectId}/remarks/${id}/not-fixed`).set(h.auth('business')).expect(200);
     expect(back.body.status).toBe('defect');
     expect(back.body.screenshots.map((s: { kind: string }) => s.kind)).toEqual(['original']);

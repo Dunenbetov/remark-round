@@ -1,6 +1,6 @@
 # Evals
 
-Golden set: [`golden.json`](golden.json) — 30 кейсов триажа по 12 типам ударов судьи (REMARKROUND.md §11), 11 кейсов ретеста для A/B и leakage чужого проекта. Семена типов — `../fixtures/evals/seed.json`; кадры — `../fixtures/screenshots/*.png`.
+Golden set: [`golden.json`](golden.json) — 30 кейсов триажа по 12 типам возражений комиссии (REMARKROUND.md §11), 11 кейсов ретеста для A/B и leakage чужого проекта. Семена типов — `../fixtures/evals/seed.json`; кадры — `../fixtures/screenshots/*.png`.
 
 Раннер: `apps/api/src/evals` — golden гоняется через те же сервисы, что REST и MCP (`AgentService` → граф → `RemarksService`), поэтому цифры — про продукт, а не про отдельный «оценочный» промпт.
 
