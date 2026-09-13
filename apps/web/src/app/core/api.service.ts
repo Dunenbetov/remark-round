@@ -164,9 +164,14 @@ export class ApiService {
     return this.run(this.http.post<Round>(`${API_BASE}/projects/${projectId}/rounds/${roundId}/reopen`, {}));
   }
 
-  /** Итог раунда xlsx: файл приходит с Bearer, поэтому не ссылка, а blob (скачать — MediaService/AppBar). */
+  /** Журнал раунда xlsx (ADR 011): файл приходит с Bearer, поэтому не ссылка, а blob (скачать — core/download.ts). */
   exportRound(projectId: string, roundId: string): Promise<Blob> {
     return this.run(this.http.get(`${API_BASE}/projects/${projectId}/rounds/${roundId}/export.xlsx`, { responseType: 'blob' }));
+  }
+
+  /** Журнал всего проекта xlsx: «Раунды», «Замечания», «История». */
+  exportJournal(projectId: string): Promise<Blob> {
+    return this.run(this.http.get(`${API_BASE}/projects/${projectId}/rounds/export.xlsx`, { responseType: 'blob' }));
   }
 
   /** Повтор претензии (business): новое замечание в открытом раунде со ссылкой на закрытый оригинал. */

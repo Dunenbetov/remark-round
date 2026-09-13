@@ -92,6 +92,7 @@ describe('tenancy sweep', () => {
       { name: 'закрыть раунд', method: 'post', path: `${P}/rounds/${B.roundId}/close` },
       { name: 'открыть раунд', method: 'post', path: `${P}/rounds/${B.roundId}/reopen` },
       { name: 'выгрузка', method: 'get', path: `${P}/rounds/${B.roundId}/export.xlsx` },
+      { name: 'журнал проекта', method: 'get', path: `${P}/rounds/export.xlsx` },
       { name: 'журнал раунда', method: 'get', path: `${P}/rounds/${B.roundId}/remarks` },
       { name: 'новое замечание', method: 'post', path: `${P}/rounds/${B.roundId}/remarks`, body: { description: 'x' } },
       { name: 'очередь разработчика', method: 'get', path: `${P}/dev-queue`, as: 'developer' },

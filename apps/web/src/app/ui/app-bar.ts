@@ -3,6 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { APP_NAME, NAV, ROLE_TITLE, ROUND } from '../core/copy';
+import { journalFileName, saveBlob } from '../core/download';
 import { homeUrlFor } from '../core/guards';
 import { links, sectionOf, type Section } from '../core/links';
 import { filterRemarks } from '../core/journal-filter';
@@ -294,6 +295,7 @@ export class AppBar {
       const current = this.store.round();
       if (current) {
         items.push({ id: 'round:export', label: NAV.exportRound(current.number), separatorBefore: true });
+        items.push({ id: 'round:journal', label: NAV.exportJournal });
         if (this.role() === 'pm' || this.role() === 'business') {
           items.push(current.status === 'closed' ? { id: 'round:reopen', label: NAV.reopenRound(current.number) } : { id: 'round:close', label: NAV.closeRound(current.number) });
         }
@@ -361,7 +363,7 @@ export class AppBar {
       if (!this.blockingRounds().length) void this.newRound();
       return;
     }
-    if (id === 'round:close' || id === 'round:reopen' || id === 'round:export') {
+    if (id === 'round:close' || id === 'round:reopen' || id === 'round:export' || id === 'round:journal') {
       void this.roundAction(id);
       return;
     }
@@ -399,7 +401,7 @@ export class AppBar {
    * Закрыть / открыть снова / выгрузить текущий раунд. Закрытие обратимо (reopen), поэтому без отсчёта;
    * 409 с перечнем нерешённого покажет store.error. Выгрузка — blob с Bearer, скачивается ссылкой на object URL.
    */
-  private async roundAction(id: 'round:close' | 'round:reopen' | 'round:export'): Promise<void> {
+  private async roundAction(id: 'round:close' | 'round:reopen' | 'round:export' | 'round:journal'): Promise<void> {
     const projectId = this.projectId();
     const round = this.store.round();
     if (!projectId || !round) return;
@@ -412,13 +414,8 @@ export class AppBar {
       return;
     }
     try {
-      const blob = await this.api.exportRound(projectId, round.id);
-      const href = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = href;
-      a.download = `remarkround-round-${round.number}.xlsx`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(href), 10_000);
+      if (id === 'round:journal') saveBlob(await this.api.exportJournal(projectId), journalFileName(this.slug()));
+      else saveBlob(await this.api.exportRound(projectId, round.id), journalFileName(this.slug(), round.number));
     } catch (err) {
       this.store.error.set(errorMessage(err));
     }

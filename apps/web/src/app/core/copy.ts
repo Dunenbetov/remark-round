@@ -312,6 +312,8 @@ export const NAV = {
   closeRound: (n: number) => `Закрыть раунд ${n}`,
   reopenRound: (n: number) => `Открыть раунд ${n} снова`,
   exportRound: (n: number) => `Выгрузить раунд ${n} (.xlsx)`,
+  /** Журнал всего проекта (ADR 011): раунды, замечания, история. */
+  exportJournal: 'Выгрузить весь журнал (.xlsx)',
   roundClosedNow: (n: number) => `Раунд ${n} закрыт`,
   roundReopenedNow: (n: number) => `Раунд ${n} снова открыт`,
 };

@@ -4,7 +4,7 @@ import type { Response } from 'express';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
-import { ROUND_XLSX_MIME } from './round-export';
+import { XLSX_MIME } from './journal-export';
 import { RoundsService, type RoundSummary } from './rounds.service';
 
 export class CreateRoundDto {
@@ -47,13 +47,28 @@ export class RoundsController {
     return this.rounds.reopen(ctx, roundId);
   }
 
-  /** Итог раунда для акта: xlsx из карточек, которые видит читатель (заказчик — без внутренней кухни, ADR 007). */
-  @Get(':roundId/export.xlsx')
+  /**
+   * Журнал приёмки всего проекта (ADR 011): «Раунды», «Замечания», «История». Разработчику — 403: журнал читает базу
+   * напрямую, а очередь разработчика — это не журнал. Маршрут в один сегмент не пересекается с `:roundId/…`.
+   */
+  @Get('export.xlsx')
+  @Roles('pm', 'business', 'admin')
   @Header('Cache-Control', 'no-store')
-  async exportXlsx(@Ctx() ctx: ProjectContext, @Param('roundId') roundId: string, @Res() res: Response): Promise<void> {
-    const { fileName, data } = await this.rounds.exportXlsx(ctx, roundId);
-    res.setHeader('Content-Type', ROUND_XLSX_MIME);
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"; filename*=UTF-8''${encodeURIComponent(fileName)}`);
-    res.send(data);
+  async exportJournal(@Ctx() ctx: ProjectContext, @Res() res: Response): Promise<void> {
+    sendXlsx(res, await this.rounds.exportJournal(ctx));
   }
+
+  /** Тот же журнал, ограниченный одним раундом — итог раунда для акта. */
+  @Get(':roundId/export.xlsx')
+  @Roles('pm', 'business', 'admin')
+  @Header('Cache-Control', 'no-store')
+  async exportRound(@Ctx() ctx: ProjectContext, @Param('roundId') roundId: string, @Res() res: Response): Promise<void> {
+    sendXlsx(res, await this.rounds.exportJournal(ctx, roundId));
+  }
+}
+
+function sendXlsx(res: Response, file: { fileName: string; data: Buffer }): void {
+  res.setHeader('Content-Type', XLSX_MIME);
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.fileName)}"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
+  res.send(file.data);
 }

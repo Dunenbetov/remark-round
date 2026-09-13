@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import { AdviceDto, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, audienceFor, quote, toHistoryEntry, toRemarkView, type HistoryEntry } from './remark.dto';
-import { PROPOSED_LABEL_RU } from './labels';
+import { PROPOSED_LABEL_RU, RETEST_OUTCOME_RU } from './labels';
 
 const REMARK_INCLUDE = {
   round: { select: { number: true } },
@@ -597,7 +597,7 @@ export class RemarksService {
       await supersede(tx, remarkId, ['diff']);
       // Дифф — улика этого сравнения: строка истории ссылается на него, поэтому кадр пишется первым
       const diff = result.diffShot ? await tx.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...result.diffShot } }) : null;
-      await this.transition(tx, remarkId, ['ready_for_retest'], 'retest_result', { status: 'awaiting_business_close', retestOutcome: result.outcome, retestExplanation: result.explanation }, { userId: null, role: null, fromStatus: row.status, runId, detail: [retestLabel(result.outcome), result.explanation].filter(Boolean).join(' — ').slice(0, 300), screenshotId: diff?.id ?? null });
+      await this.transition(tx, remarkId, ['ready_for_retest'], 'retest_result', { status: 'awaiting_business_close', retestOutcome: result.outcome, retestExplanation: result.explanation }, { userId: null, role: null, fromStatus: row.status, runId, detail: [RETEST_OUTCOME_RU[result.outcome], result.explanation].filter(Boolean).join(' — ').slice(0, 300), screenshotId: diff?.id ?? null });
       await tx.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human', ...usageData(result.usage) } });
       // Ретест запускает сам заказчик и, пока граф сравнивает кадры, мог уйти: письмо — и ему тоже (actor = null)
       await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'awaiting_business_close', null);
@@ -743,8 +743,4 @@ async function supersede(tx: Prisma.TransactionClient, remarkId: string, kinds: 
 function proposalDetail(p: ProposalInput): string {
   const body = p.rationale.slice(1).find((x) => x.trim()) ?? p.rationale[0] ?? '';
   return `${PROPOSED_LABEL_RU[p.proposedClass]}${body ? `: ${body.trim()}` : ''}`.slice(0, 300);
-}
-
-function retestLabel(outcome: RetestOutcome): string {
-  return outcome === 'likely_addressed' ? 'Похоже, исправлено' : outcome === 'likely_unchanged' ? 'Похоже, без изменений' : 'По кадрам не понять';
 }

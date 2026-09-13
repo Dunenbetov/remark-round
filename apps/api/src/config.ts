@@ -48,6 +48,11 @@ const Schema = z
     SMTP_FROM: z.string().default('RemarkRound <no-reply@localhost>'),
     /** Окно, за которое уведомления одного человека склеиваются в одно письмо (мс). */
     NOTIFY_DIGEST_MS: z.coerce.number().int().min(0).default(5 * 60 * 1000),
+    /**
+     * Пояс выгрузки журнала (ADR 011): даты в xlsx — время этого пояса, смещение подписано в шапке колонок. Сервер живёт
+     * в UTC, а Excel поясов не знает: без явного пояса «16:09» в файле было бы UTC, и через год не понять, когда закрыли.
+     */
+    REPORT_TIMEZONE: z.string().default('Asia/Almaty').refine(isTimeZone, 'неизвестный часовой пояс IANA (например, Asia/Almaty)'),
   })
   .superRefine((c, ctx) => {
     if (c.NODE_ENV !== 'production') return;
@@ -62,6 +67,15 @@ const Schema = z
       issue('OPENAI_API_KEY', 'в production нужен ключ модели; режим правил без модели включается только явно: LLM_MODE=rules');
     }
   });
+
+function isTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** Значения из .env.example и docker-compose.yml, которые никогда не должны доехать до прода. */
 const PLACEHOLDERS: ReadonlySet<string> = new Set([

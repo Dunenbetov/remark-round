@@ -10,6 +10,12 @@ describe('config', () => {
     expect(c.JWT_EXPIRES_SECONDS).toBe(12 * 3600);
     expect(c.THROTTLE_LIMIT).toBe(1200);
     expect(c.TRUST_PROXY_HOPS).toBe(0);
+    expect(c.REPORT_TIMEZONE).toBe('Asia/Almaty');
+  });
+
+  it('пояс выгрузки журнала — только настоящий IANA-пояс, иначе ошибка с именем переменной', () => {
+    expect(parseConfig({ ...base, REPORT_TIMEZONE: 'Europe/Moscow' }).REPORT_TIMEZONE).toBe('Europe/Moscow');
+    expect(() => parseConfig({ ...base, REPORT_TIMEZONE: 'Almaty' })).toThrow(/REPORT_TIMEZONE/);
   });
 
   it('production: дефолтный или короткий секрет — ошибка с именем переменной', () => {

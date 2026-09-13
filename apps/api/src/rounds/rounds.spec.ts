@@ -71,32 +71,58 @@ describe('rounds: close, export, reopen', () => {
     expect(list.body.find((r: { id: string }) => r.id === roundId)).toMatchObject({ status: 'closed' });
   });
 
-  it('выгрузка xlsx: PM видит комментарий решения, заказчик — нет; строки в порядке номеров', async () => {
-    const read = async (role: 'pm' | 'business') => {
-      const res = await h.http.get(url(`/rounds/${roundId}/export.xlsx`)).set(h.auth(role)).expect(200).buffer(true).parse((r, cb) => {
-        const chunks: Buffer[] = [];
-        r.on('data', (c: Buffer) => chunks.push(c));
-        r.on('end', () => cb(null, Buffer.concat(chunks)));
-      });
-      expect(res.headers['content-type']).toMatch(/spreadsheetml/);
-      expect(res.headers['content-disposition']).toMatch(/round-1\.xlsx/);
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(res.body as unknown as ArrayBuffer);
-      const sheet = wb.worksheets[0]!;
-      const header = (sheet.getRow(1).values as string[]).slice(1);
+  /** Скачать xlsx и прочитать лист строками «шапка → значение». */
+  const download = async (path: string, role: 'pm' | 'business') => {
+    const res = await h.http.get(url(path)).set(h.auth(role)).expect(200).buffer(true).parse((r, cb) => {
+      const chunks: Buffer[] = [];
+      r.on('data', (c: Buffer) => chunks.push(c));
+      r.on('end', () => cb(null, Buffer.concat(chunks)));
+    });
+    expect(res.headers['content-type']).toMatch(/spreadsheetml/);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(res.body as unknown as ArrayBuffer);
+    const sheet = (name: string) => {
+      const ws = wb.getWorksheet(name)!;
+      const header = (ws.getRow(1).values as string[]).slice(1);
       const rows = [];
-      for (let i = 2; i <= sheet.rowCount; i++) {
-        const v = sheet.getRow(i).values as unknown[];
+      for (let i = 2; i <= ws.rowCount; i++) {
+        const v = ws.getRow(i).values as unknown[];
         rows.push(Object.fromEntries(header.map((hd, j) => [hd, v[j + 1] ?? ''])));
       }
       return rows as Array<Record<string, unknown>>;
     };
-    const pm = await read('pm');
+    return { disposition: String(res.headers['content-disposition']), names: wb.worksheets.map((w) => w.name), sheet };
+  };
+
+  it('выгрузка раунда — тот же журнал на один раунд: PM видит комментарий решения, заказчик — нет; строки в порядке номеров', async () => {
+    const pmFile = await download(`/rounds/${roundId}/export.xlsx`, 'pm');
+    expect(pmFile.disposition).toMatch(/round-1\.xlsx/);
+    expect(pmFile.names).toEqual(['Раунды', 'Замечания', 'История']);
+    const pm = pmFile.sheet('Замечания');
     expect(pm.map((r) => r['№'])).toEqual([970, 971]);
-    expect(pm[0]).toMatchObject({ 'Что не так': 'Кнопка серая', Статус: 'Закрыто', Решение: 'В работу разработчикам', 'Комментарий к решению': 'Внутренняя пометка' });
+    expect(pm[0]).toMatchObject({ Раунд: 1, 'Что не так': 'Кнопка серая', Статус: 'Закрыто', Решение: 'В работу разработчикам', 'Комментарий к решению': 'Внутренняя пометка' });
     expect(pm[1]).toMatchObject({ Статус: 'Новое желание' });
-    const biz = await read('business');
+    const biz = (await download(`/rounds/${roundId}/export.xlsx`, 'business')).sheet('Замечания');
     expect(biz[0]).toMatchObject({ Статус: 'Закрыто', Решение: 'В работу разработчикам', 'Комментарий к решению': '' });
+  });
+
+  it('журнал проекта: раунды с тем, кто закрыл, история с датами в поясе отчёта; разработчику — 403', async () => {
+    await h.http.get(url('/rounds/export.xlsx')).set(h.auth('developer')).expect(403);
+    await h.http.get(url(`/rounds/${roundId}/export.xlsx`)).set(h.auth('developer')).expect(403);
+
+    const file = await download('/rounds/export.xlsx', 'pm');
+    expect(file.disposition).toMatch(/-journal\.xlsx/);
+    expect(file.names).toEqual(['Раунды', 'Замечания', 'История']);
+    const [round] = file.sheet('Раунды');
+    expect(round).toMatchObject({ Раунд: 1, 'Кто закрыл': 'business (заказчик)', Всего: 2, Закрыто: 1, 'Новые желания': 1, 'Ждут решения': 0 });
+
+    const closeEvent = await h.prisma.roundEvent.findFirstOrThrow({ where: { roundId, action: 'close' } });
+    const history = file.sheet('История');
+    const roundRow = history.find((e) => e['Действие'] === 'Раунд закрыт')!;
+    expect(roundRow).toMatchObject({ Раунд: 1, '№': '', Кто: 'business', Роль: 'заказчик' });
+    // Настенное время Алматы (UTC+5): Excel хранит дату без пояса
+    const shown = roundRow['Когда (GMT+5)'] as Date;
+    expect(Math.round((shown.getTime() - closeEvent.createdAt.getTime()) / 60000)).toBe(5 * 60);
   });
 
   it('открыть снова: только business, только закрытое, только в открытый раунд; новое замечание помнит оригинал', async () => {

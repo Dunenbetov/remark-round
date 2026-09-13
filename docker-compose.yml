@@ -64,6 +64,8 @@ services:
       # Почта (ADR 009): без SMTP_URL писем нет
       SMTP_URL: ${SMTP_URL:-}
       SMTP_FROM: ${SMTP_FROM:-RemarkRound <no-reply@localhost>}
+      # Пояс дат в xlsx-журнале (ADR 011): сервер в UTC, Excel поясов не знает
+      REPORT_TIMEZONE: ${REPORT_TIMEZONE:-Asia/Almaty}
       STORAGE_DIR: /app/apps/api/storage
       # Langfuse (фаза 8): API шлёт span'ы внутрь сети compose, ссылки для человека — на публичный адрес UI.
       # Ключи совпадают с LANGFUSE_INIT_* у langfuse-web: проект и ключи создаются при первом старте.
