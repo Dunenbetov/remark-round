@@ -4,7 +4,7 @@ import { RunEvents } from '../agent/run-events';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
-import { AdviceDto, CancelRunDto, CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ReopenDto, ScreenshotDto, VerdictDto, type HistoryEntry } from './remark.dto';
+import { AdviceDto, CancelRunDto, CloseDto, CreateRemarkDto, FixRowDto, LinkDuplicateDto, RemarkView, ReopenDto, ScreenshotDto, VerdictDto, type HistoryEntry } from './remark.dto';
 import { RemarksService } from './remarks.service';
 
 /**
@@ -150,11 +150,12 @@ export class RemarksController {
     return this.agent.retest(ctx, remarkId, dto.screenshotKey);
   }
 
+  /** «Закрыть: исправлено» (ADR 010): после ретеста или сразу после «Готово», если заказчик проверил сам. */
   @Post('remarks/:remarkId/close')
   @Roles('business')
   @HttpCode(200)
-  close(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string): Promise<RemarkView> {
-    return this.agent.close(ctx, remarkId);
+  close(@Ctx() ctx: ProjectContext, @Param('remarkId') remarkId: string, @Body() dto: CloseDto): Promise<RemarkView> {
+    return this.agent.close(ctx, remarkId, dto.comment);
   }
 
   @Post('remarks/:remarkId/not-fixed')

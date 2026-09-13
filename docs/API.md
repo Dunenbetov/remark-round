@@ -60,13 +60,13 @@
 | POST | `/projects/:projectId/remarks/:id/cancel` | pm, business | `{ runId, idempotencyKey }` — дубль `run.cancel`: вердикта нет, run = cancelled, замечание → `imported` |
 | POST | `/projects/:projectId/remarks/:id/ready-for-retest` | developer | |
 | POST | `/projects/:projectId/remarks/:id/retest` | business | Новый скрин `{ screenshotKey }` → граф ретеста в фоне (ответ: `ready_for_retest`, `runMode: retest`, `runStatus: running`; фаза `diffing` в комнате) → pixel-diff + explain: кадр `diff` в `screenshots`, `retest.outcome` (`likely_addressed` / `likely_unchanged` / `cannot_tell`), `retest.explanation` по-русски, статус `awaiting_business_close`. Разный размер, формат не PNG/JPG, слишком разные кадры → `cannot_tell` с причиной, без диффа |
-| POST | `/projects/:projectId/remarks/:id/close` | business | Только после ретест-улик |
+| POST | `/projects/:projectId/remarks/:id/close` | business | `{ comment? }` (до 2000). Из `awaiting_business_close` — после ретеста; из `ready_for_retest` — заказчик проверил сам, без нового кадра (ADR 010). Пока кадры сравниваются — 409. Ответ: `closed`, `closedVia` (`retest` / `business_check`), `closeComment` |
 | GET | `/projects/:projectId/dev-queue` | developer | defect + ready_for_retest |
 | GET | `/projects/:projectId/search?q=&k=` | member | Поиск по пакету документов с цитатой (раздел, фрагмент, score). То же, что MCP `search_spec` |
 | POST | `/projects/:projectId/media` | member | Скрин: multipart `file` (PNG, JPG, WebP, GIF, до 10 МБ; SVG не принимается) → `{ storageKey, url }`. `screenshotKey` в телах замечания/ретеста принимается только своего проекта и существующий — иначе 422 |
 | GET | `/projects/:projectId/media/:fileName` | member | Отдача кадра; путь всегда внутри проекта |
 | POST | `/projects/:projectId/remarks/:id/screenshot` | business, pm | Кадр по «Не хватает скрина» → новый разбор |
-| POST | `/projects/:projectId/remarks/:id/not-fixed` | business | «Не исправлено» → обратно в defect |
+| POST | `/projects/:projectId/remarks/:id/not-fixed` | business | «Не исправлено» → обратно в defect. Только после ретеста с новым кадром: из `ready_for_retest` — 409 |
 | POST | `/projects/:projectId/remarks/:id/link-duplicate` | pm | `{ duplicateOfNumber }` |
 
 Загрузка файлов: `multipart/form-data`, поле `file`. Скрины — отдельным upload, id кладётся в remark.
@@ -94,7 +94,7 @@
 
 ## Тело замечания
 
-`POST /projects/:projectId/rounds/:roundId/remarks` — JSON `{ "description", "pageOrScreen"?, "expected"?, "screenshotKey"? }`. Сервер создаёт замечание и запускает граф разбора; ответ приходит сразу — статус `triaging`, `runId`, `runStatus: running`. Фазы прогона (`retrieving` → `vision` → `binding` → `drafting` → `awaiting_pm`) идут в комнату WS (`docs/WS.md`); когда прогон дошёл до interrupt, `GET .../remarks/:id` отдаёт `awaiting_pm` с `proposedClass`, `draft[]`, `citations[]`, `seen` (факты кадра) и тем же `runId`. Форма ответа — `apps/api/src/remarks/remark.dto.ts` (`RemarkView`), она же модель `Remark` на фронте. Если настроен Langfuse (фаза 8), карточка несёт `traceUrl` — ссылку на trace текущего прогона (`AgentRun`); фронт показывает её PM в подвале карточки. `advice[]` — советы разработчиков (`AdviceView`: `code`, `userId`, `userName`, `role`, `at`, `comment?`); рядом с именами людей карточка отдаёт и роль в проекте (`authorRole`, `fixedByRole`, `closedByRole`, `verdict.userRole`) — людей на одной стороне может быть несколько. Те же правила у `fix-row`, `screenshot`, `triage`: они отвечают `triaging`.
+`POST /projects/:projectId/rounds/:roundId/remarks` — JSON `{ "description", "pageOrScreen"?, "expected"?, "screenshotKey"? }`. Сервер создаёт замечание и запускает граф разбора; ответ приходит сразу — статус `triaging`, `runId`, `runStatus: running`. Фазы прогона (`retrieving` → `vision` → `binding` → `drafting` → `awaiting_pm`) идут в комнату WS (`docs/WS.md`); когда прогон дошёл до interrupt, `GET .../remarks/:id` отдаёт `awaiting_pm` с `proposedClass`, `draft[]`, `citations[]`, `seen` (факты кадра) и тем же `runId`. Форма ответа — `apps/api/src/remarks/remark.dto.ts` (`RemarkView`), она же модель `Remark` на фронте. Если настроен Langfuse (фаза 8), карточка несёт `traceUrl` — ссылку на trace текущего прогона (`AgentRun`); фронт показывает её PM в подвале карточки. `advice[]` — советы разработчиков (`AdviceView`: `code`, `userId`, `userName`, `role`, `at`, `comment?`); рядом с именами людей карточка отдаёт и роль в проекте (`authorRole`, `fixedByRole`, `closedByRole`, `verdict.userRole`) — людей на одной стороне может быть несколько. У закрытого замечания — `closedVia` (`retest` — после нового кадра и диффа, `business_check` — заказчик проверил сам) и `closeComment`; оба читаются из строки истории `close`. Те же правила у `fix-row`, `screenshot`, `triage`: они отвечают `triaging`.
 
 ## Чего нет в API
 

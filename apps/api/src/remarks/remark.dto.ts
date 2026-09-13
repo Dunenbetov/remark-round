@@ -71,6 +71,14 @@ export class ScreenshotDto {
   screenshotKey!: string;
 }
 
+/** «Закрыть: исправлено» (ADR 010): после ретеста или сразу после «Готово» — заказчик проверил сам. Комментарий по желанию. */
+export class CloseDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  comment?: string;
+}
+
 /** run.cancel по REST (дубль WS): вердикта нет, run = cancelled. */
 export class CancelRunDto {
   @IsUUID()
@@ -178,6 +186,20 @@ export interface HistoryEntry {
   runId?: string;
   /** Короткая пометка: что предложила модель, итог ретеста, причина сбоя. Заказчику предложения модели не показываются. */
   detail?: string;
+  /** Слова человека при действии (комментарий к закрытию). Заказчику — только слова заказчика (ADR 007). */
+  comment?: string;
+}
+
+/**
+ * Как закрыли (ADR 010): `retest` — после нового кадра и сравнения, `business_check` — заказчик проверил сам,
+ * без нового кадра. Не отдельное поле: читается из строки истории `close` (fromStatus), закрыть можно один раз.
+ */
+export type ClosedVia = 'retest' | 'business_check';
+
+export function closedViaOf(fromStatus: RemarkStatus | null | undefined): ClosedVia | undefined {
+  if (fromStatus === 'ready_for_retest') return 'business_check';
+  if (fromStatus === 'awaiting_business_close') return 'retest';
+  return undefined;
 }
 
 export interface RemarkView {
@@ -217,6 +239,10 @@ export interface RemarkView {
   fixedByUserId?: string;
   closedByUserId?: string;
   closedAt?: string;
+  /** Как закрыли: после ретеста или заказчик проверил сам, без нового кадра (ADR 010). */
+  closedVia?: ClosedVia;
+  /** Комментарий заказчика к закрытию, если оставил. */
+  closeComment?: string;
   /** Текущий AgentRun — нужен для идемпотентного вердикта. */
   runId?: string;
   /** Состояние текущего прогона: `running` — фазы идут по WS, `awaiting_human` — ждёт кнопки. */
@@ -270,6 +296,8 @@ export interface RemarkRow {
   runs: Array<{ id: string; createdAt: Date; status: AgentRunStatus; mode: string; failureMessage?: string | null; model?: string | null }>;
   origin?: { id: string; number: number; round: { number: number } } | null;
   reopenedBy?: Array<{ id: string; number: number; round: { number: number } }>;
+  /** Строка истории `close` (не больше одной): откуда закрыли и с каким комментарием. */
+  history?: Array<{ fromStatus: RemarkStatus | null; comment: string | null }>;
 }
 
 /** Чанк с документом — форма выдачи retrieve; в карточке цитаты теперь снимок (см. RemarkRow.citations). */
@@ -309,6 +337,7 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience 
   const verdict = [...r.verdicts].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
   const run = [...r.runs].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
   const customer = audience === 'customer';
+  const closeRow = r.status === 'closed' ? r.history?.[0] : undefined;
   // Заказчику черновик показываем, только когда человек уже поставил точку: до вердикта это рабочий документ PM
   const draftAllowed = !customer || r.verdicts.length > 0;
   const draft = draftAllowed && r.rationale ? r.rationale.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean) : [];
@@ -363,6 +392,8 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience 
     fixedByUserId: r.fixedByUserId ?? undefined,
     closedByUserId: r.closedByUserId ?? undefined,
     closedAt: r.closedAt ? hhmm(r.closedAt) : undefined,
+    closedVia: closeRow ? closedViaOf(closeRow.fromStatus) : undefined,
+    closeComment: closeRow?.comment ?? undefined,
     runId: run?.id,
     runStatus: run?.status,
     runMode: run ? (run.mode === 'retest' ? 'retest' : 'triage') : undefined,

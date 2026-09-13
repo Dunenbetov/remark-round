@@ -78,8 +78,8 @@ describe('status transitions', () => {
     await h.http.post(`/api/v1/projects/${h.projectId}/remarks/${remarkId}/close`).set(h.auth('developer')).expect(403);
     await h.http.post(`/api/v1/projects/${h.projectId}/remarks/${remarkId}/close`).set(h.auth('pm')).expect(403);
 
-    // бизнес закрывает только после нового кадра
-    await h.http.post(`/api/v1/projects/${h.projectId}/remarks/${remarkId}/close`).set(h.auth('business')).expect(409);
+    // вернуть разработчику без нового кадра нельзя (закрыть без кадра можно — ADR 010, close.without-frame.spec)
+    await h.http.post(`/api/v1/projects/${h.projectId}/remarks/${remarkId}/not-fixed`).set(h.auth('business')).expect(409);
     await h.http
       .post(`/api/v1/projects/${h.projectId}/remarks/${remarkId}/retest`)
       .set(h.auth('business'))
@@ -89,6 +89,7 @@ describe('status transitions', () => {
     const closed = await h.http.post(`/api/v1/projects/${h.projectId}/remarks/${remarkId}/close`).set(h.auth('business')).expect(200);
     expect(closed.body.status).toBe('closed');
     expect(closed.body.closedByUserId).toBe(h.users.business.id);
+    expect(closed.body.closedVia).toBe('retest');
   });
 
   it('из closed нельзя ни в ретест, ни закрыть снова — 409', async () => {

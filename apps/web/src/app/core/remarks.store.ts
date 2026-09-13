@@ -267,10 +267,11 @@ export class RemarksStore {
     });
   }
 
-  async close(remarkId: string): Promise<void> {
+  /** «Закрыть: исправлено» — после ретеста или сразу, если заказчик проверил сам (ADR 010); комментарий по желанию. */
+  async close(remarkId: string, comment?: string): Promise<void> {
     const remark = this.byId(remarkId);
     if (!remark) return;
-    await this.mutate(remarkId, () => this.api.action(remark.projectId, remarkId, 'close'));
+    await this.mutate(remarkId, () => this.api.action(remark.projectId, remarkId, 'close', comment?.trim() ? { comment: comment.trim() } : {}));
   }
 
   async notFixed(remarkId: string): Promise<void> {

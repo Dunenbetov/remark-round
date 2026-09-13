@@ -18,9 +18,12 @@ const REMARK_INCLUDE = {
   runs: { select: { id: true, createdAt: true, status: true, mode: true, failureMessage: true, model: true } },
   origin: { select: { id: true, number: true, round: { select: { number: true } } } },
   reopenedBy: { select: { id: true, number: true, round: { select: { number: true } } }, orderBy: { createdAt: 'desc' }, take: 1 },
+  // Как закрыли и с каким комментарием (ADR 010): строка `close` одна — closed терминален, повтор претензии — новое замечание
+  history: { where: { action: 'close' }, orderBy: { createdAt: 'desc' }, take: 1, select: { fromStatus: true, comment: true } },
 } satisfies Prisma.RemarkInclude;
 
 export const ROUND_CLOSED = 'Раунд закрыт — добавляйте в открытый раунд';
+const RETEST_RUNNING = 'Кадры уже сравниваются — дождитесь диффа';
 
 /** Разработчик видит только принятые поломки и то, что сам отдал на ретест. */
 const DEVELOPER_STATUSES: RemarkStatus[] = ['defect', 'ready_for_retest'];
@@ -179,6 +182,8 @@ export class RemarksService {
       by: h.userId ? { userId: h.userId, name: h.user?.name ?? '', role: h.role ?? undefined } : undefined,
       runId: h.runId ?? undefined,
       detail: customer && h.action === 'proposal' ? undefined : (h.detail ?? undefined),
+      // Заказчик читает свои слова, но не внутренние комментарии команды (ADR 007)
+      comment: customer && h.role !== 'business' ? undefined : (h.comment ?? undefined),
     }));
   }
 
@@ -584,12 +589,21 @@ export class RemarksService {
     return this.get(ctx, remarkId);
   }
 
-  async close(ctx: ProjectContext, remarkId: string): Promise<RemarkView> {
+  /**
+   * «Закрыть: исправлено» — только заказчик (ADR 010). Из `awaiting_business_close` — после нового кадра и диффа;
+   * из `ready_for_retest` — сразу после «Готово»: заказчик проверил сам, его закрытие и есть признание. Система
+   * «исправлено» без кадра по-прежнему не утверждает — граф здесь не участвует. Пока кадры сравниваются — 409.
+   */
+  async close(ctx: ProjectContext, remarkId: string, comment?: string | null): Promise<RemarkView> {
     if (ctx.role !== 'business') throw new ForbiddenException('Закрыть замечание может только тот, кто принимает работу');
     const row = await this.load(ctx, remarkId);
-    this.assertTransition(row.status, ['awaiting_business_close'], 'close');
+    this.assertTransition(row.status, ['ready_for_retest', 'awaiting_business_close'], 'close');
+    if (row.runs.some((r) => r.mode === 'retest' && r.status === 'running')) throw new ConflictException(RETEST_RUNNING);
     await this.prisma.$transaction(async (tx) => {
-      await this.transition(tx, remarkId, ['awaiting_business_close'], 'close', { status: 'closed', closedByUserId: ctx.userId, closedAt: new Date() }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status });
+      // Из того статуса, что видел человек: если между чтением и кнопкой пришёл дифф — 409 и карточка перечитается
+      await this.transition(tx, remarkId, [row.status], 'close', { status: 'closed', closedByUserId: ctx.userId, closedAt: new Date() }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, comment: comment?.trim() || null });
+      // beginRetest статус не меняет: ретест, записанный пока ждали блокировку строки, откатывает закрытие
+      if (await tx.agentRun.count({ where: { remarkId, mode: 'retest', status: 'running' } })) throw new ConflictException(RETEST_RUNNING);
       await tx.agentRun.updateMany({ where: { remarkId, mode: 'retest', status: 'awaiting_human' }, data: { status: 'persisted' } });
     });
     return this.get(ctx, remarkId);
@@ -598,6 +612,8 @@ export class RemarksService {
   async notFixed(ctx: ProjectContext, remarkId: string): Promise<RemarkView> {
     if (ctx.role !== 'business') throw new ForbiddenException();
     const row = await this.load(ctx, remarkId);
+    // Вернуть разработчику — только с уликой: без нового кадра «не исправлено» ничем не подтверждено (ADR 010)
+    if (row.status === 'ready_for_retest') throw new ConflictException('«Не исправлено» — только с новым кадром: сначала прикрепите кадр ретеста');
     this.assertTransition(row.status, ['awaiting_business_close'], 'not_fixed');
     await this.prisma.$transaction(async (tx) => {
       await this.transition(tx, remarkId, ['awaiting_business_close'], 'not_fixed', { status: 'defect', retestOutcome: null, retestExplanation: null }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status });
@@ -627,7 +643,7 @@ export class RemarksService {
       const toStatus = typeof data.status === 'string' ? data.status : undefined;
       if (toStatus) {
         await tx.remarkStatusChange.create({
-          data: { remarkId, fromStatus: by.fromStatus ?? (from.length === 1 ? from[0]! : null), toStatus, action, userId: by.userId ?? null, role: by.role ?? null, runId: by.runId ?? null, detail: by.detail ?? null },
+          data: { remarkId, fromStatus: by.fromStatus ?? (from.length === 1 ? from[0]! : null), toStatus, action, userId: by.userId ?? null, role: by.role ?? null, runId: by.runId ?? null, detail: by.detail ?? null, comment: by.comment ?? null },
         });
       }
       return;
@@ -676,6 +692,8 @@ interface HistoryBy {
   fromStatus?: RemarkStatus;
   runId?: string | null;
   detail?: string | null;
+  /** Слова человека (комментарий к закрытию). */
+  comment?: string | null;
 }
 
 /** Короткая пометка «что предложила модель»: класс и первый абзац черновика без заголовка. */

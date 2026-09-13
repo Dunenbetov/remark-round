@@ -198,6 +198,8 @@ export interface RemarkHistoryEntry {
   by?: { userId: string; name: string; role?: Role };
   runId?: string;
   detail?: string;
+  /** Слова человека при действии (комментарий к закрытию); заказчику — только слова заказчика. */
+  comment?: string;
 }
 
 /** Ссылка между закрытым замечанием и его повтором в новом раунде (docs/STATUS.md closed → reopened). */
@@ -300,6 +302,9 @@ export interface Remark {
   fixedByUserId?: string;
   closedByUserId?: string;
   closedAt?: string;
+  /** Как закрыли (ADR 010): после ретеста или заказчик проверил сам, без нового кадра. */
+  closedVia?: 'retest' | 'business_check';
+  closeComment?: string;
   /** Текущий AgentRun — для идемпотентного вердикта. */
   runId?: string;
   /** `running` — фазы идут по WS; `awaiting_human` — прогон ждёт кнопки. */

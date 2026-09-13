@@ -258,7 +258,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                           (verdict)="onVerdict($event)"
                           (rejectBinding)="onRejectBinding($event)"
                           (attach)="pickFile('attach')"
-                          (close)="onClose()"
+                          (close)="onClose($event)"
                           (notFixed)="onNotFixed()"
                           (undo)="undo()"
                           (goNext)="goNextTarget()"
@@ -323,12 +323,15 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                             <time class="history__when" [attr.datetime]="e.at">{{ when(e.at) }}</time>
                             <div class="history__what">
                               <span class="history__who">{{ e.by ? person(e.by.name, e.by.role) : copy.historySystem }}</span>
-                              <span>{{ actionLabel(e.action) }}</span>
+                              <span>{{ actionLabel(e) }}</span>
                               @if (e.fromStatus !== e.toStatus) {
                                 <span class="history__to">→ {{ statusLabel[e.toStatus] }}</span>
                               }
                               @if (e.detail) {
                                 <span class="meta history__detail">{{ e.detail }}</span>
+                              }
+                              @if (e.comment) {
+                                <span class="history__comment">«{{ e.comment }}»</span>
                               }
                             </div>
                           </li>
@@ -645,6 +648,13 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
     }
     .history__detail {
       flex-basis: 100%;
+      overflow-wrap: anywhere;
+    }
+    /* слова человека — как комментарий записи решения: курсив, вторичный цвет */
+    .history__comment {
+      flex-basis: 100%;
+      color: var(--rr-ink-2);
+      font-style: italic;
       overflow-wrap: anywhere;
     }
     .card__trace {
@@ -1050,9 +1060,9 @@ export class RemarkCardPage {
       this.panel()?.pickByKey(n);
       return;
     }
-    if (mode === 'retest') {
-      if (n === 1) this.onClose();
-      if (n === 2) this.onNotFixed();
+    if (mode === 'retest' || mode === 'retest-check') {
+      // Панель знает комментарий к закрытию и какие кнопки сейчас доступны
+      this.panel()?.retestByKey(n);
       return;
     }
     if (this.role() === 'developer' && r.status === 'defect' && n === 1) this.onReady();
@@ -1061,7 +1071,7 @@ export class RemarkCardPage {
   private onKeyUpload(): void {
     const mode = this.decisionMode();
     if (mode === 'attach') this.pickFile('attach');
-    else if (mode === 'retest-wait' && this.role() === 'business') this.pickFile('retest');
+    else if (mode === 'retest-check' && this.role() === 'business') this.pickFile('retest');
   }
 
   // ---------- доступ и режимы ----------
@@ -1135,7 +1145,8 @@ export class RemarkCardPage {
       case 'business':
         if (r.status === 'unspecified') return 'pm-two';
         if (r.status === 'cannot_tell') return 'attach';
-        if (r.status === 'ready_for_retest') return 'retest-wait';
+        // «Готово» разработчика: закрыть можно сразу, если проверили сами (ADR 010); кадр — по желанию
+        if (r.status === 'ready_for_retest') return 'retest-check';
         if (r.status === 'awaiting_business_close') return 'retest';
         if (r.status === 'awaiting_pm' || r.status === 'triaging') return null;
         return r.verdict || r.status === 'closed' ? 'record' : null;
@@ -1192,7 +1203,8 @@ export class RemarkCardPage {
       };
     }
     if (r.status === 'closed') {
-      return { label: DECISION.closedRecord, who: r.closedByName ?? '', at: r.closedAt ?? '', changeable: false, stamp: STAMP_LABEL.closed, tone: 'ok' };
+      const via = r.closedVia === 'business_check' ? DECISION.closedWithoutFrame : r.closedVia === 'retest' ? DECISION.closedAfterRetest : undefined;
+      return { label: DECISION.closedRecord, who: r.closedByName ?? '', at: r.closedAt ?? '', changeable: false, stamp: STAMP_LABEL.closed, tone: 'ok', comment: r.closeComment, sub: via };
     }
     if (!r.verdict) return null;
     const code = r.verdict.code;
@@ -1317,7 +1329,7 @@ export class RemarkCardPage {
       case 'cannot_tell':
         return PHASE_EXTRA.awaitingShot;
       case 'ready_for_retest':
-        return PHASE_EXTRA.awaitingNewShot;
+        return role === 'business' ? PHASE_EXTRA.awaitingCheck : PHASE_EXTRA.awaitingCheckOther;
       case 'awaiting_business_close':
         return role === 'business' ? PHASE_TEXT.awaiting_business_close : PHASE_EXTRA.awaitingBusinessOther;
       case 'closed':
@@ -1354,9 +1366,9 @@ export class RemarkCardPage {
     this.actions.schedule({ remarkId: id, label: VERDICT_LABEL[e.code], inline: true, commit: () => this.store.verdict(id, e.code, e.comment) });
   }
 
-  protected onClose(): void {
+  protected onClose(comment = ''): void {
     const id = this.remarkId();
-    this.actions.schedule({ remarkId: id, label: DECISION.closeFixed, inline: true, commit: () => this.store.close(id) });
+    this.actions.schedule({ remarkId: id, label: DECISION.closeFixed, inline: true, commit: () => this.store.close(id, comment) });
   }
 
   protected onNotFixed(): void {
@@ -1479,8 +1491,10 @@ export class RemarkCardPage {
     return person(name, role);
   }
 
-  protected actionLabel(action: string): string {
-    return HISTORY_ACTION[action] ?? action;
+  protected actionLabel(e: RemarkHistoryEntry): string {
+    // Закрытие сразу после «Готово» — без нового кадра, заказчик проверил сам (ADR 010)
+    if (e.action === 'close' && e.fromStatus === 'ready_for_retest') return HISTORY_ACTION['close_checked']!;
+    return HISTORY_ACTION[e.action] ?? e.action;
   }
 
   protected when(iso: string): string {

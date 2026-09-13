@@ -65,7 +65,9 @@ export const PHASE_EXTRA = {
   retry: 'Запустить снова',
   stop: 'Остановить',
   awaitingShot: 'Ждём скрин',
-  awaitingNewShot: 'Ждём, прикрепите новый кадр',
+  /** ready_for_retest (ADR 010): заказчик закрывает сам или прикладывает новый кадр для сравнения. */
+  awaitingCheck: 'Проверьте: закройте или прикрепите новый кадр',
+  awaitingCheckOther: 'Ждём проверки заказчика',
   inDevWith: (name: string) => `В работе у ${name}`,
   /** Фаза для того, кто не принимает решение на этой карточке. */
   awaitingPmOther: 'Ждём решения руководителя приёмки',
@@ -102,8 +104,15 @@ export const DECISION = {
   commentLabelShort: 'Комментарий (необязательно)',
   commentRequired: 'Для «не та цитата» нужен комментарий: где в ТЗ искать.',
   waitDraft: 'Кнопки станут доступны, когда черновик будет готов.',
-  waitFrame: 'Кнопки станут доступны после нового кадра.',
+  waitFrame: 'Кнопки станут доступны, когда сравним кадры.',
   onlyBusinessCloses: 'Закрыть замечание может только тот, кто принимает работу.',
+  /** retest-check (ADR 010): закрыть можно сразу, вернуть — только с новым кадром. */
+  checkHint: 'Проверили на стенде — закройте. Не исправлено — прикрепите новый кадр, покажем дифф.',
+  notFixedNeedsFrame: 'Вернуть разработчику можно только с новым кадром.',
+  closeCommentLabel: 'Комментарий к закрытию (необязательно)',
+  commentWithClose: 'Уйдёт вместе с закрытием.',
+  closedWithoutFrame: 'Проверено заказчиком, без нового кадра',
+  closedAfterRetest: 'После ретеста: новый кадр и дифф',
   record: 'Решение:',
   change: 'Изменить решение',
   closeFixed: 'Закрыть: исправлено',
@@ -130,11 +139,12 @@ export const DECISION = {
     'pm-two': '1–2 — решение · → следующее · Esc — отменить',
     'dev-advice': '1–5 — совет · C — комментарий · → следующее',
     attach: 'U — прикрепить скрин · → следующее',
-    retest: '1 — закрыть · 2 — не исправлено · → следующее · Esc — отменить',
-    'retest-wait': 'U — прикрепить новый кадр · → следующее',
+    retest: '1 — закрыть · 2 — не исправлено · C — комментарий · → следующее · Esc — отменить',
+    'retest-check': '1 — закрыть · U — новый кадр · C — комментарий · → следующее · Esc — отменить',
+    'retest-wait': '→ следующее',
     disabled: 'Кнопки станут доступны, когда черновик будет готов.',
     record: '→ следующее',
-  } satisfies Record<'disabled' | 'pm-full' | 'pm-two' | 'dev-advice' | 'attach' | 'retest' | 'retest-wait' | 'record', string>,
+  } satisfies Record<'disabled' | 'pm-full' | 'pm-two' | 'dev-advice' | 'attach' | 'retest' | 'retest-check' | 'retest-wait' | 'record', string>,
   keysHintDev: '1 — готово · → следующее',
   /** Совет разработчика (режим dev-advice) и бейдж у варианта PM. Совет — не решение. */
   adviseTitle: 'Ваш совет',
@@ -243,7 +253,7 @@ export const JOURNAL = {
   tiles: { mine: 'Ждут вас', work: 'В работе', retest: 'На ретесте', closed: 'Закрыто', all: 'Все' },
   tileSub: {
     work: 'у разработчика',
-    retest: 'ждут кадр',
+    retest: 'ждут проверки',
     closed: (n: number, total: number) => `из ${total}`,
     all: (round: number) => `Раунд ${round}`,
   },
@@ -254,8 +264,8 @@ export const JOURNAL = {
   restCount: (n: number) => `Остальные ${n} ${plural(n, 'замечание', 'замечания', 'замечаний')}`,
   allDone: 'Здесь пусто — всё разобрано',
   /** «Итог» для заказчика: только ненулевые части через « · ». */
-  businessBreakdown: (close: number, frame: number, shot: number) =>
-    [close > 0 ? `${close} закрыть` : '', frame > 0 ? `${frame} новый кадр` : '', shot > 0 ? `${shot} скрин` : ''].filter(Boolean).join(' · '),
+  businessBreakdown: (close: number, check: number, shot: number) =>
+    [close > 0 ? `${close} закрыть` : '', check > 0 ? `${check} проверить` : '', shot > 0 ? `${shot} скрин` : ''].filter(Boolean).join(' · '),
   waitingPm: 'Ждём первое замечание заказчика',
   startFrom: 'Начните с «Ждут вас»: слева — что заметил заказчик, справа — ваше решение.',
   explain: {
@@ -416,7 +426,7 @@ export const PROCESS = {
     'Ищем место в ТЗ, смотрим скрин, готовим черновик',
     'Руководитель приёмки решает: работа или новое желание',
     'Разработчик исправляет и нажимает «Готово»',
-    'Заказчик прикладывает новый кадр — сравниваем «Было» и «Стало»',
+    'Заказчик проверяет: закрывает сразу или сравнивает новый кадр со старым',
     'Заказчик закрывает замечание',
   ] as const,
   stepByStep: 'По шагам',
@@ -475,13 +485,13 @@ export const TOUR = {
       {
         status: 'ready_for_retest',
         title: 'Разработчик исправил — вы проверяете',
-        text: 'Когда появится «Можно смотреть снова», прикрепите новый кадр того же экрана. Мы сравним «Было» и «Стало» и подсветим разницу.',
+        text: 'Когда появится «Можно смотреть снова», проверьте на стенде. Исправлено — закройте сразу, кадр не нужен. Сомневаетесь — прикрепите новый кадр того же экрана: сравним «Было» и «Стало» и подсветим разницу.',
         illustration: 'dropzone',
       },
       {
         status: 'awaiting_business_close',
         title: 'Закрываете только вы',
-        text: 'Если исправлено — «Закрыть: исправлено». Если нет — «Не исправлено», и замечание вернётся разработчику. Всё, что ждёт вас, собрано в тайле «Ждут вас».',
+        text: 'Если исправлено — «Закрыть: исправлено», можно с комментарием. Если нет — прикрепите новый кадр и нажмите «Не исправлено»: замечание вернётся разработчику. Всё, что ждёт вас, собрано в тайле «Ждут вас».',
         illustration: 'stamp',
       },
     ] satisfies TourStep[],
@@ -515,7 +525,7 @@ export const TOUR = {
       {
         status: 'awaiting_business_close',
         title: 'Закрывает заказчик',
-        text: 'После исправления заказчик сверяет кадры и закрывает замечание. Журнал показывает, где сейчас каждая строка; начинайте с «Ждут вас».',
+        text: 'После исправления заказчик проверяет и закрывает замечание — сам на стенде или сверив кадры. Журнал показывает, где сейчас каждая строка; начинайте с «Ждут вас».',
         illustration: 'tile',
       },
     ] satisfies TourStep[],
@@ -651,7 +661,7 @@ export const LOGIN = {
   lead: ['Заказчик замечает.', 'Мы находим место в ТЗ.', 'Вы решаете, работа ли это.'],
   tryAs: 'Кто вы в демо',
   roles: [
-    { email: 'business@remarkround.dev', name: 'Business', role: 'business', does: 'добавляет замечания, закрывает ретест' },
+    { email: 'business@remarkround.dev', name: 'Business', role: 'business', does: 'добавляет замечания, закрывает исправленное' },
     { email: 'pm@remarkround.dev', name: 'PM', role: 'pm', does: 'выносит вердикт по черновику с цитатой ТЗ' },
     { email: 'developer@remarkround.dev', name: 'Developer', role: 'developer', does: 'видит только принятые поломки' },
   ] satisfies ReadonlyArray<{ email: string; name: string; role: Role; does: string }>,
@@ -667,7 +677,7 @@ export const LOGIN = {
 export const ROLE_SIDE: Record<Side, string> = { business: 'Заказчик', pm: 'Руководитель приёмки', developer: 'Разработчик' };
 export const SIDES: readonly Side[] = ['business', 'pm', 'developer'];
 export const SIDE_DOES: Record<Side, string> = {
-  business: 'добавляет замечания, закрывает ретест',
+  business: 'добавляет замечания, закрывает исправленное',
   pm: 'решает, работа ли это; создаёт проекты и зовёт участников',
   developer: 'видит только принятые поломки',
 };
@@ -826,7 +836,9 @@ export const HISTORY_ACTION: Record<string, string> = {
   ready_for_retest: 'Разработчик: готово',
   retest: 'Кадр для ретеста приложен',
   retest_result: 'Кадры сравнили',
-  close: 'Закрыто',
+  close: 'Закрыто после ретеста',
+  /** Строка `close` из ready_for_retest (ADR 010): карточка подменяет подпись по fromStatus. */
+  close_checked: 'Закрыто без нового кадра: заказчик проверил сам',
   not_fixed: 'Не исправлено — снова в работу',
   cancel: 'Разбор остановлен',
   run_failed: 'Разбор не удался',

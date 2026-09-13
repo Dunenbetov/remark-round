@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, afterNextRender, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import type { Advice, VerdictCode } from '../core/models';
 import { COMMON, DECISION, PM_VERDICTS, PillTone, VERDICT_LABEL } from '../core/copy';
@@ -8,13 +9,14 @@ import { Stamp } from './stamp';
 /**
  * Режимы панели «Ваше решение»:
  * disabled — черновик ещё готовится; pm-full — пять кнопок PM тремя группами; pm-two — «нужно ваше решение», две кнопки;
- * attach — бизнесу не хватает скрина; retest — «Закрыть: исправлено» / «Не исправлено»;
- * retest-wait — те же кнопки недоступны до нового кадра; record — решение уже принято (штамп);
+ * attach — бизнесу не хватает скрина; retest — «Закрыть: исправлено» / «Не исправлено» после сравнения кадров;
+ * retest-check — разработчик нажал «Готово»: закрыть можно сразу (заказчик проверил сам, ADR 010), «Не исправлено» —
+ * только с новым кадром; retest-wait — кадры сравниваются, кнопки недоступны; record — решение уже принято (штамп);
  * dev-advice — разработчик советует PM теми же пятью вариантами: совет уходит сразу, его можно изменить или снять.
  * В pm-full / pm-two у варианта с советами — бейдж «Developer советует» (стек аватаров); он ничего не выбирает.
  * `pending` поверх любого режима: чернильная карточка отсчёта, 5 секунд можно «Отменить».
  */
-export type DecisionMode = 'disabled' | 'pm-full' | 'pm-two' | 'dev-advice' | 'attach' | 'retest' | 'retest-wait' | 'record';
+export type DecisionMode = 'disabled' | 'pm-full' | 'pm-two' | 'dev-advice' | 'attach' | 'retest' | 'retest-check' | 'retest-wait' | 'record';
 
 export interface DecisionRecord {
   label: string;
@@ -53,7 +55,7 @@ const UNDO_SECONDS = 5;
 @Component({
   selector: 'rr-decision-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, Stamp],
+  imports: [Icon, Stamp, NgTemplateOutlet],
   host: {
     class: 'panel',
     '[class.panel--record]': "mode() === 'record' && !pending()",
@@ -134,6 +136,16 @@ const UNDO_SECONDS = 5;
             {{ copy.notFixed }}<span class="kbd">2</span>
           </button>
           <div class="hint">{{ copy.onlyBusinessCloses }}</div>
+          <ng-container [ngTemplateOutlet]="commentBlock" />
+        }
+        @case ('retest-check') {
+          <!-- ADR 010: заказчик проверил сам — закрывает без нового кадра; вернуть разработчику можно только с кадром -->
+          <button type="button" class="btn btn--primary btn--lg btn--left" [class.btn--busy]="busy() && clicked() === 'close'" [class.is-pressed]="pressed() === 'Digit1'" [disabled]="busy()" (click)="act('close')">
+            {{ copy.closeFixed }}<span class="kbd">1</span>
+          </button>
+          <button type="button" class="btn btn--secondary btn--lg btn--left" disabled [attr.title]="copy.notFixedNeedsFrame">{{ copy.notFixed }}</button>
+          <div class="hint">{{ copy.checkHint }}</div>
+          <ng-container [ngTemplateOutlet]="commentBlock" />
         }
         @case ('retest-wait') {
           <button type="button" class="btn btn--secondary btn--lg btn--left" disabled>{{ copy.closeFixed }}</button>
@@ -225,35 +237,38 @@ const UNDO_SECONDS = 5;
               <div class="hint">{{ copy.adviseHint }}</div>
             }
           }
-          @if (!commentOpen()) {
-            <button type="button" class="btn btn--text panel__toggle" [attr.aria-expanded]="false" [attr.aria-controls]="commentId" (click)="openComment()">
-              <rr-icon name="plus" [size]="14" />
-              {{ copy.addComment }}
-            </button>
-          } @else {
-            <label class="meta panel__label" [for]="commentId">{{ commentLabel() }}</label>
-            <textarea
-              #commentField
-              class="textarea panel__comment"
-              rows="3"
-              [id]="commentId"
-              [value]="comment()"
-              [disabled]="busy()"
-              [attr.aria-invalid]="hint() ? 'true' : null"
-              (input)="onComment($event)"
-            ></textarea>
-            @if (hint()) {
-              <div class="meta panel__required" role="alert">{{ copy.commentRequired }}</div>
-            }
-            <!-- Комментарий не отдельная запись: он уходит вместе с решением PM или советом разработчика -->
-            <div class="meta panel__comment-hint">{{ mode() === 'dev-advice' ? copy.commentWithAdvice : copy.commentWithVerdict }}</div>
-          }
+          <ng-container [ngTemplateOutlet]="commentBlock" />
         }
       }
       @if (keysLine(); as k) {
         <div class="keys meta">{{ k }}</div>
       }
     }
+    <ng-template #commentBlock>
+      @if (!commentOpen()) {
+        <button type="button" class="btn btn--text panel__toggle" [attr.aria-expanded]="false" [attr.aria-controls]="commentId" (click)="openComment()">
+          <rr-icon name="plus" [size]="14" />
+          {{ copy.addComment }}
+        </button>
+      } @else {
+        <label class="meta panel__label" [for]="commentId">{{ commentLabel() }}</label>
+        <textarea
+          #commentField
+          class="textarea panel__comment"
+          rows="3"
+          [id]="commentId"
+          [value]="comment()"
+          [disabled]="busy()"
+          [attr.aria-invalid]="hint() ? 'true' : null"
+          (input)="onComment($event)"
+        ></textarea>
+        @if (hint()) {
+          <div class="meta panel__required" role="alert">{{ copy.commentRequired }}</div>
+        }
+        <!-- Комментарий не отдельная запись: он уходит вместе с решением PM, советом разработчика или закрытием -->
+        <div class="meta panel__comment-hint">{{ commentHint() }}</div>
+      }
+    </ng-template>
   `,
   styles: `
     /* Панель лежит прямо на бумаге карточки: подложки нет.
@@ -673,7 +688,8 @@ export class DecisionPanel {
   readonly verdict = output<{ code: Exclude<VerdictCode, 'rejected_binding'>; comment: string }>();
   readonly rejectBinding = output<string>();
   readonly attach = output<void>();
-  readonly close = output<void>();
+  /** Комментарий к закрытию (может быть пустым). */
+  readonly close = output<string>();
   readonly notFixed = output<void>();
   readonly changeDecision = output<void>();
   readonly undo = output<void>();
@@ -725,7 +741,9 @@ export class DecisionPanel {
         }),
     })).filter((g) => g.verdicts.length);
   });
-  protected readonly commentLabel = computed(() => (this.mode() === 'pm-two' ? DECISION.commentLabelShort : DECISION.commentLabel));
+  private readonly retestMode = computed(() => this.mode() === 'retest' || this.mode() === 'retest-check');
+  protected readonly commentLabel = computed(() => (this.retestMode() ? DECISION.closeCommentLabel : this.mode() === 'pm-two' ? DECISION.commentLabelShort : DECISION.commentLabel));
+  protected readonly commentHint = computed(() => (this.mode() === 'dev-advice' ? DECISION.commentWithAdvice : this.retestMode() ? DECISION.commentWithClose : DECISION.commentWithVerdict));
   protected readonly keysLine = computed(() => {
     const override = this.keysHint();
     if (override !== undefined) return override;
@@ -823,7 +841,7 @@ export class DecisionPanel {
    * иначе поле открывается, а отправить его нечем.
    */
   openComment(): void {
-    if (this.mode() !== 'pm-full' && this.mode() !== 'pm-two' && this.mode() !== 'dev-advice') return;
+    if (this.mode() !== 'pm-full' && this.mode() !== 'pm-two' && this.mode() !== 'dev-advice' && !this.retestMode()) return;
     if (this.mode() === 'dev-advice' && this.myAdvice() && !this.editing()) this.startEditAdvice();
     this.commentOpen.set(true);
     afterNextRender(() => this.host.nativeElement.querySelector<HTMLTextAreaElement>('.panel__comment')?.focus(), { injector: this.injector });
@@ -903,10 +921,21 @@ export class DecisionPanel {
     }
   }
 
+  /** Клавиши на ретесте: 1 — закрыть (в retest и retest-check), 2 — «не исправлено» (только после сравнения кадров). */
+  retestByKey(n: number): void {
+    if (this.busy() || this.pending()) return;
+    if (n === 1 && this.retestMode()) this.act('close');
+    if (n === 2 && this.mode() === 'retest') this.act('notFixed');
+  }
+
   protected act(what: 'close' | 'notFixed'): void {
     this.clicked.set(what);
-    if (what === 'close') this.close.emit();
-    else this.notFixed.emit();
+    if (what === 'close') {
+      // Комментарий уходит вместе с закрытием (ADR 010); черновик снимаем — отсчёт «Отменить» его не вернёт, как и у вердикта
+      this.close.emit(this.comment().trim());
+      this.clearDraft();
+      this.commentOpen.set(false);
+    } else this.notFixed.emit();
   }
 
   protected pick(code: VerdictCode): void {

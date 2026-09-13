@@ -530,6 +530,9 @@ model RemarkStatusChange {
   role       Role?
   runId      String?
   detail     String?
+  /// Слова человека при действии (ADR 010): комментарий к закрытию. Как закрыли — по fromStatus строки `close`:
+  /// ready_for_retest — заказчик проверил сам, без нового кадра; awaiting_business_close — после ретеста с кадром
+  comment    String?
   createdAt  DateTime      @default(now())
   remark     Remark        @relation(fields: [remarkId], references: [id], onDelete: Cascade)
   user       User?         @relation(fields: [userId], references: [id], onDelete: SetNull)

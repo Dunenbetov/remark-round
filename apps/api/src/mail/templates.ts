@@ -8,7 +8,7 @@ const ROLE_LABEL: Record<Role, string> = { business: 'заказчик', pm: 'р
 export const KIND_LABEL: Record<NotificationKind, string> = {
   awaiting_pm: 'ждёт вашего решения',
   defect: 'принят как дефект — в работу',
-  ready_for_retest: 'исправлено — нужен новый кадр для ретеста',
+  ready_for_retest: 'исправлено — проверьте: закройте или приложите новый кадр',
   awaiting_business_close: 'ретест готов — закройте или верните',
   cannot_tell: 'не хватает кадра или улики — добавьте',
 };

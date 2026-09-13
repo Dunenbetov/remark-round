@@ -78,12 +78,12 @@ describe('notifications', () => {
     expect(h.mail.sent).toHaveLength(1);
   });
 
-  it('«Готово» разработчика → письмо заказчику про новый кадр; ретест готов → письмо заказчику, даже если он сам его запустил', async () => {
+  it('«Готово» разработчика → письмо заказчику «проверьте»; ретест готов → письмо заказчику, даже если он сам его запустил', async () => {
     const { id } = await remarkIn('defect');
     await h.http.post(url(`/remarks/${id}/ready-for-retest`)).set(h.auth('developer')).expect(200);
     const [first] = await h.mail.waitFor(1);
     expect(first!.to).toBe(h.users.business.email);
-    expect(first!.text).toContain('нужен новый кадр');
+    expect(first!.text).toContain('проверьте: закройте или приложите новый кадр');
 
     await h.prisma.$transaction((tx) => notifications.remarkChanged(tx, h.projectId, id, 'awaiting_business_close', null));
     const [, second] = await h.mail.waitFor(2);

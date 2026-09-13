@@ -157,9 +157,10 @@ export class AgentService implements OnModuleInit {
     return this.remarks.get(ctx, remarkId);
   }
 
-  async close(ctx: ProjectContext, remarkId: string): Promise<RemarkView> {
-    const view = await this.remarks.close(ctx, remarkId);
-    await this.finishRetest(ctx, view, { kind: 'close' });
+  async close(ctx: ProjectContext, remarkId: string, comment?: string | null): Promise<RemarkView> {
+    const view = await this.remarks.close(ctx, remarkId, comment);
+    // Закрыли без нового кадра (ADR 010) — ретест-графа нет; последний ретест-прогон, если был, уже завершён «не исправлено»
+    if (view.closedVia === 'retest') await this.finishRetest(ctx, view, { kind: 'close' });
     return view;
   }
 
