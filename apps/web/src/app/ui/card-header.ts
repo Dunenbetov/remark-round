@@ -73,7 +73,7 @@ type ShownPresence = Presence & { leaving?: boolean };
     .ch__pill {
       align-self: center;
     }
-    /* пилюля статуса в шапке — индиго с аква-точкой (единственная заливка после рельса) */
+    /* пилюля статуса в шапке — индиго с белой точкой (единственная заливка после рельса) */
     ::ng-deep .ch__pill .pill {
       height: 32px;
       padding: 0 14px;
@@ -84,7 +84,7 @@ type ShownPresence = Presence & { leaving?: boolean };
     }
     ::ng-deep .ch__pill .pill .dot {
       background: var(--rr-accent-2);
-      box-shadow: 0 0 0 4px rgba(149, 251, 242, 0.25);
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.2);
     }
     .ch__stamp {
       margin-left: auto;
@@ -125,9 +125,10 @@ type ShownPresence = Presence & { leaving?: boolean };
       color: var(--rr-accent-ink);
       background: var(--rr-accent);
     }
+    /* кружок лежит на белой бумаге: маркер-тил мягкой подложкой (белый маркер здесь пропал бы) */
     .ch__ava[data-role='business'] {
-      background: var(--rr-accent-2);
-      color: var(--rr-accent);
+      background: var(--rr-accent-2-soft);
+      color: var(--rr-accent-2-text);
     }
     .ch__ava[data-role='developer'] {
       background: var(--rr-work-dot);

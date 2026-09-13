@@ -136,12 +136,13 @@ export interface RailItem {
       outline: 2px solid var(--rr-accent-2);
       outline-offset: -2px;
     }
-    /* активный — аква с индиго-текстом (закон аквы п. а); маркер переезжает view-transition */
+    /* активный — стекло (--rr-rail-on: днём белый 18 %, ночью 14 %) и блик сверху, текст белый;
+       без цветной заливки и ореола. Маркер переезжает view-transition */
     .rail__item--on,
     .rail__item--on:hover {
-      background: var(--rr-accent-2);
-      color: var(--rr-accent);
-      box-shadow: 0 10px 24px -10px rgba(149, 251, 242, 0.8);
+      background: var(--rr-rail-on);
+      color: var(--rr-accent-ink);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
     }
     .rail__item--on .rail__title {
       font-weight: var(--fw-semibold);
@@ -173,7 +174,7 @@ export interface RailItem {
       color: var(--rr-accent-2);
     }
     .rail__item--on .rail__check {
-      color: var(--rr-accent);
+      color: inherit;
     }
     /* точки у пунктов — только пульс «разбираем»; статус читается словами на карточке */
     .rail__item .dot {

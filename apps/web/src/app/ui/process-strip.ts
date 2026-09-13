@@ -247,7 +247,7 @@ interface Node {
       box-shadow: 0 0 0 3px var(--rr-accent-2-soft);
     }
     :host(.strip--compact.strip--static) .node--now .node__core {
-      background: var(--rr-accent-2);
+      background: var(--rr-accent-2-text);
       opacity: 1;
     }
     :host(.strip--compact) .node--now .node__label {

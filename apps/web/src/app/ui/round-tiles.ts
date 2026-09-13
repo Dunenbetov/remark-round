@@ -159,8 +159,8 @@ export interface Tile {
       padding: 9px var(--sp-5);
     }
     .tile[data-tone='accent-2'] .tile__cta:hover:not(:disabled) {
-      background: var(--rr-accent-2);
-      color: var(--rr-accent-deep);
+      background: var(--rr-accent-soft);
+      color: var(--rr-accent-text);
     }
     .tile[data-tone='accent-2'] .tile__marker {
       display: none;

@@ -620,7 +620,7 @@ select {
   background: var(--rr-danger-dot);
 }
 .dot--accent-2 {
-  background: var(--rr-accent-2);
+  background: var(--rr-accent-2-text);
 }
 
 /* ---------- переключатели в шапке (кнопка живёт внутри rr-menu, поэтому стиль глобальный) ---------- */
