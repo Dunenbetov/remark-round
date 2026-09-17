@@ -128,6 +128,23 @@ describe('rag search', () => {
     expect(added.chunks).toBeGreaterThan(0);
   });
 
+  it('большое ТЗ на 2 000 разделов индексируется одной транзакцией пачками (R-B3), а не по чанку', async () => {
+    const big = Array.from({ length: 2000 }, (_, i) => `## ${i + 1}. Раздел ${i + 1}\n\nЭкран ${i + 1}: кнопка «Действие ${i + 1}» стоит справа и подписана номером ${i + 1}.\n`).join('\n');
+    const ctxA: ProjectContext = { userId: ids.userA, projectId: ids.projectA, role: 'pm' };
+    const doc = await documents.upload(ctxA, { kind: 'addendum', fileName: 'big.md', data: Buffer.from(big) }, { indexInBackground: false });
+    const started = Date.now();
+    const result = await rag.indexDocument(doc.id);
+    const elapsed = Date.now() - started;
+    expect(result.chunks).toBeGreaterThanOrEqual(2000);
+    expect(await prisma.documentChunk.count({ where: { documentId: doc.id } })).toBe(result.chunks);
+    expect((await prisma.document.findUniqueOrThrow({ where: { id: doc.id } })).status).toBe('indexed');
+    // По одному INSERT это не укладывалось в 5-секундный дефолт транзакции; пачками — секунды даже на CI
+    expect(elapsed).toBeLessThan(15_000);
+    // Переиндексация заменяет чанки, а не дублирует
+    await rag.indexDocument(doc.id);
+    expect(await prisma.documentChunk.count({ where: { documentId: doc.id } })).toBe(result.chunks);
+  }, 60_000);
+
   it('неподдерживаемый формат — 422', async () => {
     await http
       .post(`/api/v1/projects/${ids.projectA}/documents`)

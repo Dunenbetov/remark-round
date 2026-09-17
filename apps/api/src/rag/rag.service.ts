@@ -30,6 +30,10 @@ export interface IndexResult {
 
 const DEFAULT_TOP_K = 5;
 const MAX_TOP_K = 20;
+/** Строк в одном INSERT чанков: 200 × 1536 float ≈ 3 МБ текста запроса — далеко от лимитов Postgres и Prisma. */
+const INSERT_BATCH = 200;
+/** Транзакция индексации: удалить старые чанки и записать новые — тысячи строк большого ТЗ при занятом пуле. */
+const INDEX_TX_TIMEOUT_MS = 120_000;
 
 /**
  * RagModule: chunk → embed → pgvector, search с `WHERE "projectId" = $current`.
@@ -96,17 +100,22 @@ export class RagService implements OnModuleInit {
           if (!chunks.length) throw new Error('текст не извлечён — похоже на скан без текстового слоя или пустой файл');
           const vectors = await this.embeddings.embed(chunks.map((c) => c.embedText));
 
-          await this.prisma.$transaction(async (tx) => {
-            await tx.documentChunk.deleteMany({ where: { documentId: doc.id } });
-            for (let i = 0; i < chunks.length; i++) {
-              const c = chunks[i]!;
-              await tx.$executeRaw`
-                INSERT INTO "DocumentChunk" ("id", "projectId", "documentId", "section", "page", "content", "embedding")
-                VALUES (${randomUUID()}, ${doc.projectId}, ${doc.id}, ${c.section}, ${c.page}, ${c.content}, ${toVector(vectors[i]!)}::vector)
-              `;
-            }
-            await tx.document.update({ where: { id: doc.id }, data: { status: 'indexed' } });
-          });
+          // Чанки пишутся пачками по INSERT_BATCH строк в одном INSERT (аудит беты R-B3): ТЗ на 200 страниц — тысячи чанков,
+          // и по одному INSERT они не укладывались в 5-секундный дефолт интерактивной транзакции; эмбеддинги уже оплачены
+          await this.prisma.$transaction(
+            async (tx) => {
+              await tx.documentChunk.deleteMany({ where: { documentId: doc.id } });
+              for (let from = 0; from < chunks.length; from += INSERT_BATCH) {
+                const rows = chunks.slice(from, from + INSERT_BATCH).map((c, i) => Prisma.sql`(${randomUUID()}, ${doc.projectId}, ${doc.id}, ${c.section}, ${c.page}, ${c.content}, ${toVector(vectors[from + i]!)}::vector)`);
+                await tx.$executeRaw`
+                  INSERT INTO "DocumentChunk" ("id", "projectId", "documentId", "section", "page", "content", "embedding")
+                  VALUES ${Prisma.join(rows)}
+                `;
+              }
+              await tx.document.update({ where: { id: doc.id }, data: { status: 'indexed' } });
+            },
+            { timeout: INDEX_TX_TIMEOUT_MS },
+          );
           span.update({ output: { chunks: chunks.length, sections: chunks.map((c) => c.section).filter(Boolean) } });
           return { documentId: doc.id, chunks: chunks.length };
         } catch (e) {

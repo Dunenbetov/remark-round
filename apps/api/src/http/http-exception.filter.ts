@@ -38,33 +38,41 @@ export class HttpExceptionsFilter implements ExceptionFilter {
     const req = http.getRequest<Request & { id?: string }>();
     const res = http.getResponse<Response>();
     const requestId = typeof req.id === 'string' ? req.id : undefined;
-    const body = this.toBody(exception, requestId);
+    const body = errorBody(exception, requestId);
     if (body.statusCode >= 500) {
       const err = exception as Error;
       this.log.error({ msg: `${req.method} ${req.url} → ${body.statusCode}`, requestId, err: { name: err?.name, message: err?.message, stack: err?.stack } });
     }
     res.status(body.statusCode).json(body);
   }
+}
 
-  private toBody(exception: unknown, requestId?: string): ErrorBody {
-    if (exception instanceof HttpException) {
-      const status = exception.getStatus();
-      const payload = exception.getResponse();
-      const message = typeof payload === 'string' ? payload : ((payload as { message?: string | string[] }).message ?? exception.message);
-      // 503 из /health несёт своё тело ({ ok, db, … }) — сохраняем его поля
-      const extra = typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>) : {};
-      return { ...extra, statusCode: status, code: CODE_BY_STATUS[status] ?? `http_${status}`, message, requestId };
-    }
-    if (exception instanceof Prisma.PrismaClientKnownRequestError) {
-      if (exception.code === 'P2002') return { statusCode: 409, code: 'conflict', message: 'Такая запись уже есть', requestId };
-      if (exception.code === 'P2025') return { statusCode: 404, code: 'not_found', message: 'Не найдено', requestId };
-      if (exception.code === 'P2003') return { statusCode: 409, code: 'conflict', message: 'Запись связана с другими данными', requestId };
-      // Deadlock / write conflict двух встречных транзакций: клиент перечитывает карточку и повторяет, как при 409 статуса
-      if (exception.code === 'P2034') return { statusCode: 409, code: 'conflict', message: 'Карточка изменилась параллельно — обновите её и повторите', requestId };
-    }
-    if (exception instanceof Prisma.PrismaClientValidationError) {
-      return { statusCode: HttpStatus.UNPROCESSABLE_ENTITY, code: 'unprocessable', message: 'Неверные данные запроса', requestId };
-    }
-    return { statusCode: HttpStatus.INTERNAL_SERVER_ERROR, code: 'internal', message: 'Внутренняя ошибка — сообщите requestId в поддержку', requestId };
+/** Ошибка → тело контракта. Чистая функция, чтобы маппинг кодов Prisma проверялся без HTTP (http.errors.spec). */
+export function errorBody(exception: unknown, requestId?: string): ErrorBody {
+  if (exception instanceof HttpException) {
+    const status = exception.getStatus();
+    const payload = exception.getResponse();
+    const message = typeof payload === 'string' ? payload : ((payload as { message?: string | string[] }).message ?? exception.message);
+    // 503 из /health несёт своё тело ({ ok, db, … }) — сохраняем его поля
+    const extra = typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>) : {};
+    return { ...extra, statusCode: status, code: CODE_BY_STATUS[status] ?? `http_${status}`, message, requestId };
   }
+  if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+    if (exception.code === 'P2002') return { statusCode: 409, code: 'conflict', message: 'Такая запись уже есть', requestId };
+    if (exception.code === 'P2025') return { statusCode: 404, code: 'not_found', message: 'Не найдено', requestId };
+    if (exception.code === 'P2003') return { statusCode: 409, code: 'conflict', message: 'Запись связана с другими данными', requestId };
+    // Deadlock / write conflict двух встречных транзакций: клиент перечитывает карточку и повторяет, как при 409 статуса
+    if (exception.code === 'P2034') return { statusCode: 409, code: 'conflict', message: 'Карточка изменилась параллельно — обновите её и повторите', requestId };
+    // Пул соединений исчерпан (P2024) или база недоступна (P1001/P1002): временно, 503 — а не безымянный 500 (R-H1)
+    if (exception.code === 'P2024' || exception.code === 'P1001' || exception.code === 'P1002') {
+      return { statusCode: HttpStatus.SERVICE_UNAVAILABLE, code: 'unavailable', message: 'База данных занята — повторите через минуту', requestId };
+    }
+  }
+  if (exception instanceof Prisma.PrismaClientInitializationError) {
+    return { statusCode: HttpStatus.SERVICE_UNAVAILABLE, code: 'unavailable', message: 'База данных недоступна — повторите через минуту', requestId };
+  }
+  if (exception instanceof Prisma.PrismaClientValidationError) {
+    return { statusCode: HttpStatus.UNPROCESSABLE_ENTITY, code: 'unprocessable', message: 'Неверные данные запроса', requestId };
+  }
+  return { statusCode: HttpStatus.INTERNAL_SERVER_ERROR, code: 'internal', message: 'Внутренняя ошибка — сообщите requestId в поддержку', requestId };
 }

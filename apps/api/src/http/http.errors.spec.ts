@@ -3,8 +3,10 @@
  * { statusCode, code, message, requestId }; X-Request-Id принимается от прокси или генерируется и возвращается;
  * ошибки Prisma не текут наружу SQL-подробностями; сбой прогона несёт человеческую причину.
  */
+import { Prisma } from '@remarkround/db';
 import { createHarness, type Harness } from '../../test/harness';
 import { classifyRunError } from '../agent/agent.service';
+import { errorBody } from './http-exception.filter';
 
 describe('http error contract', () => {
   let h: Harness;
@@ -40,6 +42,17 @@ describe('http error contract', () => {
   it('/health при 503 сохраняет свои поля поверх контракта (сериализация фильтром)', async () => {
     const ok = await h.http.get('/api/v1/health').expect(200);
     expect(ok.body).toMatchObject({ ok: true, db: 'ok' });
+  });
+
+  it('ошибки Prisma: пул исчерпан и база недоступна — 503 unavailable, конфликт — 409, нет строки — 404 (R-H1)', () => {
+    const known = (code: string) => new Prisma.PrismaClientKnownRequestError('x', { code, clientVersion: 'test' });
+    expect(errorBody(known('P2024'), 'r1')).toMatchObject({ statusCode: 503, code: 'unavailable', requestId: 'r1' });
+    expect(errorBody(known('P1001'))).toMatchObject({ statusCode: 503, code: 'unavailable' });
+    expect(errorBody(new Prisma.PrismaClientInitializationError('down', 'test'))).toMatchObject({ statusCode: 503, code: 'unavailable' });
+    expect(errorBody(known('P2002'))).toMatchObject({ statusCode: 409, code: 'conflict' });
+    expect(errorBody(known('P2025'))).toMatchObject({ statusCode: 404, code: 'not_found' });
+    expect(errorBody(new Error('boom'))).toMatchObject({ statusCode: 500, code: 'internal' });
+    expect(JSON.stringify(errorBody(known('P2024')))).not.toMatch(/P2024|clientVersion/);
   });
 
   it('classifyRunError: ошибки модели получают код и человеческий текст', () => {
