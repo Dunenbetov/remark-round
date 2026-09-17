@@ -80,6 +80,10 @@ services:
       # Пул соединений (R-H1): каждый запрос — минимум 2 обращения к БД в guard'ах, интерактивные транзакции воркера держат
       # соединение целиком; 25 при max_connections=100 у Postgres (плюс backup и psql). Ждать соединение — до 20 с, потом P2024 → 503
       DATABASE_URL: postgresql://remarkround:${POSTGRES_PASSWORD}@postgres:5432/remarkround?connection_limit=25&pool_timeout=20
+      # Импорт на бете (R-H3): разбор xlsx и создание строк идут в HTTP-запросе, поэтому журнал — до 100 строк и 5 МБ;
+      # фоновый импорт (ImportJob + задача очереди) — вторая неделя беты, тогда потолки поднять
+      IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-100}
+      IMPORT_MAX_BYTES: ${IMPORT_MAX_BYTES:-5242880}
       LANGFUSE_TRACING_ENVIRONMENT: production
       # Трейсы включены (Langfuse Cloud по LANGFUSE_CLOUD_URL из базового файла); плейсхолдеры ключей в production не пройдут —
       # либо настоящие ключи, либо LANGFUSE_TRACING_ENABLED=false. Ссылка «Трейс в Langfuse» ведёт на LANGFUSE_PUBLIC_URL,

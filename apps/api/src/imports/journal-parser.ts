@@ -26,7 +26,11 @@ export interface ParsedJournalRow {
 /** Файл не по шаблону: не наша шапка, не тот формат. Наверху превращается в 422. */
 export class JournalTemplateError extends Error {}
 
-export const MAX_JOURNAL_ROWS = 500;
+/** Потолок строк журнала: IMPORT_MAX_ROWS (500; на бете 100 — разбор идёт в HTTP-запросе, R-H3). Читается при вызове — тесты меняют env. */
+export function maxJournalRows(): number {
+  const n = Number(process.env['IMPORT_MAX_ROWS'] ?? 500);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 500;
+}
 /** Как в CreateRemarkDto: длиннее — строка уходит человеку, полный текст остаётся в ImportRow.rawJson. */
 export const MAX_CELL_CHARS = 2000;
 
@@ -244,5 +248,6 @@ function toRow(rowNumber: number, columns: Map<JournalColumn, number>, raw: stri
 }
 
 function assertRowLimit(count: number): void {
-  if (count > MAX_JOURNAL_ROWS) throw new JournalTemplateError(`В журнале больше ${MAX_JOURNAL_ROWS} строк — разбейте файл`);
+  const max = maxJournalRows();
+  if (count > max) throw new JournalTemplateError(`В журнале больше ${max} строк — разбейте файл`);
 }

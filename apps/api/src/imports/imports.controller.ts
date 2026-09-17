@@ -20,7 +20,8 @@ import { CreateImportDto, ImportJobView } from './import.dto';
 import { ImportService } from './imports.service';
 import { TEMPLATE_CSV, XLSX_MIME, buildTemplateXlsx } from './journal-template';
 
-const MAX_JOURNAL_BYTES = 20 * 1024 * 1024;
+/** Потолок файла журнала: IMPORT_MAX_BYTES (20 МБ; на бете 5 МБ — xlsx с картинками разбирается в памяти запроса, R-H3). */
+const MAX_JOURNAL_BYTES = Number(process.env['IMPORT_MAX_BYTES'] ?? 20 * 1024 * 1024);
 
 /** docs/API.md: импорт шаблона журнала, статус разбора, скачивание шаблона. */
 @Controller('projects/:projectId/imports')

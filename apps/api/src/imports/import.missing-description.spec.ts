@@ -167,6 +167,20 @@ describe('import: официальный шаблон журнала', () => {
     await settled((res2.body as ImportJobView).id);
   });
 
+  it('потолок строк — IMPORT_MAX_ROWS (R-H3): журнал длиннее — 422 с числом, ни одной строки не создаётся', async () => {
+    process.env['IMPORT_MAX_ROWS'] = '2';
+    try {
+      const rows = ['R-1;Профиль;Первая;Синяя;высокая;', 'R-2;Профиль;Вторая;Синяя;высокая;', 'R-3;Профиль;Третья;Синяя;высокая;'];
+      const csv = Buffer.from(`\uFEFF${JOURNAL_HEADER_LINE}\n${rows.join('\n')}\n`, 'utf8');
+      const before = await h.prisma.remark.count({ where: { projectId: h.projectId } });
+      const res = await upload('business', csv, 'long.csv').expect(422);
+      expect(res.body.message).toMatch(/больше 2 строк/);
+      expect(await h.prisma.remark.count({ where: { projectId: h.projectId } })).toBe(before);
+    } finally {
+      delete process.env['IMPORT_MAX_ROWS'];
+    }
+  });
+
   it('шаблон скачивается: xlsx с русской шапкой, csv — BOM + та же строка колонок через «;»', async () => {
     const xlsx = await h.http.get(`/api/v1/projects/${h.projectId}/imports/template.xlsx`).set(h.auth('business')).expect(200);
     expect(xlsx.headers['content-disposition']).toMatch(/journal-template\.xlsx/);
