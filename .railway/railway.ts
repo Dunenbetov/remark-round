@@ -14,14 +14,17 @@
 import { defineRailway, github, image, preserve, project, service, volume } from 'railway/iac';
 
 const REPO = 'Dunenbetov/remark-round';
+// Ближайший к Казахстану регион Railway (решение владельца 17.09): все три сервиса и тома — в Амстердаме
+const REGION = { 'europe-west4-drams3a': 1 };
 
 export default defineRailway(() => {
   // Postgres 17 + pgvector — тот же образ, что в docker-compose.yml: миграция init делает CREATE EXTENSION vector,
   // а официальный шаблон Postgres Railway расширений не содержит. PGDATA — подкаталог: в корне тома лежит lost+found,
   // и initdb отказывается инициализировать непустой каталог
-  const postgresData = volume('postgres-data', { sizeMB: 2048 });
+  const postgresData = volume('postgres-data', { sizeMB: 2048, region: 'europe-west4-drams3a' });
   const postgres = service('postgres', {
     source: image('pgvector/pgvector:pg17'),
+    replicas: REGION,
     volumeMounts: { '/var/lib/postgresql/data': postgresData },
     env: {
       POSTGRES_USER: 'remarkround',
@@ -34,12 +37,12 @@ export default defineRailway(() => {
   // API: один инстанс (семафоры графа и presence WS в памяти процесса, R-M1) — replicas всегда 1.
   // Миграции при старте (MIGRATE_ON_START=true): с одним инстансом это безопасно, отдельного шага `run api migrate`
   // на Railway нет. Healthcheck ждёт до 300 с — первый старт прогоняет все миграции.
-  const apiStorage = volume('api-storage', { sizeMB: 2048 });
+  const apiStorage = volume('api-storage', { sizeMB: 2048, region: 'europe-west4-drams3a' });
   const api = service('api', {
     source: github(REPO, { branch: 'main' }),
     healthcheck: '/api/v1/health',
     healthcheckTimeout: 300,
-    replicas: 1,
+    replicas: REGION,
     volumeMounts: { '/app/apps/api/storage': apiStorage },
     env: {
       RAILWAY_DOCKERFILE_PATH: 'apps/api/Dockerfile',
@@ -74,7 +77,7 @@ export default defineRailway(() => {
   const web = service('web', {
     source: github(REPO, { branch: 'main' }),
     healthcheck: '/',
-    replicas: 1,
+    replicas: REGION,
     env: {
       RAILWAY_DOCKERFILE_PATH: 'apps/web/Dockerfile',
       PORT: '80',
