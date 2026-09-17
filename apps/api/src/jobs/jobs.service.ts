@@ -69,6 +69,8 @@ export interface JobStats {
 /** Такой lockedAt — задача осиротела (процесс упал, не дописав): вернуть в очередь. */
 const STALE_LOCK_MS = 60_000;
 const HEARTBEAT_MS = 15_000;
+/** Чистка завершённых задач — раз в сутки (и на старте). */
+const PRUNE_EVERY_MS = 24 * 60 * 60 * 1000;
 /** Пауза перед повтором: 30 с, 2 мин, 8 мин — модель «перегружена» редко проходит за секунды. Тесты укорачивают через JOBS_BACKOFF_MS. */
 const BACKOFF_MS: number[] = (process.env['JOBS_BACKOFF_MS'] ?? '30000,120000,480000').split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v >= 0);
 if (!BACKOFF_MS.length) BACKOFF_MS.push(30_000);
@@ -92,6 +94,7 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
   private readonly active = new Map<string, ActiveJob>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private prune: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
   private polling = false;
   /** Пока шёл опрос, освободился слот: следующий опрос — сразу, а не через pollMs. */
@@ -114,6 +117,11 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
     }
     this.heartbeat = setInterval(() => void this.beat(), HEARTBEAT_MS);
     this.heartbeat.unref();
+    // Срок хранения завершённых задач держится не только стартом процесса (R-M2): api под restart: always живёт месяцами
+    if (config().NODE_ENV !== 'test') {
+      this.prune = setInterval(() => void this.pruneFinished().then((n) => n && this.log.log(`jobs: удалено ${n} завершённых задач старше срока хранения`)).catch(() => null), PRUNE_EVERY_MS);
+      this.prune.unref();
+    }
     this.schedule(0);
   }
 
@@ -122,6 +130,7 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     if (this.heartbeat) clearInterval(this.heartbeat);
+    if (this.prune) clearInterval(this.prune);
     const started = Date.now();
     while (this.active.size && Date.now() - started < 25_000) await new Promise((r) => setTimeout(r, 200));
     if (!this.active.size) return;

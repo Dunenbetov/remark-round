@@ -30,6 +30,9 @@ export interface RunOptions {
 
 /** Прогоны, зависшие в `running` дольше этого без задачи в очереди, помечаются failed на старте. */
 const STALE_RUN_MS = 10 * 60 * 1000;
+/** Чекпоинты завершённых прогонов старше недели удаляются (R-M2): продолжать их некому, а полное состояние графа в каждом — мегабайты. */
+const CHECKPOINT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const PRUNE_EVERY_MS = 24 * 60 * 60 * 1000;
 
 type GraphKind = 'triage' | 'retest';
 
@@ -97,6 +100,20 @@ export class AgentService implements OnModuleInit {
       .failStaleRuns(STALE_RUN_MS)
       .then((n) => n && this.log.warn(`stale runs marked failed: ${n}`))
       .catch((e: Error) => this.log.warn(`stale runs sweep: ${e.message}`));
+    // Ретеншн чекпоинтов: на старте и раз в сутки; в тестах много стендов на одной БД — не трогаем чужие прогоны
+    if (config().NODE_ENV !== 'test') {
+      const sweep = () => void this.pruneCheckpoints().then((n) => n && this.log.log(`checkpoints: удалено ${n} строк завершённых прогонов старше недели`)).catch((e: Error) => this.log.warn(`checkpoints prune: ${e.message}`));
+      sweep();
+      setInterval(sweep, PRUNE_EVERY_MS).unref();
+    }
+  }
+
+  /** Чекпоинты прогонов, которые завершились (persisted / failed / cancelled) раньше `olderThanMs` назад: продолжать их некому. */
+  async pruneCheckpoints(olderThanMs = CHECKPOINT_RETENTION_MS, now = new Date()): Promise<number> {
+    const { count } = await this.prisma.graphCheckpoint.deleteMany({
+      where: { run: { status: { in: ['persisted', 'failed', 'cancelled'] }, createdAt: { lt: new Date(now.getTime() - olderThanMs) } } },
+    });
+    return count;
   }
 
   get model(): string {

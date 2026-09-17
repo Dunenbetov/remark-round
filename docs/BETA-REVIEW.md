@@ -29,6 +29,7 @@
 | 17.09 | R-H4 | `StorageService.save` проверяет `statfs` (свободно < `STORAGE_MIN_FREE_MB`, 2 ГБ → 507 `storage_full`) и квоту проекта `STORAGE_QUOTA_MB_PER_PROJECT` (2 ГБ, по сумме файлов каталога с кэшем на минуту — размера кадра в БД нет); спека `media.spec`; PROD «Что делать, если» (отдельный диск для томов) |
 | 17.09 | R-M7 | `Cache-Control: private, max-age=31536000, immutable` на кадрах (ключ — UUID, файл неизменяем); спека |
 | 17.09 | R-H3 (бета) | Потолки импорта из env: `IMPORT_MAX_ROWS` (500) и `IMPORT_MAX_BYTES` (20 МБ), прод-override ставит 100 / 5 МБ; спека на 422; фоновый импорт (`ImportJob` + задача `import_journal`) — вторая неделя беты |
+| 17.09 | R-M2 | `AgentService.pruneCheckpoints`: чекпоинты прогонов persisted/failed/cancelled старше 7 дней удаляются на старте и раз в сутки; `JobsService.pruneFinished` тоже раз в сутки, не только на старте; спека в `run-deadline.spec` |
 
 ---
 
