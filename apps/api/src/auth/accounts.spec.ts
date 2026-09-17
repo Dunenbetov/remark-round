@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { createHarness, type Harness } from '../../test/harness';
 import { resetConfig } from '../config';
+import { hashToken } from '../tenancy/invitations.service';
 
 describe('accounts', () => {
   let h: Harness;
@@ -96,6 +97,62 @@ describe('accounts', () => {
     const options = await h.http.get('/api/v1/auth/options').expect(200);
     expect(typeof options.body.demoLogins).toBe('boolean');
     expect(options.body.registration).toBe('open');
+  });
+
+  describe('«Забыли пароль» (ADR 012)', () => {
+    const email = `forgot-${tag}@test.dev`;
+    let userId = '';
+    let token = '';
+
+    beforeAll(async () => {
+      const res = await register({ name: 'Забыла', email, password: 'secret-12', preferredRole: 'business' }).expect(201);
+      userId = res.body.user.id;
+      created.push(userId);
+    });
+
+    it('неизвестный e-mail — 204 без письма; известный — письмо со ссылкой /reset/<token>; повтор в течение минуты — без второго письма', async () => {
+      h.mail.sent.length = 0;
+      await h.http.post('/api/v1/auth/forgot').send({ email: `nobody-${tag}@test.dev` }).expect(204);
+      await h.http.post('/api/v1/auth/forgot').send({ email: 'not-an-email' }).expect(422);
+      await new Promise((r) => setTimeout(r, 400));
+      expect(h.mail.sent).toHaveLength(0);
+
+      await h.http.post('/api/v1/auth/forgot').send({ email: email.toUpperCase() }).expect(204);
+      const [mail] = await h.mail.waitFor(1);
+      expect(mail!.to).toBe(email);
+      expect(mail!.subject).toMatch(/смена пароля/);
+      token = /\/reset\/([A-Za-z0-9_-]+)/.exec(mail!.text)![1]!;
+      expect(token.length).toBeGreaterThanOrEqual(20);
+      expect((await h.prisma.passwordReset.findUniqueOrThrow({ where: { tokenHash: hashToken(token) } })).userId).toBe(userId);
+
+      await h.http.post('/api/v1/auth/forgot').send({ email }).expect(204);
+      await new Promise((r) => setTimeout(r, 400));
+      expect(h.mail.sent).toHaveLength(1);
+    });
+
+    it('сброс: короткий пароль — 422; по ссылке пароль меняется, старые токены — 401; ссылка одноразовая (410); истёкшая и чужая — 404', async () => {
+      const login = await h.http.post('/api/v1/auth/login').send({ email, password: 'secret-12' }).expect(200);
+      const old = bearer(login.body.accessToken);
+      await h.http.post('/api/v1/auth/reset').send({ token, password: '1234567' }).expect(422);
+      await h.http.post('/api/v1/auth/reset').send({ token, password: 'secret-99' }).expect(204);
+      await h.http.get('/api/v1/auth/me').set(old).expect(401);
+      await h.http.post('/api/v1/auth/login').send({ email, password: 'secret-12' }).expect(401);
+      await h.http.post('/api/v1/auth/login').send({ email, password: 'secret-99' }).expect(200);
+      await h.http.post('/api/v1/auth/reset').send({ token, password: 'secret-77' }).expect(410);
+
+      const expired = 'expired-token-0000000000';
+      await h.prisma.passwordReset.create({ data: { userId, tokenHash: hashToken(expired), expiresAt: new Date(Date.now() - 1000) } });
+      await h.http.post('/api/v1/auth/reset').send({ token: expired, password: 'secret-77' }).expect(404);
+      await h.http.post('/api/v1/auth/reset').send({ token: 'unknown-token-00000000000', password: 'secret-77' }).expect(404);
+      await h.http.post('/api/v1/auth/login').send({ email, password: 'secret-99' }).expect(200);
+    });
+
+    it('без пароля (passwordHash null) письмо не уходит, ответ всё равно 204', async () => {
+      h.mail.sent.length = 0;
+      await h.http.post('/api/v1/auth/forgot').send({ email: `google-${tag}@test.dev` }).expect(204);
+      await new Promise((r) => setTimeout(r, 400));
+      expect(h.mail.sent).toHaveLength(0);
+    });
   });
 
   describe('REGISTRATION_MODE=invite_only (ADR 006)', () => {

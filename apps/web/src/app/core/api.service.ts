@@ -92,6 +92,16 @@ export class ApiService {
     return this.run(this.http.post<{ accessToken: string }>(`${API_BASE}/auth/password`, body));
   }
 
+  /** «Забыли пароль» (ADR 012): всегда 204 — есть ли адрес, сервер не говорит. */
+  forgotPassword(email: string): Promise<void> {
+    return this.run(this.http.post<void>(`${API_BASE}/auth/forgot`, { email }));
+  }
+
+  /** Новый пароль по ссылке из письма: 204; мёртвая ссылка — 404, использованная — 410. */
+  resetPassword(token: string, password: string): Promise<void> {
+    return this.run(this.http.post<void>(`${API_BASE}/auth/reset`, { token, password }));
+  }
+
   createProject(name: string): Promise<ProjectSummary> {
     return this.run(this.http.post<ProjectSummary>(`${API_BASE}/projects`, { name }));
   }

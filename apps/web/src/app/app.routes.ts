@@ -2,11 +2,12 @@ import { inject } from '@angular/core';
 import { Routes } from '@angular/router';
 import { authGuard, homeUrl, instanceAdminGuard, legacyUrlGuard, projectGuard, projectHomeGuard, projectIdResolver, remarkIdResolver, roleGuard } from './core/guards';
 import { legacyMatcher, remarkMatcher, roundMatcher } from './core/links';
-import { ADMIN, DOCUMENTS, EMPTY, IMPORT, JOIN, LOGIN, NAV, NEW_REMARK, PROFILE, PROJECTS, REGISTER, ROUNDS, TEAM } from './core/copy';
+import { ADMIN, DOCUMENTS, EMPTY, FORGOT, IMPORT, JOIN, LOGIN, NAV, NEW_REMARK, PROFILE, PROJECTS, REGISTER, RESET, ROUNDS, TEAM } from './core/copy';
 import { SessionService } from './core/session.service';
 import { AdminPage } from './pages/admin-page';
 import { DevQueuePage } from './pages/dev-queue-page';
 import { DocumentsPage } from './pages/documents-page';
+import { ForgotPage } from './pages/forgot-page';
 import { ImportPage } from './pages/import-page';
 import { JoinPage } from './pages/join-page';
 import { JournalPage } from './pages/journal-page';
@@ -17,6 +18,7 @@ import { ProfilePage } from './pages/profile-page';
 import { ProjectsPage } from './pages/projects-page';
 import { RegisterPage } from './pages/register-page';
 import { RemarkCardPage } from './pages/remark-card-page';
+import { ResetPage } from './pages/reset-page';
 import { RoundsPage } from './pages/rounds-page';
 import { TeamPage } from './pages/team-page';
 
@@ -25,6 +27,9 @@ export const routes: Routes = [
   { path: 'register', component: RegisterPage, title: REGISTER.pageTitle },
   // Ссылка приглашения: вошедший принимает, остальные — на регистрацию или вход
   { path: 'join/:token', component: JoinPage, title: JOIN.title },
+  // «Забыли пароль» (ADR 012): письмо со ссылкой /reset/<token>; слаги forgot/reset зарезервированы на сервере
+  { path: 'forgot', component: ForgotPage, title: FORGOT.pageTitle },
+  { path: 'reset/:token', component: ResetPage, title: RESET.pageTitle },
   { path: 'no-access', component: NoAccessPage, title: EMPTY.noAccess },
   // Без проекта — ожидание или создание; с проектами — список
   { path: 'projects', component: ProjectsPage, title: PROJECTS.title, canActivate: [authGuard] },

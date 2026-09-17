@@ -3,15 +3,21 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthOptions, AuthService, AuthUser, LoginResult, MeResult } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { PasswordResetService } from './password-reset.service';
 import { Public } from './public.decorator';
 import { AUTH_THROTTLE } from './throttle';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly passwordReset: PasswordResetService,
+  ) {}
 
   @Public()
   @Throttle(AUTH_THROTTLE)
@@ -51,5 +57,23 @@ export class AuthController {
   @HttpCode(200)
   password(@CurrentUser() user: AuthUser, @Body() dto: ChangePasswordDto): Promise<{ accessToken: string }> {
     return this.auth.changePassword(user.id, dto);
+  }
+
+  /** «Забыли пароль» (ADR 012): всегда 204 — есть ли такой адрес, наружу не видно. */
+  @Public()
+  @Throttle(AUTH_THROTTLE)
+  @Post('forgot')
+  @HttpCode(204)
+  forgot(@Body() dto: ForgotPasswordDto): Promise<void> {
+    return this.passwordReset.forgot(dto.email);
+  }
+
+  /** Новый пароль по ссылке из письма: 204, дальше — обычный вход; мёртвая ссылка — 404, использованная — 410. */
+  @Public()
+  @Throttle(AUTH_THROTTLE)
+  @Post('reset')
+  @HttpCode(204)
+  reset(@Body() dto: ResetPasswordDto): Promise<void> {
+    return this.passwordReset.reset(dto.token, dto.password);
   }
 }

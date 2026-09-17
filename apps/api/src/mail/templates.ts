@@ -88,6 +88,24 @@ export function memberAddedMail(i: MemberAddedMailInput): MailMessage {
   };
 }
 
+export interface PasswordResetMailInput {
+  to: string;
+  name: string;
+  url: string;
+  expiresAt: Date;
+}
+
+/** «Забыли пароль» (ADR 012): ссылка живёт час; кто не просил — просто не открывает, пароль остаётся прежним. */
+export function passwordResetMail(i: PasswordResetMailInput): MailMessage {
+  const until = i.expiresAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+  return {
+    to: i.to,
+    subject: 'RemarkRound: смена пароля',
+    text: [`${i.name}, здравствуйте.`, '', 'Кто-то (надеемся, вы) попросил сменить пароль в RemarkRound.', '', `Задать новый пароль: ${i.url}`, '', `Ссылка действует час (до ${until} UTC). Если это не вы — просто не открывайте её: пароль останется прежним.`].join('\n'),
+    html: [`<p>${esc(i.name)}, здравствуйте.</p>`, '<p>Кто-то (надеемся, вы) попросил сменить пароль в RemarkRound.</p>', `<p><a href="${esc(i.url)}">Задать новый пароль</a></p>`, `<p style="color:#666;font-size:13px">Ссылка действует час (до ${until} UTC). Если это не вы — просто не открывайте её: пароль останется прежним.</p>`].join('\n'),
+  };
+}
+
 function plural(n: number, one: string, few: string, many: string): string {
   const m10 = n % 10;
   const m100 = n % 100;

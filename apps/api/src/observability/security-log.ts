@@ -14,6 +14,8 @@ export type SecurityEvent =
   | 'login.disabled'
   | 'register'
   | 'password.change'
+  | 'password.forgot'
+  | 'password.reset'
   | 'mcp_token.issue'
   | 'invitation.create'
   | 'invitation.link'

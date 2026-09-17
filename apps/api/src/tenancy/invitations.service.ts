@@ -186,7 +186,8 @@ export function hashToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
-function newToken(): string {
+/** 32 символа base64url — тот же формат у ссылок приглашения и сброса пароля (DTO: @Length(20, 80)). */
+export function newToken(): string {
   return randomBytes(24).toString('base64url');
 }
 

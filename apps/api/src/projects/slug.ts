@@ -8,7 +8,7 @@ const TRANSLIT: Record<string, string> = {
 };
 
 /** Первые сегменты адресов SPA: проект с таким slug перекрыл бы страницу. */
-export const RESERVED_SLUGS: ReadonlySet<string> = new Set(['login', 'register', 'join', 'no-access', 'projects', 'profile', 'admin', 'api', 'p', 'assets']);
+export const RESERVED_SLUGS: ReadonlySet<string> = new Set(['login', 'register', 'join', 'forgot', 'reset', 'no-access', 'projects', 'profile', 'admin', 'api', 'p', 'assets']);
 
 const MAX_LEN = 48;
 

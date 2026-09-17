@@ -139,7 +139,22 @@ model User {
   invitedMemberships Membership[] @relation("MembershipInvitedBy")
   sentInvitations Invitation[] @relation("InvitationInvitedBy")
   acceptedInvitations Invitation[] @relation("InvitationAcceptedBy")
+  passwordResets PasswordReset[]
   createdAt    DateTime     @default(now())
+}
+
+/// Сброс пароля по e-mail (ADR 012): токен в БД — sha256, живёт час, одноразовый (usedAt ставится условно);
+/// новый запрос гасит прежние ссылки человека. Письмо со ссылкой /reset/<token> — задача send_mail, строка удаляется после отправки.
+model PasswordReset {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Project {
