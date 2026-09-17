@@ -11,7 +11,8 @@ import { SegmentItem, Segmented } from '../ui/segmented';
 /**
  * Профиль во всю ширину: полоса «кто я» (буква, имя, почта, проекты и роли) и под ней две равные карточки —
  * «Данные» (имя, сторона-подсказка) и «Пароль». Внутренние половины полосы стоят ровно над содержимым карточек.
- * После смены пароля другие устройства выйдут сами. Переключатель писем скрыт, пока почта не запущена (ADR 009).
+ * После смены пароля другие устройства выйдут сами. Переключатель писем «вас ждёт кнопка» (ADR 009) — в карточке «Данные»,
+ * только когда на сервере настроена почта (GET /auth/options → mail): без SMTP выключать нечего.
  */
 @Component({
   selector: 'rr-profile-page',
@@ -62,6 +63,19 @@ import { SegmentItem, Segmented } from '../ui/segmented';
               <rr-segmented [items]="sideItems" [selected]="side()" [label]="copy.who" (pick)="pickSide($event)" />
               <span class="meta">{{ copy.whoHint }}</span>
             </div>
+            @if (mailOn()) {
+              <div class="field" [attr.aria-label]="copy.notifyTitle">
+                <span class="field__label field__label--soft">{{ copy.notifyTitle }}</span>
+                <label class="pf__toggle">
+                  <input type="checkbox" name="notifyByEmail" [checked]="notify()" [disabled]="notifySaving()" (change)="toggleNotify($event)" />
+                  <span>{{ copy.notifyLabel }}</span>
+                </label>
+                <span class="meta">{{ copy.notifyHint }}</span>
+                @if (notifyError(); as err) {
+                  <div class="pf__error" role="alert">{{ err }}</div>
+                }
+              </div>
+            }
             @if (profileError(); as err) {
               <div class="pf__error" role="alert">{{ err }}</div>
             }
@@ -226,6 +240,16 @@ import { SegmentItem, Segmented } from '../ui/segmented';
       line-height: var(--lh-13);
       color: var(--rr-danger);
     }
+    .pf__toggle {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-2);
+      cursor: pointer;
+    }
+    .pf__toggle input {
+      margin-top: 3px;
+      accent-color: var(--rr-accent);
+    }
     @media (max-width: 900px) {
       :host {
         --pf-pad: var(--sp-5);
@@ -267,6 +291,18 @@ export class ProfilePage {
   protected readonly changing = signal(false);
   protected readonly changedNote = signal(false);
   protected readonly passwordError = signal<string | null>(null);
+  /** Письма «вас ждёт кнопка» (ADR 009): переключатель виден только при настроенном SMTP. */
+  protected readonly notify = signal(this.session.user()?.notifyByEmail ?? true);
+  protected readonly notifySaving = signal(false);
+  protected readonly notifyError = signal<string | null>(null);
+  protected readonly mailOn = signal(false);
+
+  constructor() {
+    void this.api
+      .authOptions()
+      .then((o) => this.mailOn.set(o.mail))
+      .catch(() => null);
+  }
 
   protected readonly canChange = computed(() => this.current().length > 0 && this.next().length >= 8 && this.repeat().length > 0);
   protected readonly initial = computed(() => (this.user()?.name ?? '?').charAt(0).toUpperCase());
@@ -299,6 +335,24 @@ export class ProfilePage {
       this.profileError.set(ERROR.request);
     } finally {
       this.saving.set(false);
+    }
+  }
+
+  /** Оптимистично: галочка меняется сразу, при ошибке возвращается; сохранённый флаг ложится в сессию. */
+  protected async toggleNotify(e: Event): Promise<void> {
+    const next = (e.target as HTMLInputElement).checked;
+    const prev = this.notify();
+    this.notify.set(next);
+    this.notifySaving.set(true);
+    this.notifyError.set(null);
+    try {
+      const user = await this.api.updateProfile({ notifyByEmail: next });
+      this.session.patch({ user });
+    } catch {
+      this.notify.set(prev);
+      this.notifyError.set(ERROR.request);
+    } finally {
+      this.notifySaving.set(false);
     }
   }
 
