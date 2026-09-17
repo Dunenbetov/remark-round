@@ -5,7 +5,7 @@ export type BrandMarkTone = 'default' | 'danger';
 
 /**
  * Бренд-знак: незамкнутое кольцо currentColor (r 9, stroke 2.25) с разрывом справа сверху (36°–94° от 12 часов),
- * в разрыве медная точка r 2.4 (tone danger — danger). Декоративный, без анимации; тот же знак в public/favicon.svg.
+ * в разрыве точка r 2.4 тилом `--rr-accent-2-text` (tone danger — danger). Декоративный, без анимации; тот же знак в public/favicon.svg.
  */
 @Component({
   selector: 'rr-brand-mark',

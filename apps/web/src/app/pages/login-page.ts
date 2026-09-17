@@ -405,7 +405,7 @@ export class LoginPage {
     return TONE_BY_ROLE[role];
   }
 
-  /** Кольцо выбранной карточки — тон роли (business — медь, закон меди п. а). */
+  /** Кольцо выбранной карточки — тон роли (business — тил `--rr-accent-2-text`). */
   protected ring(role: Role): string {
     switch (TONE_BY_ROLE[role]) {
       case 'wait':

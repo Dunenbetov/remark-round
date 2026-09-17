@@ -1,6 +1,6 @@
 # RemarkRound — эталонный референс проекта
 
-**Навигация по папке:** [README.md](README.md) · агентам: [AGENTS.md](AGENTS.md) · фазы: [docs/PHASES.md](docs/PHASES.md) · UI: [docs/ui/reference.html](docs/ui/reference.html) · [docs/ui/COPY.md](docs/ui/COPY.md)
+**Навигация по папке:** [README.md](README.md) · агентам: [AGENTS.md](AGENTS.md) · фазы: [docs/PHASES.md](docs/PHASES.md) · UI: [docs/ui/VISUAL.md](docs/ui/VISUAL.md) · [docs/ui/COPY.md](docs/ui/COPY.md)
 
 **Для кого этот файл:** человек и любой агент, который пишет код.  
 **Статус:** финальная доктрина. Не переизобретать продукт, не смягчать ограничения, не «улучшать» доктрину без явного запроса владельца.  

@@ -62,4 +62,4 @@ Approve, Reject, Submit ticket, Backlog, Sprint, Board, Workflow, Binding, Retri
 - [ ] Спиннер на всю карточку без фазовой строки
 - [ ] Скрин как иконка 48px в аттачах — он должен быть главным
 
-Перед PR по `apps/web`: пробеги этот список. Есть галочка — верни как в `reference.html`.
+Перед PR по `apps/web`: пробеги этот список. Есть галочка — верни как в `VISUAL.md` и `COPY.md`.

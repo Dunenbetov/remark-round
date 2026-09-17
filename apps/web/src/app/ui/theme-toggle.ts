@@ -5,7 +5,7 @@ import { ThemeService } from '../core/theme.service';
 /**
  * Тумблер день/ночь 60×30 по референсу автора: слева солнце на голубом небе с облаками, справа луна
  * с кратерами на ночном небе со звёздами; три кольца свечения едут вместе с ручкой. Всё — CSS и два inline-SVG,
- * палитра `--rr-tt-*` (намеренное исключение из закона меди, см. tokens.css). role="switch" + aria-checked.
+ * палитра `--rr-tt-*` (намеренное исключение из закона маркера, см. tokens.css). role="switch" + aria-checked.
  * Клик отдаёт ThemeService.toggle центр ручки — оттуда идёт круговой wipe View Transition.
  */
 @Component({

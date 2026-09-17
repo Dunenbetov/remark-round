@@ -7,7 +7,7 @@
 1. [`REMARKROUND.md`](REMARKROUND.md) — доктрина §2 и запреты §15.
 2. [`docs/PHASES.md`](docs/PHASES.md) — работай **только** в названной фазе. Не начинай с графа.
 3. Контракт фазы: Prisma / API / WS / GRAPH / UI.
-4. Если трогаешь `apps/web`: [`docs/ui/COPY.md`](docs/ui/COPY.md), [`docs/ui/reference.html`](docs/ui/reference.html), [`docs/ui/ANTI.md`](docs/ui/ANTI.md). Промпт: [`docs/ui/AGENT-PROMPT.md`](docs/ui/AGENT-PROMPT.md).
+4. Если трогаешь `apps/web`: [`docs/ui/COPY.md`](docs/ui/COPY.md), [`docs/ui/VISUAL.md`](docs/ui/VISUAL.md), [`docs/ui/ANTI.md`](docs/ui/ANTI.md), токены — только [`apps/web/src/styles/tokens.css`](apps/web/src/styles/tokens.css). Эталон дизайна «Arc · Индиго» — само приложение. Промпт: [`docs/ui/AGENT-PROMPT.md`](docs/ui/AGENT-PROMPT.md).
 
 ## Доктрина в одном абзаце
 
@@ -30,7 +30,7 @@ TypeScript strict · Angular · NestJS · Prisma · PostgreSQL/pgvector · LangG
 | `cannot_tell` как 200-й бизнес-исход | 500 на «модель не знает» |
 | Цитаты из retrieve | Выдуманный раздел ТЗ |
 | Тест leakage чужого проекта | React, Python-ядро, Qdrant, Playwright |
-| Карточка как в `reference.html` | Канбан, ChatGPT-чат, Material фиолет, синонимы кнопок |
+| Карточка как в `docs/ui/VISUAL.md` и в приложении | Канбан, ChatGPT-чат, Material фиолет, синонимы кнопок |
 
 ## Если сомневаешься
 

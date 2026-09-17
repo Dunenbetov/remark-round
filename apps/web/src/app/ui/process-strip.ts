@@ -21,7 +21,7 @@ const NODE_BY_STATUS: Record<RemarkStatus, number> = {
   closed: 5,
 };
 
-/** Узлы, где действует роль — медная полоса «здесь вы» (закон меди п. а: маркер). */
+/** Узлы, где действует роль — полоса «здесь вы». */
 const NODES_BY_ROLE: Partial<Record<Role, readonly number[]>> = { business: [0, 4, 5], pm: [2], developer: [3] };
 
 interface Node {
@@ -166,7 +166,7 @@ interface Node {
       border-color: var(--rr-accent);
       box-shadow: 0 0 0 4px var(--rr-accent-soft);
     }
-    /* медная полоса под узлами, где действует эта роль (маркер по закону меди) */
+    /* полоса под узлами, где действует эта роль */
     .node__you {
       position: absolute;
       bottom: 0;

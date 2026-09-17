@@ -15,4 +15,4 @@ alwaysApply: true
 
 Не клонируй Jira. Не обещай отладку живого стенда.
 
-UI: `docs/ui/COPY.md` + `docs/ui/reference.html`. Не чат, не канбан, не синонимы кнопок.
+UI: `docs/ui/COPY.md` + `docs/ui/VISUAL.md` + `docs/ui/ANTI.md`, токены — `apps/web/src/styles/tokens.css`. Не чат, не канбан, не синонимы кнопок.

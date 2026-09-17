@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router';
 export interface SegmentItem {
   id: string;
   label: string;
-  /** Счётчик медью (закон меди, п. в): показывается только при > 0. */
+  /** Счётчик: показывается только при > 0. */
   count?: number;
   /** Есть ссылка → сегмент рендерится как <a routerLink>, иначе — кнопка. */
   link?: unknown[];

@@ -1,5 +1,5 @@
 ---
-description: RemarkRound UI — paper desk, not Jira, not ChatGPT. Copy from COPY.md only.
+description: RemarkRound UI — «Arc · Индиго», not Jira, not ChatGPT. Copy from COPY.md only.
 alwaysApply: true
 globs: apps/web/**/*.{ts,html,scss,css}
 ---
@@ -9,13 +9,15 @@ globs: apps/web/**/*.{ts,html,scss,css}
 Перед любой вёрсткой прочитай:
 
 1. `docs/ui/COPY.md` — подписи **дословно**, не синонимы
-2. `docs/ui/VISUAL.md` — токены, иерархия карточки
+2. `docs/ui/VISUAL.md` — роли токенов, закон маркера, иерархия экранов
 3. `docs/ui/ANTI.md` — если сделал пункт оттуда, удали
-4. `docs/ui/reference.html` — эталон в браузере
+4. `apps/web/src/styles/tokens.css` — единственный источник цветов и размеров, хексов в компонентах нет
+
+Эталон — само приложение: образцы `apps/web/src/app/pages/journal-page.ts`, `remark-card-page.ts`, `apps/web/src/app/ui/*.ts`.
 
 ## Вектор
 
-Стол с бумагами и скрином. Светлый тёплый фон. Бизнес и PM, не ML-инженер.
+«Arc · Индиго»: светлый прохладный стол, белая бумага с мягким 3D, один большой индиго-объект на экран. Бизнес и PM, не ML-инженер. Медь, сосна, бумажный сериф — прошлый канон, не возвращать.
 
 ИИ не герой: блок называется «Черновик разбора». Скрин **крупнее** текста модели. Справа — кнопки человека.
 
@@ -23,10 +25,12 @@ globs: apps/web/**/*.{ts,html,scss,css}
 
 ## Запрещено в UI
 
-Approve / Reject / Copilot / RAG / sprint / backlog / story points / confidence % / фиолетовый Material / тёмная тема MVP / плавающий чат / колонки To Do–Done / бейдж модели.
+Approve / Reject / Copilot / RAG / sprint / backlog / story points / confidence % / фиолетовый Material / плавающий чат / колонки To Do–Done / бейдж модели.
 
 Код статусов (`awaiting_pm`) можно в `data-*` и DevTools, на экране — человеческие строки из COPY.md.
 
+Проверяй обе темы (день и «Arc · ночь») и брейкпоинты 1280 / 900.
+
 ## Задача агенту
 
-Один экран за раз. «Повтори reference.html, копируй COPY.md». Не «сделай красиво / как Linear».
+Один экран за раз. «Следуй VISUAL.md, копируй COPY.md». Не «сделай красиво / как Linear».
