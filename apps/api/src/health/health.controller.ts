@@ -1,4 +1,5 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../auth/public.decorator';
 import { config } from '../config';
 import { JobsService, type JobStats } from '../jobs/jobs.service';
@@ -24,7 +25,11 @@ export interface HealthView {
 
 const DB_TIMEOUT_MS = 2000;
 
-/** Health для compose и балансировщика: живой процесс без базы — 503, а не «ok». */
+/**
+ * Health для compose и балансировщика: живой процесс без базы — 503, а не «ok».
+ * Без лимита запросов (R-H5): healthcheck compose каждые 10 с, uptime-монитор и alerts.sh идут с одного адреса.
+ */
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   constructor(

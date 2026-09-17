@@ -20,9 +20,9 @@ const Schema = z
     DEMO_LOGINS: z.enum(['true', 'false']).optional(),
     /** Сколько прокси перед API (nginx в демо — 1, Caddy → nginx в проде — 2): от этого зависит req.ip для лимитов. */
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
-    /** Запросов в минуту с одного IP: общий лимит и строгий для входа/регистрации. */
+    /** Запросов в минуту: общий лимит — на вошедшего пользователя (аноним — на IP), строгий для входа/регистрации — на IP (R-H5). */
     THROTTLE_LIMIT: z.coerce.number().int().positive().default(1200),
-    THROTTLE_AUTH_LIMIT: z.coerce.number().int().positive().default(30),
+    THROTTLE_AUTH_LIMIT: z.coerce.number().int().positive().default(120),
     SEED_FORCE: z.string().optional(),
     /**
      * Кто может зарегистрироваться сам (ADR 006). Без значения: в production — только по ссылке приглашения,

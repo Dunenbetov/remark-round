@@ -6,6 +6,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { AdminModule } from './admin/admin.module';
 import { AgentModule } from './agent/agent.module';
 import { AuthModule } from './auth/auth.module';
+import { throttleTracker } from './auth/throttle';
 import { config } from './config';
 import { DocumentsModule } from './documents/documents.module';
 import { GatewayModule } from './gateway/gateway.module';
@@ -54,10 +55,11 @@ const REQUEST_ID = /^[\w.-]{8,64}$/;
         transport: config().NODE_ENV === 'development' && process.stdout.isTTY ? { target: 'pino-pretty', options: { singleLine: true, translateTime: 'HH:MM:ss' } } : undefined,
       },
     }),
-    // Лимит запросов с одного IP (фаза 11): общий — здесь, строгий на вход/регистрацию — @Throttle на маршрутах.
-    // В тестах выключен: харнесс опрашивает карточку каждые 100 мс.
+    // Лимит запросов (фаза 11, R-H5): общий — здесь, по вошедшему пользователю (аноним — по IP, throttleTracker),
+    // строгий на вход/регистрацию — @Throttle на маршрутах. В тестах выключен: харнесс опрашивает карточку каждые 100 мс.
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: 60_000, limit: config().THROTTLE_LIMIT }],
+      getTracker: (req) => Promise.resolve(throttleTracker(req as { ip?: string; headers?: Record<string, unknown> })),
       skipIf: () => config().NODE_ENV === 'test',
     }),
     ObservabilityModule,

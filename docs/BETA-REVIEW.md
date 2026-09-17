@@ -16,6 +16,7 @@
 | 17.09 | R-B2 | Лимиты вида задач в самом `claim()` очереди (`maxConcurrent`/`maxPerProject` при `register`): насыщенные виды и пары (вид, проект) исключаются в `WHERE`, попытки ждущих не сгорают, задачи без проекта не блокируются (NULL-guard); `graph` — 4/2, `index_document` — 2; `JOBS_CONCURRENCY` 4 → 8; флаг `wake`; 2 теста честности в `jobs.spec` |
 | 17.09 | R-B3, R-H1 | Чанки пишутся пачками по 200 в одном `INSERT` внутри транзакции с таймаутом 120 с; общий дефолт интерактивных транзакций `maxWait 10 с / timeout 30 с` в `PrismaService`; пул `connection_limit=25&pool_timeout=20`; P2024/P1001/P1002 и `PrismaClientInitializationError` → 503 `unavailable`; маппинг ошибок вынесен в чистую `errorBody`; тесты: 2 000 разделов индексируются и переиндексируются без дублей, маппинг кодов Prisma |
 | 17.09 | R-H2 | Дедлайн прогона `GRAPH_RUN_TIMEOUT_MS` (5 мин, `AbortSignal.timeout` после получения слота) → `failed` с кодом `timeout` без повторов; суточный потолок `GRAPH_DAILY_USD_PER_PROJECT` (20 $, скользящие 24 ч по `SUM(costUsd)`) → `409 llm_budget` на старте разбора/ретеста; учёт токенов `takeUsage` забирается при окончательном сбое и отмене (утечка Map); контракт ошибок пропускает собственный `code` сервиса; `FakeLlm.delayMs`; спека `agent/run-deadline.spec` |
+| 17.09 | R-H5 | Ключ лимита — `sub` проверенного JWT (`throttleTracker`, опция `getTracker` ThrottlerModule), анонимы и негодные токены — по IP; `/health` без лимита; `THROTTLE_AUTH_LIMIT` 30 → 120; **найден боевой баг** nginx за Caddy: `$binary_remote_addr` = адрес Caddy, а `location /api/v1/auth/` накрывал `/auth/me` при каждой загрузке SPA — весь инстанс делил один bucket 60 r/m; теперь realip из docker-подсетей, лимит 300 r/m только на `login|register|password|forgot|reset`; спека `auth/throttle.spec` |
 
 ---
 
@@ -295,7 +296,7 @@
 4. `SMTP_URL`, `SMTP_FROM` (раздел 4.2). `REGISTRATION_MODE` не задавать (по умолчанию `invite_only`) или `REGISTRATION_DOMAINS=<домен компании>`.
 5. `SEED_FORCE` отсутствует; `SEED_ON_START`/`DEMO_LOGINS` не переопределены на `true`.
 6. Прод-БД — **новый** том. Проверить: `select email from "User" where email like '%remarkround.dev' or email like '%other-tenant.dev'` → 0 строк.
-7. `THROTTLE_LIMIT=6000` (до R-H5), `TRUST_PROXY_HOPS=2`, `COMPOSE_PROFILES=offsite` + `OFFSITE_*`.
+7. `TRUST_PROXY_HOPS=2`, `COMPOSE_PROFILES=offsite` + `OFFSITE_*` (лимиты после R-H5 — по пользователю, `THROTTLE_LIMIT` менять не нужно).
 8. Смоук после старта (`docs/PROD.md:115-127`): `GET /api/v1/auth/options` → `{ demoLogins:false, registration:'invite_only', mail:true }`; вход `pm@remarkround.dev` → 401; `/health` → `llm:'openai'`; порты 5432/5433/8123/9000/3000 снаружи закрыты; внешний uptime-монитор на `/health`; `deploy/alerts.sh` в cron.
 
 ---
