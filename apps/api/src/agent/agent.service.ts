@@ -1,6 +1,7 @@
-import { ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Command } from '@langchain/langgraph';
 import type { RemarkStatus } from '@remarkround/db';
+import { config } from '../config';
 import { DiffService } from '../diff/diff.service';
 import { JobsService, RetryJobError, type JobContext } from '../jobs/jobs.service';
 import { classifyRunError, isRetryable, type RunFailure } from '../llm/llm-errors';
@@ -108,6 +109,7 @@ export class AgentService implements OnModuleInit {
 
   /** imported | cannot_tell | reopened → triaging → (граф) → awaiting_pm. Ответ — сразу, с runId; фазы идут в комнату. */
   async startTriage(ctx: ProjectContext, remarkId: string, opts: RunOptions = {}): Promise<RemarkView> {
+    await this.assertBudget(ctx.projectId);
     const { runId } = await this.remarks.beginTriage(ctx, remarkId, this.llm.model);
     const input: TriageInput = { projectId: ctx.projectId, userId: ctx.userId, role: ctx.role, remarkId, runId, humanComment: null, excludeChunkIds: [] };
     await this.dispatchStart('triage', remarkId, runId, input, this.trace(ctx, 'triage', runId, remarkId, false, { remarkId }), opts);
@@ -156,6 +158,7 @@ export class AgentService implements OnModuleInit {
 
   /** Ретест: новый кадр → граф (дифф → explain) → awaiting_business_close; закрывает только бизнес. */
   async retest(ctx: ProjectContext, remarkId: string, screenshotKey: string, opts: RunOptions = {}): Promise<RemarkView> {
+    await this.assertBudget(ctx.projectId);
     const { runId } = await this.remarks.beginRetest(ctx, remarkId, screenshotKey, this.llm.model);
     const input: RetestInput = { projectId: ctx.projectId, userId: ctx.userId, role: ctx.role, remarkId, runId, strategy: this.retestStrategy };
     await this.dispatchStart('retest', remarkId, runId, input, this.trace(ctx, 'retest', runId, remarkId, false, { remarkId, screenshotKey, strategy: this.retestStrategy }), opts);
@@ -179,6 +182,24 @@ export class AgentService implements OnModuleInit {
     if (!view.runId || view.runMode !== 'retest') return;
     const runId = view.runId;
     await this.dispatchResume('retest', view.id, runId, decision, this.trace(ctx, 'retest', runId, view.id, true, { decision }), {}, undefined, ctx);
+  }
+
+  /**
+   * Потолок стоимости модели на проект за скользящие сутки (R-H2): SUM(costUsd) по AgentRun проекта; 409 `llm_budget`,
+   * пока окно не сдвинется или администратор не поднимет GRAPH_DAILY_USD_PER_PROJECT. Сбойные прогоны стоимость не пишут
+   * (failRun) — считаются только дошедшие до черновика. Продолжение после решения PM лимит не проверяет: прогон уже начат.
+   */
+  private async assertBudget(projectId: string): Promise<void> {
+    const limit = config().GRAPH_DAILY_USD_PER_PROJECT;
+    if (!limit) return;
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const { _sum } = await this.prisma.agentRun.aggregate({ _sum: { costUsd: true }, where: { projectId, createdAt: { gte: since } } });
+    const spent = Number(_sum.costUsd ?? 0);
+    if (spent < limit) return;
+    throw new ConflictException({
+      code: 'llm_budget',
+      message: `Лимит стоимости модели на сутки исчерпан (${spent.toFixed(2)} из ${limit} $) — попробуйте позже или попросите администратора поднять GRAPH_DAILY_USD_PER_PROJECT`,
+    });
   }
 
   /** Атрибуты trace Langfuse одного прогона: кто нажал, какое замечание, какой run (фаза 8). */
@@ -258,12 +279,18 @@ export class AgentService implements OnModuleInit {
     this.projectSlots.set(trace.projectId, project);
     const releaseProject = await project.acquire();
     const releaseGlobal = await this.globalSlots.acquire();
+    let deadline: AbortSignal | null = null;
     try {
       if (ac.signal.aborted) return {};
+      // Дедлайн прогона (R-H2): вызовы модели по 60 с × ретраи SDK × циклы rewrite/bind не растянутся дольше
+      // GRAPH_RUN_TIMEOUT_MS; отсчёт — после получения слотов, ожидание в очереди в него не входит
+      const timeoutMs = config().GRAPH_RUN_TIMEOUT_MS;
+      deadline = AbortSignal.timeout(timeoutMs);
+      const signal = AbortSignal.any([ac.signal, deadline]);
       await this.observability.run(trace, async (span) => {
         const state = await (graph as TriageGraph).invoke(input as TriageInput, {
           configurable: { thread_id: runId },
-          signal: ac.signal,
+          signal,
           recursionLimit: 80,
           callbacks: this.observability.callbacks(trace),
         });
@@ -271,14 +298,23 @@ export class AgentService implements OnModuleInit {
       });
       return {};
     } catch (e) {
-      if (ac.signal.aborted) return {};
-      const failure = classifyRunError(e);
+      if (ac.signal.aborted) {
+        // Отмена человеком или остановка процесса: учёт токенов этого прогона больше никому не нужен
+        this.llm.takeUsage(runId);
+        return {};
+      }
       const err = e as Error;
-      if (isRetryable(failure) && !exec.final) {
-        // Временная ошибка модели: run остаётся running, очередь повторит с паузой; человеку пока ничего не показываем
+      const minutes = Math.max(1, Math.round(config().GRAPH_RUN_TIMEOUT_MS / 60_000));
+      // Истёкший дедлайн — не временная ошибка модели: без повторов очереди, сразу на карточку
+      const failure: RunFailure = deadline?.aborted ? { code: 'timeout', message: `Прогон не уложился в ${minutes} мин — запустите снова` } : classifyRunError(e);
+      if (failure.code !== 'timeout' && isRetryable(failure) && !exec.final) {
+        // Временная ошибка модели: run остаётся running, очередь повторит с паузой; человеку пока ничего не показываем.
+        // Учёт токенов не сбрасываем: повтор добавит свои, и в AgentRun ляжет честная сумма
         this.log.warn({ msg: `run ${runId}: ${failure.code}, будет повтор`, runId, remarkId, projectId: trace.projectId, err: { name: err?.name, message: err?.message } });
         return { retry: failure };
       }
+      // Окончательный сбой: прогон не дойдёт до persist, где учёт токенов забирают, — забираем сами, иначе запись течёт
+      this.llm.takeUsage(runId);
       // Причина сбоя — со стеком в лог и человеческим текстом на карточку (аудит: no-error-tracking)
       this.log.error({ msg: `run ${runId} failed: ${failure.code}`, runId, remarkId, projectId: trace.projectId, failure: failure.code, err: { name: err?.name, message: err?.message, stack: err?.stack } });
       await this.remarks.failRun(runId, failure).catch(() => null);

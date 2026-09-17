@@ -41,6 +41,10 @@ const Schema = z
      */
     OPENAI_API_KEY: z.string().optional(),
     LLM_MODE: z.enum(['openai', 'rules']).optional(),
+    /** Дедлайн одного прогона графа (мс): вызовы модели × ретраи SDK × циклы rewrite/bind; истёк — прогон `failed` с кодом `timeout` (R-H2). */
+    GRAPH_RUN_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60_000),
+    /** Потолок стоимости модели на проект за скользящие сутки, USD: старт разбора/ретеста отвечает 409, пока сумма не сдвинется; 0 — без лимита. */
+    GRAPH_DAILY_USD_PER_PROJECT: z.coerce.number().min(0).default(20),
     LANGFUSE_SECRET_KEY: z.string().optional(),
     LANGFUSE_TRACING_ENABLED: z.string().optional(),
     /** Почта (ADR 009): smtp://user:pass@host:587 или smtps://…:465. Без значения писем нет — приглашения только ссылкой. */

@@ -55,7 +55,9 @@ export function errorBody(exception: unknown, requestId?: string): ErrorBody {
     const message = typeof payload === 'string' ? payload : ((payload as { message?: string | string[] }).message ?? exception.message);
     // 503 из /health несёт своё тело ({ ok, db, … }) — сохраняем его поля
     const extra = typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>) : {};
-    return { ...extra, statusCode: status, code: CODE_BY_STATUS[status] ?? `http_${status}`, message, requestId };
+    // Сервис может назвать причину точнее статуса (`llm_budget` при 409): свой code остаётся, иначе — по статусу
+    const own = typeof extra['code'] === 'string' ? (extra['code'] as string) : undefined;
+    return { ...extra, statusCode: status, code: own ?? CODE_BY_STATUS[status] ?? `http_${status}`, message, requestId };
   }
   if (exception instanceof Prisma.PrismaClientKnownRequestError) {
     if (exception.code === 'P2002') return { statusCode: 409, code: 'conflict', message: 'Такая запись уже есть', requestId };

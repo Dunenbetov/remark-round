@@ -12,9 +12,12 @@ export class FakeLlmService extends RulesTriageLlm implements TriageLlm {
   /** Ошибки, которые classify бросит по очереди (по одной на вызов): так проверяют повторы очереди задач. */
   readonly failNext: Error[] = [];
   readonly calls: LlmCallMeta['node'][] = [];
+  /** Задержка classify (мс): «медленная модель» для проверки дедлайна прогона (GRAPH_RUN_TIMEOUT_MS). */
+  delayMs = 0;
 
   override async classify(meta: LlmCallMeta, input: ClassifyInput): Promise<ClassifyResult> {
     this.calls.push('classify');
+    if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
     const err = this.failNext.shift();
     if (err) throw err;
     return super.classify(meta, input);
