@@ -58,7 +58,7 @@ jobs:
         with:
           name: evals-report
           path: evals/results/ci-offline.*
-      - name: Сборка фронта (web-тестов нет: сборка ловит ошибки шаблонов и типов)
+      - name: 'Сборка фронта (web-тестов нет: сборка ловит ошибки шаблонов и типов)'
         run: pnpm --filter @remarkround/web build
       - name: Прод-override compose валиден (без профиля observability — как на бете, R-B1)
         run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
