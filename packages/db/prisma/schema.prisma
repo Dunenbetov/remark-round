@@ -465,7 +465,7 @@ model ImportRow {
 /// не теряет работу: running с протухшим lockedAt возвращается в queued, временные ошибки модели — повтор с паузой.
 model Job {
   id          String    @id @default(uuid())
-  /// graph | index_document
+  /// graph | index_document | send_mail | notify_digest — лимиты вида (сколько разом, сколько на проект) держит claim воркера
   kind        String
   projectId   String?
   /// Для graph — runId прогона: cancel помечает очередь этого прогона cancelled

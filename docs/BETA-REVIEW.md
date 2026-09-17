@@ -13,6 +13,7 @@
 | Дата | Ключи | Что сделано |
 |---|---|---|
 | 17.09 | R-B1, R-M6 | Langfuse-стек за профилем `observability` в прод-оверлее (демо без изменений), трейсы — в Langfuse Cloud (`LANGFUSE_CLOUD_URL`), лимиты без профиля 4,3 ГБ (postgres 1,5 / api 2 + `NODE_OPTIONS`), `x-logging` у всех сервисов включая postgres, `/health.tracing`, секреты стека без `:?` (CI-шаг `config -q` был красным из-за них), второй `config -q` с профилем в CI |
+| 17.09 | R-B2 | Лимиты вида задач в самом `claim()` очереди (`maxConcurrent`/`maxPerProject` при `register`): насыщенные виды и пары (вид, проект) исключаются в `WHERE`, попытки ждущих не сгорают, задачи без проекта не блокируются (NULL-guard); `graph` — 4/2, `index_document` — 2; `JOBS_CONCURRENCY` 4 → 8; флаг `wake`; 2 теста честности в `jobs.spec` |
 
 ---
 

@@ -62,8 +62,13 @@ export class AgentService implements OnModuleInit {
   private retestGraph!: RetestGraph;
   private checkpointer!: PrismaCheckpointSaver;
   private readonly running = new Map<string, AbortController>();
-  /** Лимит параллельных прогонов (фаза 11): глобальный и на проект — импорт на 200 строк не съедает всё, REST уже ответил `triaging`. */
-  private readonly globalSlots = new Semaphore(Number(process.env['GRAPH_MAX_CONCURRENT'] ?? 4));
+  /**
+   * Лимит параллельных прогонов (фаза 11): глобальный и на проект — импорт на 200 строк не съедает всё, REST уже ответил `triaging`.
+   * Для задач очереди те же лимиты держит сам claim (JobsService, R-B2): ждущий прогон остаётся `queued`, а не занимает слот воркера.
+   * Семафоры здесь — страховка для прогонов мимо очереди (`wait: true`: evals, импорт в тестах).
+   */
+  private readonly maxConcurrent = Number(process.env['GRAPH_MAX_CONCURRENT'] ?? 4);
+  private readonly globalSlots = new Semaphore(this.maxConcurrent);
   private readonly projectSlots = new Map<string, Semaphore>();
   private readonly perProject = Number(process.env['GRAPH_MAX_PER_PROJECT'] ?? 2);
   /** Ветка ретеста (ADR 002 п.4): дефолт — победитель A/B; раннер evals переключает её, чтобы сравнить обе на одном коде. */
@@ -86,7 +91,7 @@ export class AgentService implements OnModuleInit {
     const deps: GraphDeps = { remarks: this.remarks, rag: this.rag, diff: this.diff, storage: this.storage, llm: this.llm, events: this.events };
     this.triage = buildTriageGraph(deps, this.checkpointer);
     this.retestGraph = buildRetestGraph(deps, this.checkpointer);
-    this.jobs.register('graph', (payload, ctx) => this.executeJob(payload as GraphJob, ctx));
+    this.jobs.register('graph', (payload, ctx) => this.executeJob(payload as GraphJob, ctx), { maxConcurrent: this.maxConcurrent, maxPerProject: this.perProject });
     void this.remarks
       .failStaleRuns(STALE_RUN_MS)
       .then((n) => n && this.log.warn(`stale runs marked failed: ${n}`))
@@ -247,7 +252,8 @@ export class AgentService implements OnModuleInit {
     const onOuterAbort = () => ac.abort();
     exec.signal?.addEventListener('abort', onOuterAbort, { once: true });
     this.running.set(runId, ac);
-    // Сначала слот проекта, потом общий: ожидание в очереди проекта не занимает общий слот
+    // Сначала слот проекта, потом общий: ожидание в очереди проекта не занимает общий слот.
+    // Задачи из очереди сюда приходят уже в пределах лимитов (claim их не берёт сверх), ждут здесь только прогоны с `wait: true`
     const project = this.projectSlots.get(trace.projectId) ?? new Semaphore(this.perProject);
     this.projectSlots.set(trace.projectId, project);
     const releaseProject = await project.acquire();

@@ -31,8 +31,30 @@ describe('jobs queue', () => {
   });
 
   afterAll(async () => {
+    for (const n of [...gates.keys()]) release(n);
     await h.cleanup();
   });
+
+  // R-B2: обработчик ждёт «ворота» теста — так задача остаётся running ровно столько, сколько нужно проверке.
+  // `released` защищает от гонки: тест может отпустить ворота раньше, чем обработчик их поставит.
+  const gates = new Map<string, () => void>();
+  const released = new Set<string>();
+  const gated = (payload: unknown): Promise<void> => {
+    const n = (payload as { n: string }).n;
+    if (released.has(n)) return Promise.resolve();
+    return new Promise<void>((resolve) => gates.set(n, resolve));
+  };
+  const release = (n: string): void => {
+    released.add(n);
+    gates.get(n)?.();
+    gates.delete(n);
+  };
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const statusOf = async (id: string) => (await h.prisma.job.findUniqueOrThrow({ where: { id } })).status;
+  const until = async (id: string, status: string, tries = 80) => {
+    for (let i = 0; i < tries && (await statusOf(id)) !== status; i++) await sleep(100);
+    return statusOf(id);
+  };
 
   /** POST /remarks сам стартует разбор; здесь нужна карточка `imported`, чтобы стартовать разбор явно и следить за задачей. */
   async function createRemark(description: string): Promise<string> {
@@ -188,6 +210,46 @@ describe('jobs queue', () => {
     expect(left.map((j) => j.id).sort()).toEqual([freshDone.id, midFailed.id, waiting.id].sort());
     expect(left.map((j) => j.id)).not.toContain(oldDone.id);
     expect(left.map((j) => j.id)).not.toContain(oldFailed.id);
+  });
+
+  it('лимит на проект (R-B2): пока проект держит слот, идут задачи другого проекта и без проекта, а ждущие не сжигают попытку', async () => {
+    jobs.register('spec_fair', gated, { maxPerProject: 1 });
+    const a1 = await jobs.enqueue('spec_fair', { n: 'a1' }, { projectId: h.projectId });
+    const a2 = await jobs.enqueue('spec_fair', { n: 'a2' }, { projectId: h.projectId });
+    const b1 = await jobs.enqueue('spec_fair', { n: 'b1' }, { projectId: randomUUID() });
+    const none = await jobs.enqueue('spec_fair', { n: 'none' }, {});
+    expect(await until(a1.id, 'running')).toBe('running');
+    // Чужой проект и задача без проекта берутся, хотя a1 ещё держит слот; без NULL-guard в claim `none` стояла бы вечно
+    await until(b1.id, 'running');
+    release('b1');
+    await until(none.id, 'running');
+    release('none');
+    expect(await until(b1.id, 'done')).toBe('done');
+    expect(await until(none.id, 'done')).toBe('done');
+    expect(await h.prisma.job.findUniqueOrThrow({ where: { id: a2.id } })).toMatchObject({ status: 'queued', attempts: 0 });
+    release('a1');
+    expect(await until(a1.id, 'done')).toBe('done');
+    expect(await until(a2.id, 'running')).toBe('running');
+    release('a2');
+    expect(await until(a2.id, 'done')).toBe('done');
+    expect((await h.prisma.job.findUniqueOrThrow({ where: { id: a2.id } })).attempts).toBe(1);
+  });
+
+  it('лимит на вид (R-B2): вторая задача вида ждёт в queued, задача другого вида идёт мимо неё', async () => {
+    jobs.register('spec_fair_kind', gated, { maxConcurrent: 1 });
+    jobs.register('spec_free', async () => undefined);
+    const k1 = await jobs.enqueue('spec_fair_kind', { n: 'k1' }, { projectId: h.projectId });
+    const k2 = await jobs.enqueue('spec_fair_kind', { n: 'k2' }, { projectId: randomUUID() });
+    const free = await jobs.enqueue('spec_free', {}, {});
+    expect(await until(k1.id, 'running')).toBe('running');
+    expect(await until(free.id, 'done')).toBe('done');
+    expect(await h.prisma.job.findUniqueOrThrow({ where: { id: k2.id } })).toMatchObject({ status: 'queued', attempts: 0 });
+    release('k1');
+    expect(await until(k1.id, 'done')).toBe('done');
+    expect(await until(k2.id, 'running')).toBe('running');
+    release('k2');
+    expect(await until(k2.id, 'done')).toBe('done');
+    expect((await h.prisma.job.findUniqueOrThrow({ where: { id: k2.id } })).attempts).toBe(1);
   });
 
   it('обработчик просит повтор через свою паузу; без обработчика задача failed с понятной причиной', async () => {

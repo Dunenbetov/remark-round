@@ -49,7 +49,8 @@ export class RagService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    this.jobs.register('index_document', (payload, ctx) => this.indexJob(payload as { documentId: string }, ctx));
+    // Две индексации разом: батч эмбеддингов большого ТЗ держит память, а третья подождёт в очереди (R-B2)
+    this.jobs.register('index_document', (payload, ctx) => this.indexJob(payload as { documentId: string }, ctx), { maxConcurrent: 2 });
     try {
       const rows = await this.prisma.$queryRaw<Array<{ indexname: string }>>`SELECT indexname FROM pg_indexes WHERE tablename = 'DocumentChunk' AND indexdef ILIKE '%USING hnsw%'`;
       this.vectorIndex = rows.length ? 'ok' : 'missing';
