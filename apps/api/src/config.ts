@@ -47,6 +47,10 @@ const Schema = z
     GRAPH_DAILY_USD_PER_PROJECT: z.coerce.number().min(0).default(20),
     LANGFUSE_SECRET_KEY: z.string().optional(),
     LANGFUSE_TRACING_ENABLED: z.string().optional(),
+    /** Sentry (R-L5): DSN api и DSN SPA (публичный, отдаётся в GET /auth/options); без DSN репортинга нет, код не активен. */
+    SENTRY_DSN: z.string().optional(),
+    SENTRY_DSN_WEB: z.string().optional(),
+    SENTRY_ENVIRONMENT: z.string().optional(),
     /** Почта (ADR 009): smtp://user:pass@host:587 или smtps://…:465. Без значения писем нет — приглашения только ссылкой. */
     SMTP_URL: z.string().optional(),
     SMTP_FROM: z.string().default('RemarkRound <no-reply@localhost>'),

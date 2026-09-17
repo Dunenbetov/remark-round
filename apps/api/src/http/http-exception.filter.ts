@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { Prisma } from '@remarkround/db';
+import * as Sentry from '@sentry/node';
 import type { Request, Response } from 'express';
 
 /** Тело любой ошибки API (docs/API.md): код для программ, сообщение для людей, requestId — чтобы найти строку в логах. */
@@ -43,6 +44,8 @@ export class HttpExceptionsFilter implements ExceptionFilter {
     if (body.statusCode >= 500) {
       const err = exception as Error;
       this.log.error({ msg: `${req.method} ${req.url} → ${body.statusCode}`, requestId, err: { name: err?.name, message: err?.message, stack: err?.stack } });
+      // Sentry (R-L5): без SENTRY_DSN — no-op; requestId связывает событие со строкой лога и с тем, что назвал человек
+      Sentry.captureException(exception, { tags: { statusCode: String(body.statusCode), code: body.code }, extra: { requestId, method: req.method, url: req.url } });
     }
     res.status(body.statusCode).json(body);
   }

@@ -101,15 +101,21 @@ describe('accounts', () => {
     expect(options.body.demoAccounts).toHaveLength(3);
     expect(options.body.demoAccounts.map((a: { role: string }) => a.role).sort()).toEqual(['business', 'developer', 'pm']);
     expect(options.body.demoPassword).toBe('remarkround');
+    // Sentry для SPA (R-L5): DSN приходит только при SENTRY_DSN_WEB
+    expect(options.body.sentryDsn).toBeUndefined();
+    expect(options.body.release).toBe('dev');
     process.env['DEMO_LOGINS'] = 'false';
+    process.env['SENTRY_DSN_WEB'] = 'https://public@o1.ingest.sentry.io/2';
     resetConfig();
     try {
       const closed = await h.http.get('/api/v1/auth/options').expect(200);
       expect(closed.body.demoLogins).toBe(false);
       expect(closed.body.demoAccounts).toBeUndefined();
       expect(closed.body.demoPassword).toBeUndefined();
+      expect(closed.body.sentryDsn).toBe('https://public@o1.ingest.sentry.io/2');
     } finally {
       delete process.env['DEMO_LOGINS'];
+      delete process.env['SENTRY_DSN_WEB'];
       resetConfig();
     }
   });

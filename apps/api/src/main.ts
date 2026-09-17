@@ -1,3 +1,6 @@
+// Sentry — до всего остального: SDK оборачивает модули при загрузке (без SENTRY_DSN — пустой импорт)
+import './instrument';
+import * as Sentry from '@sentry/node';
 import { Logger as NestLogger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -39,7 +42,12 @@ function installCrashHandlers(): void {
   const die = (kind: string) => (reason: unknown) => {
     const err = reason instanceof Error ? reason : new Error(String(reason));
     log.error({ msg: `${kind}: ${err.message}`, err: { name: err.name, message: err.message, stack: err.stack } });
-    setTimeout(() => process.exit(1), 200).unref();
+    // В Sentry (если настроен) — с тегом источника; дать батчу уйти, но не держать процесс дольше 2 с
+    Sentry.captureException(err, { tags: { source: kind } });
+    setTimeout(() => process.exit(1), 2000).unref();
+    void Sentry.flush(1500)
+      .catch(() => undefined)
+      .finally(() => process.exit(1));
   };
   process.on('uncaughtException', die('uncaughtException'));
   process.on('unhandledRejection', die('unhandledRejection'));

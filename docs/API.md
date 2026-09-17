@@ -20,7 +20,7 @@
 | POST | `/auth/password` | any | `{ current, next ≥ 8 }` → `{ accessToken }`; неверный текущий — 422; все прежние токены (и MCP) недействительны |
 | POST | `/auth/forgot` | — | `{ email }` → всегда 204 (ADR 012): если адрес есть, у него есть пароль, он не отключён и настроен SMTP — письмо со ссылкой `/reset/<token>` на час; повтор раньше минуты письма не шлёт. Лимит `THROTTLE_AUTH_LIMIT`/мин с IP |
 | POST | `/auth/reset` | — | `{ token, password ≥ 8 }` → 204: пароль заменён, все прежние токены (и MCP) недействительны, сессия не выдаётся — вход на `/login`; неизвестная или истёкшая ссылка — 404, использованная — 410 |
-| GET | `/auth/options` | — | `{ demoLogins, registration: open \| invite_only, mail }` — карточки демо-персон на входе (в production выключены), режим регистрации, настроена ли почта |
+| GET | `/auth/options` | — | `{ demoLogins, registration: open \| invite_only, mail, release, demoAccounts?, demoPassword?, sentryDsn? }` — карточки демо-персон на входе приходят только при `demoLogins` (в production выключены), режим регистрации, настроена ли почта, версия сборки, DSN Sentry для SPA (только при `SENTRY_DSN_WEB`) |
 | GET | `/projects` | any | Список membership: `{ id, name, slug, role, createdAt }` |
 | POST | `/projects` | `canCreateProjects` | Создать: только с правом от администратора инстанса (иначе 403); создатель становится `pm` проекта. `slug` — транслит названия (`Клиентский кабинет` → `klientskiy-kabinet`), занятый — с суффиксом `-2`; при переименовании не меняется |
 | GET | `/projects/:projectId` | member | Карточка |

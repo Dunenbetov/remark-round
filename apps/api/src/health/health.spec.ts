@@ -22,7 +22,7 @@ describe('health', () => {
   it('GET /health без токена: процесс жив и база на связи', async () => {
     const res = await request(app.getHttpServer()).get('/api/v1/health').expect(200);
     // В тестах ключа модели нет — правила; HNSW-индекс на тестовой БД есть (миграции применены); трейсы выключены setup.ts
-    expect(res.body).toMatchObject({ ok: true, db: 'ok', version: 'dev', llm: 'rules', vectorIndex: 'ok', tracing: 'off' });
+    expect(res.body).toMatchObject({ ok: true, db: 'ok', version: 'dev', llm: 'rules', vectorIndex: 'ok', tracing: 'off', sentry: 'off' });
     expect(typeof res.body.jobs.queued).toBe('number');
     expect(typeof res.body.jobs.running).toBe('number');
   });

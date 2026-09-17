@@ -1,6 +1,7 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../auth/public.decorator';
+import { sentryEnabled } from '../instrument';
 import { config } from '../config';
 import { JobsService, type JobStats } from '../jobs/jobs.service';
 import { LlmService } from '../llm/llm.service';
@@ -21,6 +22,8 @@ export interface HealthView {
   jobs: JobStats;
   /** Трейсы Langfuse: `off` — ключей нет или LANGFUSE_TRACING_ENABLED=false (на бете стек за профилем, R-B1). */
   tracing: 'on' | 'off';
+  /** Sentry (R-L5): `on`, если задан SENTRY_DSN. */
+  sentry: 'on' | 'off';
 }
 
 const DB_TIMEOUT_MS = 2000;
@@ -43,7 +46,7 @@ export class HealthController {
   @Public()
   @Get()
   async health(): Promise<HealthView> {
-    const base = { version: config().APP_VERSION, llm: this.llm.mode, vectorIndex: this.rag.vectorIndexStatus, tracing: this.observability.enabled ? ('on' as const) : ('off' as const) };
+    const base = { version: config().APP_VERSION, llm: this.llm.mode, vectorIndex: this.rag.vectorIndexStatus, tracing: this.observability.enabled ? ('on' as const) : ('off' as const), sentry: sentryEnabled ? ('on' as const) : ('off' as const) };
     let jobs: JobStats = { queued: -1, running: -1 };
     try {
       jobs = (await Promise.race([

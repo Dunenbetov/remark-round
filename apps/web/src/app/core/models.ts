@@ -107,6 +107,9 @@ export interface AuthOptions {
   /** Демо-персоны стенда и их пароль — приходят только при demoLogins; в бандле их нет. */
   demoAccounts?: ReadonlyArray<{ email: string; name: string; role: Role; does: string }>;
   demoPassword?: string;
+  /** Sentry для SPA (R-L5): DSN есть только когда сервер настроен; `release` — версия сборки. */
+  sentryDsn?: string;
+  release: string;
 }
 
 export interface ProjectSummary {

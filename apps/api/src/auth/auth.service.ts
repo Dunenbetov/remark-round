@@ -80,6 +80,9 @@ export interface AuthOptions {
   /** Демо-персоны стенда и их пароль — только при demoLogins; иначе полей нет (D-2). */
   demoAccounts?: readonly DemoAccount[];
   demoPassword?: string;
+  /** Sentry для SPA (R-L5): DSN публичный по природе, отдаётся при SENTRY_DSN_WEB; `release` — версия сборки API. */
+  sentryDsn?: string;
+  release: string;
 }
 
 export const ACCOUNT_DISABLED = 'Учётная запись отключена — обратитесь к администратору';
@@ -179,7 +182,7 @@ export class AuthService {
 
   options(): AuthOptions {
     const cfg = config();
-    const base: AuthOptions = { demoLogins: cfg.demoLogins, registration: cfg.registrationMode, mail: cfg.mailEnabled };
+    const base: AuthOptions = { demoLogins: cfg.demoLogins, registration: cfg.registrationMode, mail: cfg.mailEnabled, release: cfg.APP_VERSION, ...(cfg.SENTRY_DSN_WEB && { sentryDsn: cfg.SENTRY_DSN_WEB }) };
     return cfg.demoLogins ? { ...base, demoAccounts: DEMO_ACCOUNTS, demoPassword: DEMO_PASSWORD } : base;
   }
 

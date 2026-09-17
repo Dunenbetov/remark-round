@@ -1,5 +1,6 @@
 import { ConflictException, ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Command } from '@langchain/langgraph';
+import * as Sentry from '@sentry/node';
 import type { RemarkStatus } from '@remarkround/db';
 import { config } from '../config';
 import { DiffService } from '../diff/diff.service';
@@ -334,6 +335,8 @@ export class AgentService implements OnModuleInit {
       this.llm.takeUsage(runId);
       // Причина сбоя — со стеком в лог и человеческим текстом на карточку (аудит: no-error-tracking)
       this.log.error({ msg: `run ${runId} failed: ${failure.code}`, runId, remarkId, projectId: trace.projectId, failure: failure.code, err: { name: err?.name, message: err?.message, stack: err?.stack } });
+      // `unknown` — не модель и не файл, а ошибка в коде графа: в Sentry (R-L5); остальные коды — операционные, они в логе
+      if (failure.code === 'unknown') Sentry.captureException(e, { tags: { source: 'graph', mode: trace.mode }, extra: { runId, remarkId, projectId: trace.projectId } });
       await this.remarks.failRun(runId, failure).catch(() => null);
       this.events.emit(remarkId, { type: 'run.failed', runId, message: failure.message });
       return {};
