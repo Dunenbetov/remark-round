@@ -21,6 +21,7 @@
 | 17.09 | I-5 | «Забыли пароль»: модель `PasswordReset` (миграция `20260917120000`), `POST /auth/forgot` (всегда 204, cooldown 60 с, письмо на час), `POST /auth/reset` (одноразово, 404/410, `passwordChangedAt` + `tokenVersion`, сессия не выдаётся), страницы `/forgot` и `/reset/:token`, ссылка на входе при `mail: true`, слаги зарезервированы; 3 теста в `accounts.spec`; ADR 012 |
 | 17.09 | I-6 | Переключатель писем «вас ждёт кнопка» возвращён в профиль (карточка «Данные», только при `mail: true`), оптимистичное сохранение через `PATCH /auth/profile`; ADR 009 дополнен |
 | 17.09 | A-1 | `Invitation.projectId` nullable (миграция `20260917130000`), `POST/GET/DELETE /admin/invitations` + `…/link`; принятие без проекта выдаёт `canCreateProjects`; `peek.kind: project \| instance`; письмо «приглашение руководителя приёмки»; **баг**: ответ `register` по приглашению строился по строке до accept — теперь перечитывается; фронт: форма и список на `/admin`, тексты на `/join` и `/register`; тест в `admin.spec`; ADR 006 дополнение, PROD bootstrap, API.md; порог предупреждения начального бандла 800 → 900 кБ (ошибка по-прежнему 1 МБ) |
+| 17.09 | A-2 | DTO участников принимают только `business \| pm \| developer` (422 на `admin`); enum, seed и харнесс не тронуты — удаление из enum миграцией после беты; тест в `members.spec`, ADR 006, API.md |
 
 ---
 

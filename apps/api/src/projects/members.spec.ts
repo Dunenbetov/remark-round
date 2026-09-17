@@ -42,12 +42,15 @@ describe('members and invitations', () => {
     return res.body as { accessToken: string; user: { id: string }; memberships: Array<{ projectId: string; role: string }> };
   };
 
-  it('pm видит участников и приглашения; заказчик и разработчик — 403', async () => {
+  it('pm видит участников и приглашения; заказчик и разработчик — 403; роль admin снаружи не принимается (A-2)', async () => {
     const res = await h.http.get(url('/members')).set(h.auth('pm')).expect(200);
     expect(res.body.members.map((m: { role: string }) => m.role).sort()).toEqual(['admin', 'business', 'developer', 'pm']);
     expect(res.body.invitations).toEqual([]);
     await h.http.get(url('/members')).set(h.auth('business')).expect(403);
     await h.http.post(url('/members')).set(h.auth('developer')).send({ email: 'x@test.dev', role: 'developer' }).expect(403);
+    // Проектный admin в enum остался (харнесс пишет его через prisma), но через API ни выдать, ни назначить нельзя
+    await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `nobody-${tag}@test.dev`, role: 'admin' }).expect(422);
+    await h.http.patch(url(`/members/${h.users.developer.id}`)).set(h.auth('pm')).send({ role: 'admin' }).expect(422);
   });
 
   it('зарегистрированный — участник сразу; незнакомый e-mail — приглашение с token', async () => {
@@ -126,26 +129,32 @@ describe('members and invitations', () => {
     await h.http.get(`/api/v1/invitations/${inv.body.invitation.token}`).expect(404);
   });
 
+  /** Письма предыдущих тестов доходят асинхронно — считаем только адресованные конкретному человеку. */
+  const mailsTo = async (to: string, count: number) => {
+    for (let i = 0; i < 100 && h.mail.sent.filter((m) => m.to === to).length < count; i++) await new Promise((r) => setTimeout(r, 100));
+    const list = h.mail.sent.filter((m) => m.to === to);
+    expect(list.length).toBeGreaterThanOrEqual(count);
+    return list;
+  };
+
   it('почта (ADR 009, I-1..I-3): «Новая ссылка» шлёт письмо с новым токеном; зарегистрированному — письмо о проекте; токен не задерживается в очереди', async () => {
-    h.mail.sent.length = 0;
-    const inv = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `mail-${tag}@test.dev`, role: 'developer' }).expect(201);
+    const invitee = `mail-${tag}@test.dev`;
+    const inv = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: invitee, role: 'developer' }).expect(201);
     expect(inv.body.invitation.emailed).toBe(true);
-    const [first] = await h.mail.waitFor(1);
-    expect(first!.to).toBe(`mail-${tag}@test.dev`);
+    const [first] = await mailsTo(invitee, 1);
     expect(first!.text).toContain(`/join/${inv.body.invitation.token}`);
 
     const fresh = await h.http.post(url(`/invitations/${inv.body.invitation.id}/link`)).set(h.auth('pm')).expect(200);
     expect(fresh.body.emailed).toBe(true);
-    const [, second] = await h.mail.waitFor(2);
-    expect(second!.to).toBe(`mail-${tag}@test.dev`);
+    const [, second] = await mailsTo(invitee, 2);
     expect(second!.text).toContain(`/join/${fresh.body.token}`);
     expect(second!.text).not.toContain(inv.body.invitation.token);
 
-    await register(`known-${tag}@test.dev`, 'business');
-    const added = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `known-${tag}@test.dev`, role: 'business' }).expect(201);
+    const known = `known-${tag}@test.dev`;
+    await register(known, 'business');
+    const added = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: known, role: 'business' }).expect(201);
     expect(added.body).toMatchObject({ kind: 'member', emailed: true, member: { role: 'business' } });
-    const [, , third] = await h.mail.waitFor(3);
-    expect(third!.to).toBe(`known-${tag}@test.dev`);
+    const [third] = await mailsTo(known, 1);
     expect(third!.subject).toMatch(/вы в проекте/);
     expect(third!.text).not.toContain('/join/');
     // Смена роли уже участника письма не шлёт
