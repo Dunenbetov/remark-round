@@ -10,6 +10,7 @@
     "start:prod": "node dist/main",
     "test": "jest",
     "seed": "tsx src/seed.ts",
+    "seed:remove": "tsx src/seed-remove.ts",
     "make:fixtures": "tsx src/imports/make-journal-fixtures.ts",
     "make:frames": "tsx src/evals/make-frames.ts",
     "make:screenshots": "tsx src/evals/make-screenshots.ts",

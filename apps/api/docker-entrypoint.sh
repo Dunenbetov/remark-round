@@ -4,8 +4,10 @@
 #                      `migrate status`: непримененные миграции — понятная ошибка вместо тихого автоприменения
 #                      под restart: always (прод, docs/PROD.md «Обновление»);
 #   migrate          — применить миграции и выйти: `docker compose run --rm api migrate` перед `up -d` в проде;
-#   seed             — демо-данные и выйти (в production seed сам откажется, если не SEED_FORCE=1 — руками, осознанно).
-# Демо-стенд: SEED_ON_START=true (по умолчанию) кладёт демо-персоны с известным паролем — баннер в логах об этом.
+#   seed             — демо-данные и выйти (в production seed сам откажется, если не SEED_FORCE=1 — руками, осознанно);
+#   seed:remove      — убрать демо-персон и демо-проекты по фиксированным id (стенд-том доехал до прода, docs/PROD.md).
+# Демо-стенд: SEED_ON_START=true (docker-compose.yml ставит явно) кладёт демо-персоны с известным паролем — баннер в логах.
+# По умолчанию в образе seed выключен (D-4): ручной `docker run` не насыпает демо-данных.
 set -e
 cd /app
 
@@ -16,6 +18,9 @@ case "${1:-}" in
     ;;
   seed)
     exec pnpm --filter @remarkround/api seed
+    ;;
+  seed:remove)
+    exec pnpm --filter @remarkround/api seed:remove
     ;;
 esac
 
@@ -31,7 +36,7 @@ else
   fi
 fi
 
-if [ "${SEED_ON_START:-true}" != "false" ]; then
+if [ "${SEED_ON_START:-false}" = "true" ]; then
   if [ "${NODE_ENV:-}" = "production" ]; then
     echo "api: seed пропущен — NODE_ENV=production. Демо-данные в проде — только руками: docker compose run --rm -e SEED_FORCE=1 api seed"
   else

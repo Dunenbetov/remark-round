@@ -120,7 +120,7 @@ Self-hosted стек (6 сервисов) остался за профилем `
 
 - [ ] `JWT_SECRET`, `POSTGRES_PASSWORD`, `PUBLIC_HOST`, `ADMIN_EMAILS` заданы; ключи Langfuse Cloud настоящие (или `LANGFUSE_TRACING_ENABLED=false`); плейсхолдеры `change-me-local-dev` в `.env` не остались; `COMPOSE_PROFILES` без `observability`.
 - [ ] `docker compose config -q` без ошибок; `docker compose ps` — все healthy.
-- [ ] `/api/v1/auth/options` → `{ demoLogins: false, registration: 'invite_only' }`; вход `pm@remarkround.dev` → 401; регистрация с чужого адреса без ссылки → 403.
+- [ ] `/api/v1/auth/options` → `{ demoLogins: false, registration: 'invite_only' }` без `demoAccounts`; вход `pm@remarkround.dev` → 401; регистрация с чужого адреса без ссылки → 403. Если том стенда доехал до прода (`select email from "User" where email like '%remarkround.dev'` не пуст) — `docker compose run --rm api seed:remove` (удаляет 4 демо-персоны и 2 демо-проекта по фиксированным id, остальное не трогает).
 - [ ] Администратор зарегистрировался → пригласил руководителя приёмки письмом → тот зарегистрировался по ссылке и создал проект → приглашение участника по ссылке → второй человек вошёл.
 - [ ] Уволенного можно отключить одной кнопкой в «Администрировании»: его открытая вкладка и MCP-токен перестают работать сразу.
 - [ ] `docker compose exec backup ls /backups/daily` — дамп есть; профиль `offsite` включён и `docker compose ps offsite` — healthy; репетиция восстановления проведена, дата записана выше.
@@ -139,4 +139,4 @@ Self-hosted стек (6 сервисов) остался за профилем `
 - Staging: отдельного окружения нет, релиз проверяется на демо-стенде и в CI. **Пересмотреть, когда цена сломанного релиза станет дороже второго сервера.**
 - Деплой руками по этому runbook (образы из CI, но `pull && up` — человек). **Пересмотреть, когда серверов станет больше одного.**
 - Прод-образ api содержит devDependencies и исходники (одна стадия сборки). **Пересмотреть при сканировании образов в CI.**
-- Демо-данные в проде — только руками (`docker compose run --rm -e SEED_FORCE=1 api seed`), обычный старт их не кладёт.
+- Демо-данные в проде — только руками (`docker compose run --rm -e SEED_FORCE=1 api seed`), обычный старт их не кладёт (в образе `SEED_ON_START` по умолчанию выключен; демо-стенд включает его в `docker-compose.yml`); убрать — `docker compose run --rm api seed:remove`.

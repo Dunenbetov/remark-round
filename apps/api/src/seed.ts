@@ -7,6 +7,7 @@
 import { PrismaClient, type DocumentKind, type Role } from '@remarkround/db';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { DEMO_ACCOUNTS, DEMO_PASSWORD } from './auth/demo-accounts';
 import { hashPassword } from './auth/password';
 import { JobsService } from './jobs/jobs.service';
 import { EmbeddingsService } from './llm/embeddings.service';
@@ -17,16 +18,23 @@ import { seedRemarks } from './seed-remarks';
 
 const ROOT = resolve(__dirname, '../../..');
 
+/** Фиксированные id демо-персон: e-mail, имя и подпись — в auth/demo-accounts.ts (их же отдаёт GET /auth/options). */
+const DEMO_USER_ID: Partial<Record<Role, string>> = {
+  pm: 'a1111111-1111-4111-8111-111111111111',
+  business: 'a2222222-2222-4222-8222-222222222222',
+  developer: 'a3333333-3333-4333-8333-333333333333',
+};
+
 export const SEED = {
   projectId: '11111111-1111-4111-8111-111111111111',
   otherProjectId: '22222222-2222-4222-8222-222222222222',
-  password: 'remarkround',
-  users: [
-    // Демо-персоны названы ролями — на защите сразу видно, кто есть кто. Реальные люди регистрируются под своими именами.
-    { id: 'a1111111-1111-4111-8111-111111111111', email: 'pm@remarkround.dev', name: 'PM', role: 'pm' as Role },
-    { id: 'a2222222-2222-4222-8222-222222222222', email: 'business@remarkround.dev', name: 'Business', role: 'business' as Role },
-    { id: 'a3333333-3333-4333-8333-333333333333', email: 'developer@remarkround.dev', name: 'Developer', role: 'developer' as Role },
-  ],
+  password: DEMO_PASSWORD,
+  // Демо-персоны названы ролями — на защите сразу видно, кто есть кто. Реальные люди регистрируются под своими именами.
+  // Порядок pm, business, developer: seed-remarks берёт их по индексу
+  users: (['pm', 'business', 'developer'] as Role[]).map((role) => {
+    const account = DEMO_ACCOUNTS.find((a) => a.role === role)!;
+    return { id: DEMO_USER_ID[role]!, email: account.email, name: account.name, role };
+  }),
   otherUser: { id: 'b1111111-1111-4111-8111-111111111111', email: 'other@other-tenant.dev', name: 'Чужой', role: 'admin' as Role },
   documents: [
     { id: 'd1111111-1111-4111-8111-111111111111', projectId: '11111111-1111-4111-8111-111111111111', kind: 'spec' as DocumentKind, title: 'ТЗ_Клиентский_кабинет_v1.4.md', fixture: 'fixtures/spec/TZ.md', effectiveAt: '2026-01-14' },

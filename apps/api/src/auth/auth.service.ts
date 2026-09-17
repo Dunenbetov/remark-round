@@ -9,6 +9,7 @@ import { TenancyService } from '../tenancy/tenancy.service';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
+import { DEMO_ACCOUNTS, DEMO_PASSWORD, type DemoAccount } from './demo-accounts';
 import { hashPassword, verifyPassword } from './password';
 
 export interface JwtPayload {
@@ -76,6 +77,9 @@ export interface AuthOptions {
   registration: RegistrationMode;
   /** SMTP настроен: приглашения уходят письмом, «вас ждёт кнопка» — тоже (ADR 009). */
   mail: boolean;
+  /** Демо-персоны стенда и их пароль — только при demoLogins; иначе полей нет (D-2). */
+  demoAccounts?: readonly DemoAccount[];
+  demoPassword?: string;
 }
 
 export const ACCOUNT_DISABLED = 'Учётная запись отключена — обратитесь к администратору';
@@ -175,7 +179,8 @@ export class AuthService {
 
   options(): AuthOptions {
     const cfg = config();
-    return { demoLogins: cfg.demoLogins, registration: cfg.registrationMode, mail: cfg.mailEnabled };
+    const base: AuthOptions = { demoLogins: cfg.demoLogins, registration: cfg.registrationMode, mail: cfg.mailEnabled };
+    return cfg.demoLogins ? { ...base, demoAccounts: DEMO_ACCOUNTS, demoPassword: DEMO_PASSWORD } : base;
   }
 
   /**

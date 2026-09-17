@@ -8,9 +8,12 @@ WORKDIR /app
 COPY --chown=node:node package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY --chown=node:node packages/db ./packages/db
 COPY --chown=node:node apps/api ./apps/api
-# Skill курса подмешивается в ноды графа (docs/GRAPH.md); fixtures нужны seed'у (ТЗ, протокол, кадры)
+# Skill курса подмешивается в ноды графа (docs/GRAPH.md); из fixtures seed'у нужны только ТЗ, протокол и кадры (D-3) —
+# журналы, evals и README в образ не кладём
 COPY --chown=node:node skills ./skills
-COPY --chown=node:node fixtures ./fixtures
+COPY --chown=node:node fixtures/spec ./fixtures/spec
+COPY --chown=node:node fixtures/protocol ./fixtures/protocol
+COPY --chown=node:node fixtures/screenshots ./fixtures/screenshots
 
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @remarkround/db generate

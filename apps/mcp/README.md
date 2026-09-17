@@ -30,7 +30,7 @@ curl -s -X POST localhost:3001/api/v1/projects/11111111-1111-4111-8111-111111111
 
 ### stdio — Cursor / Claude Desktop запускают процесс сами
 
-В репозитории лежит [`.cursor/mcp.json`](../../.cursor/mcp.json) с демо-логином Даны (pm) на проект «Клиентский кабинет»: откройте репозиторий в Cursor при поднятом API (`docker compose up` или `pnpm api:dev`) и спросите в чате «какого цвета primary-кнопка по ТЗ» — агент вызовет `search_spec`.
+В репозитории лежит [`.cursor/mcp.json`](../../.cursor/mcp.json) с демо-логином PM на проект «Клиентский кабинет»; пароль он берёт из переменной окружения `REMARKROUND_PASSWORD` (Cursor подставляет `${env:…}`; на демо-стенде это `remarkround`, в репозитории пароля нет). Откройте репозиторий в Cursor при поднятом API (`docker compose up` или `pnpm api:dev`) и спросите в чате «какого цвета primary-кнопка по ТЗ» — агент вызовет `search_spec`.
 
 Переменные окружения:
 

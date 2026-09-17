@@ -104,6 +104,9 @@ export interface AuthOptions {
   registration: RegistrationMode;
   /** SMTP настроен: приглашения и «вас ждёт кнопка» уходят письмом (ADR 009). */
   mail: boolean;
+  /** Демо-персоны стенда и их пароль — приходят только при demoLogins; в бандле их нет. */
+  demoAccounts?: ReadonlyArray<{ email: string; name: string; role: Role; does: string }>;
+  demoPassword?: string;
 }
 
 export interface ProjectSummary {

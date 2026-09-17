@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, inject
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AccountService } from '../core/account.service';
 import { ApiService } from '../core/api.service';
-import { APP_NAME, LOGIN, LOGIN_EXTRA, ROLE_TITLE } from '../core/copy';
+import { APP_NAME, LOGIN, ROLE_TITLE } from '../core/copy';
 import { homeUrl } from '../core/guards';
 import type { Role } from '../core/models';
 import { SessionService } from '../core/session.service';
@@ -37,7 +37,7 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
           @if (demo()) {
           <div class="login__roles rise" style="--i: 2">
             <div class="eyebrow">{{ copy.tryAs }}</div>
-            @for (r of copy.roles; track r.email; let i = $index) {
+            @for (r of demoAccounts(); track r.email; let i = $index) {
               <button
                 type="button"
                 class="role paper paper--lift"
@@ -119,7 +119,7 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
           }
           <button type="submit" class="btn btn--primary btn--lg login__submit" [class.btn--busy]="busy()" [disabled]="busy()">{{ copy.submit }}</button>
           @if (demo()) {
-            <span class="meta login__demo">{{ demoPassword }}</span>
+            <span class="meta login__demo">{{ copy.demoPasswordHint(demoPassword()) }}</span>
           }
           @if (resetOk()) {
             <p class="meta login__switch" role="status">{{ copy.resetDone }}</p>
@@ -366,7 +366,9 @@ export class LoginPage {
   protected readonly appName = APP_NAME;
   protected readonly copy = LOGIN;
   protected readonly roleTitle = ROLE_TITLE;
-  protected readonly demoPassword = LOGIN_EXTRA.demoPassword;
+  /** Демо-персоны и пароль приходят с сервера только на стенде (D-2): в бандле их нет. */
+  protected readonly demoAccounts = signal<ReadonlyArray<{ email: string; name: string; role: Role; does: string }>>([]);
+  protected readonly demoPassword = signal('');
   protected readonly email = signal('');
   protected readonly password = signal('');
   protected readonly error = signal(false);
@@ -388,7 +390,9 @@ export class LoginPage {
     void this.api
       .authOptions()
       .then((o) => {
-        this.demo.set(o.demoLogins);
+        this.demo.set(o.demoLogins && (o.demoAccounts?.length ?? 0) > 0);
+        this.demoAccounts.set(o.demoAccounts ?? []);
+        this.demoPassword.set(o.demoPassword ?? '');
         this.registrationOpen.set(o.registration === 'open');
         this.mailOn.set(o.mail);
       })
@@ -432,7 +436,7 @@ export class LoginPage {
   protected pick(email: string): void {
     this.email.set(email);
     this.error.set(false);
-    if (!this.password()) this.password.set('remarkround');
+    if (!this.password() && this.demoPassword()) this.password.set(this.demoPassword());
     this.host.nativeElement.querySelector<HTMLButtonElement>('button[type=submit]')?.focus();
   }
 

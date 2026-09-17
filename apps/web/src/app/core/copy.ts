@@ -407,7 +407,6 @@ export const ROLE_SHORT: Record<Role, string> = {
   admin: 'админ',
 };
 
-export const LOGIN_EXTRA = { demoPassword: 'пароль remarkround' };
 
 export const EMPTY = {
   noRemarks: 'Замечаний пока нет. Добавьте с экрана или загрузите журнал по шаблону.',
@@ -680,11 +679,8 @@ export const LOGIN = {
   /** Левая колонка входа: три строки лида и три шага; карточки ролей заполняют форму. */
   lead: ['Заказчик замечает.', 'Мы находим место в ТЗ.', 'Вы решаете, работа ли это.'],
   tryAs: 'Кто вы в демо',
-  roles: [
-    { email: 'business@remarkround.dev', name: 'Business', role: 'business', does: 'добавляет замечания, закрывает исправленное' },
-    { email: 'pm@remarkround.dev', name: 'PM', role: 'pm', does: 'решает, работа ли это, по черновику с цитатой ТЗ' },
-    { email: 'developer@remarkround.dev', name: 'Developer', role: 'developer', does: 'видит только принятые поломки' },
-  ] satisfies ReadonlyArray<{ email: string; name: string; role: Role; does: string }>,
+  /** Карточки демо-персон приходят из GET /auth/options только на стенде (D-2); здесь — подпись пароля. */
+  demoPasswordHint: (password: string) => `пароль ${password}`,
   steps: ['Замечание', 'Цитата из ТЗ', 'Решение человека'],
   noAccount: 'Нет аккаунта?',
   toRegister: 'Зарегистрироваться',

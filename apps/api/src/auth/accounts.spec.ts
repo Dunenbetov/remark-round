@@ -97,6 +97,21 @@ describe('accounts', () => {
     const options = await h.http.get('/api/v1/auth/options').expect(200);
     expect(typeof options.body.demoLogins).toBe('boolean');
     expect(options.body.registration).toBe('open');
+    // Демо-персоны приходят с сервера только при demoLogins (D-2): в тестах NODE_ENV=test → включены
+    expect(options.body.demoAccounts).toHaveLength(3);
+    expect(options.body.demoAccounts.map((a: { role: string }) => a.role).sort()).toEqual(['business', 'developer', 'pm']);
+    expect(options.body.demoPassword).toBe('remarkround');
+    process.env['DEMO_LOGINS'] = 'false';
+    resetConfig();
+    try {
+      const closed = await h.http.get('/api/v1/auth/options').expect(200);
+      expect(closed.body.demoLogins).toBe(false);
+      expect(closed.body.demoAccounts).toBeUndefined();
+      expect(closed.body.demoPassword).toBeUndefined();
+    } finally {
+      delete process.env['DEMO_LOGINS'];
+      resetConfig();
+    }
   });
 
   describe('«Забыли пароль» (ADR 012)', () => {
