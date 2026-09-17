@@ -3,7 +3,7 @@ import type { Invitation, Role } from '@remarkround/db';
 import { createHash, randomBytes } from 'node:crypto';
 import { config } from '../config';
 import { MailService } from '../mail/mail.service';
-import { invitationMail } from '../mail/templates';
+import { invitationMail, memberAddedMail } from '../mail/templates';
 import { securityEvent } from '../observability/security-log';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectContext } from './project-context';
@@ -25,6 +25,11 @@ export interface InvitationLink {
   token: string;
   expiresAt: string;
 }
+
+/** «Новая ссылка»: новый токен и признак, что письмо с ним ушло (I-2). */
+export type InvitationRelink = InvitationLink & {
+  emailed: boolean;
+};
 
 export type InvitationCreated = InvitationSummary & InvitationLink & {
   /** Письмо со ссылкой ушло приглашённому (ADR 009): без SMTP — false, ссылку шлёт PM сам. */
@@ -83,15 +88,28 @@ export class InvitationsService {
     return this.mail.enqueue(invitationMail({ to, projectName: project?.name ?? '', role, inviterName: inviter?.name ?? '', url, expiresAt }), ctx.projectId);
   }
 
-  /** Новая ссылка для ожидающего приглашения: прежняя перестаёт работать, срок продлевается. */
-  async regenerateLink(ctx: ProjectContext, invitationId: string): Promise<InvitationLink> {
+  /** Новая ссылка для ожидающего приглашения: прежняя перестаёт работать, срок продлевается, письмо уходит снова (I-2). */
+  async regenerateLink(ctx: ProjectContext, invitationId: string): Promise<InvitationRelink> {
     const row = await this.prisma.invitation.findFirst({ where: { id: invitationId, projectId: ctx.projectId, acceptedAt: null } });
     if (!row) throw new NotFoundException();
     const token = newToken();
     const expiresAt = expiry();
     await this.prisma.invitation.update({ where: { id: row.id }, data: { tokenHash: hashToken(token), expiresAt, invitedById: ctx.userId } });
     securityEvent('invitation.link', { projectId: ctx.projectId, by: ctx.userId, invitationId: row.id });
-    return { token, expiresAt: expiresAt.toISOString() };
+    const emailed = await this.sendLink(ctx, row.email, row.role, token, expiresAt);
+    return { token, expiresAt: expiresAt.toISOString(), emailed };
+  }
+
+  /** Зарегистрированного добавили напрямую (ADR 006): письмо «вы в проекте» со ссылкой на проект, без токенов (I-3). */
+  async notifyAdded(ctx: ProjectContext, to: { email: string; name: string }, role: Role): Promise<boolean> {
+    if (!this.mail.enabled) return false;
+    const [project, inviter] = await Promise.all([
+      this.prisma.project.findUnique({ where: { id: ctx.projectId }, select: { name: true, slug: true } }),
+      this.prisma.user.findUnique({ where: { id: ctx.userId }, select: { name: true } }),
+    ]);
+    if (!project) return false;
+    const url = `${config().WEB_ORIGIN}/${project.slug}`;
+    return this.mail.enqueue(memberAddedMail({ to: to.email, name: to.name, projectName: project.name, role, inviterName: inviter?.name ?? '', url }), ctx.projectId);
   }
 
   async listPending(projectId: string): Promise<InvitationSummary[]> {
@@ -145,15 +163,17 @@ export class InvitationsService {
   }
 
   private async accept(row: Invitation, userId: string): Promise<void> {
-    await this.prisma.$transaction([
-      this.prisma.membership.upsert({
+    await this.prisma.$transaction(async (tx) => {
+      // Две вкладки принимают одну ссылку разом (I-4): acceptedAt ставится условно, второй получает 410, а не второе место
+      const { count } = await tx.invitation.updateMany({ where: { id: row.id, acceptedAt: null }, data: { acceptedAt: new Date(), acceptedByUserId: userId } });
+      if (count !== 1) throw new GoneException('Приглашение уже принято');
+      await tx.membership.upsert({
         where: { userId_projectId: { userId, projectId: row.projectId } },
         create: { userId, projectId: row.projectId, role: row.role, invitedById: row.invitedById },
         // Уже участник: роль, которую дал PM, не трогаем
         update: {},
-      }),
-      this.prisma.invitation.update({ where: { id: row.id }, data: { acceptedAt: new Date(), acceptedByUserId: userId } }),
-    ]);
+      });
+    });
   }
 }
 

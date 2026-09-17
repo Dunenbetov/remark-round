@@ -23,11 +23,17 @@ export type JobHandler = (payload: unknown, ctx: JobContext) => Promise<void>;
  * `maxPerProject: 2` два идут, остальные ждут в очереди, а индексация, письма и прогоны других проектов не стоят.
  * Считается по памяти процесса: один инстанс API (docs/PROD.md), второй удвоил бы лимиты.
  */
-export interface JobLimits {
+export interface JobKindOptions {
   /** Сколько задач этого вида одновременно во всём процессе. */
   maxConcurrent?: number;
   /** Сколько задач этого вида одновременно на один projectId; задачи без проекта лимит не считают. */
   maxPerProject?: number;
+  /**
+   * Payload — секрет (письмо со ссылкой /join/<token> или /reset/<token>, I-1): после отправки строка Job удаляется,
+   * а не хранится 30 дней как done; при окончательном сбое payload обнуляется, остаётся только lastError.
+   * На повторе payload нужен — до последней попытки он на месте.
+   */
+  sensitive?: boolean;
 }
 
 interface ActiveJob {
@@ -79,7 +85,7 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
   private readonly log = new Logger(JobsService.name);
   readonly instanceId = randomUUID();
   private readonly handlers = new Map<string, JobHandler>();
-  private readonly limits = new Map<string, JobLimits>();
+  private readonly options = new Map<string, JobKindOptions>();
   /** Слотов больше, чем прогонов графа (GRAPH_MAX_CONCURRENT): индексация и письма не ждут модель. */
   private readonly concurrency = Number(process.env['JOBS_CONCURRENCY'] ?? 8);
   private readonly pollMs = Number(process.env['JOBS_POLL_MS'] ?? 500);
@@ -93,9 +99,9 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  register(kind: string, handler: JobHandler, limits: JobLimits = {}): void {
+  register(kind: string, handler: JobHandler, options: JobKindOptions = {}): void {
     this.handlers.set(kind, handler);
-    this.limits.set(kind, limits);
+    this.options.set(kind, options);
   }
 
   async onModuleInit(): Promise<void> {
@@ -246,13 +252,13 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
     }
     const kinds: string[] = [];
     for (const [kind, n] of byKind) {
-      const max = this.limits.get(kind)?.maxConcurrent;
+      const max = this.options.get(kind)?.maxConcurrent;
       if (max && n >= max) kinds.push(kind);
     }
     const pairs: Array<[string, string]> = [];
     for (const [key, n] of byPair) {
       const [kind, projectId] = key.split('\0') as [string, string];
-      const max = this.limits.get(kind)?.maxPerProject;
+      const max = this.options.get(kind)?.maxPerProject;
       if (max && n >= max) pairs.push([kind, projectId]);
     }
     return { kinds, pairs };
@@ -266,7 +272,8 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
       if (!handler) throw new Error(`нет обработчика для задачи ${job.kind}`);
       await handler(job.payload, { attempt: job.attempts, maxAttempts: job.maxAttempts, signal: ac.signal });
       if (ac.signal.aborted) return; // остановка: onApplicationShutdown вернул задачу в очередь
-      await this.prisma.job.update({ where: { id: job.id }, data: { status: 'done', finishedAt: new Date(), lockedAt: null } });
+      if (this.options.get(job.kind)?.sensitive) await this.prisma.job.delete({ where: { id: job.id } }).catch(() => null);
+      else await this.prisma.job.update({ where: { id: job.id }, data: { status: 'done', finishedAt: new Date(), lockedAt: null } });
     } catch (e) {
       if (ac.signal.aborted) return;
       const err = e as Error;
@@ -277,7 +284,8 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
         await this.prisma.job.update({ where: { id: job.id }, data: { status: 'queued', runAfter: new Date(Date.now() + delay), lockedAt: null, lockedBy: null, lastError: err.message } }).catch(() => null);
       } else {
         this.log.error({ msg: `job ${job.kind} ${job.id} failed: ${err.message}`, jobId: job.id, runId: job.runId, err: { name: err.name, message: err.message, stack: err.stack } });
-        await this.prisma.job.update({ where: { id: job.id }, data: { status: 'failed', finishedAt: new Date(), lockedAt: null, lastError: err.message } }).catch(() => null);
+        const scrub = this.options.get(job.kind)?.sensitive ? { payload: {} } : {};
+        await this.prisma.job.update({ where: { id: job.id }, data: { status: 'failed', finishedAt: new Date(), lockedAt: null, lastError: err.message, ...scrub } }).catch(() => null);
       }
     } finally {
       this.active.delete(job.id);

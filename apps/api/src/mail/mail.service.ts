@@ -24,7 +24,8 @@ export class MailService implements OnModuleInit {
   }
 
   onModuleInit(): void {
-    this.jobs.register('send_mail', (payload, ctx) => this.deliver(payload as MailMessage, ctx));
+    // Письма несут сырые ссылки /join и /reset: после отправки строка задачи удаляется (I-1)
+    this.jobs.register('send_mail', (payload, ctx) => this.deliver(payload as MailMessage, ctx), { sensitive: true });
     if (!this.enabled && config().isProduction) this.log.warn('SMTP_URL не задан: письма (приглашения, «вас ждёт кнопка») не отправляются');
   }
 

@@ -126,6 +126,50 @@ describe('members and invitations', () => {
     await h.http.get(`/api/v1/invitations/${inv.body.invitation.token}`).expect(404);
   });
 
+  it('почта (ADR 009, I-1..I-3): «Новая ссылка» шлёт письмо с новым токеном; зарегистрированному — письмо о проекте; токен не задерживается в очереди', async () => {
+    h.mail.sent.length = 0;
+    const inv = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `mail-${tag}@test.dev`, role: 'developer' }).expect(201);
+    expect(inv.body.invitation.emailed).toBe(true);
+    const [first] = await h.mail.waitFor(1);
+    expect(first!.to).toBe(`mail-${tag}@test.dev`);
+    expect(first!.text).toContain(`/join/${inv.body.invitation.token}`);
+
+    const fresh = await h.http.post(url(`/invitations/${inv.body.invitation.id}/link`)).set(h.auth('pm')).expect(200);
+    expect(fresh.body.emailed).toBe(true);
+    const [, second] = await h.mail.waitFor(2);
+    expect(second!.to).toBe(`mail-${tag}@test.dev`);
+    expect(second!.text).toContain(`/join/${fresh.body.token}`);
+    expect(second!.text).not.toContain(inv.body.invitation.token);
+
+    await register(`known-${tag}@test.dev`, 'business');
+    const added = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `known-${tag}@test.dev`, role: 'business' }).expect(201);
+    expect(added.body).toMatchObject({ kind: 'member', emailed: true, member: { role: 'business' } });
+    const [, , third] = await h.mail.waitFor(3);
+    expect(third!.to).toBe(`known-${tag}@test.dev`);
+    expect(third!.subject).toMatch(/вы в проекте/);
+    expect(third!.text).not.toContain('/join/');
+    // Смена роли уже участника письма не шлёт
+    const again = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `known-${tag}@test.dev`, role: 'developer' }).expect(201);
+    expect(again.body).toMatchObject({ kind: 'member', emailed: false });
+
+    // Сырой токен ссылки не хранится в таблице задач (I-1): строка send_mail удаляется сразу после отправки
+    for (let i = 0; i < 50 && (await h.prisma.job.count({ where: { kind: 'send_mail', projectId: h.projectId, status: { in: ['queued', 'running'] } } })) > 0; i++) await new Promise((r) => setTimeout(r, 100));
+    const left = await h.prisma.job.findMany({ where: { kind: 'send_mail', projectId: h.projectId } });
+    expect(left).toEqual([]);
+  });
+
+  it('одну ссылку нельзя принять дважды параллельно (I-4): один 200, другой 410, место в проекте одно', async () => {
+    const inv = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `race-${tag}@test.dev`, role: 'developer' }).expect(201);
+    const a = await register(`race-a-${tag}@test.dev`, 'developer');
+    const b = await register(`race-b-${tag}@test.dev`, 'developer');
+    const [ra, rb] = await Promise.all([
+      h.http.post(`/api/v1/invitations/${inv.body.invitation.token}/accept`).set(bearer(a.accessToken)),
+      h.http.post(`/api/v1/invitations/${inv.body.invitation.token}/accept`).set(bearer(b.accessToken)),
+    ]);
+    expect([ra.status, rb.status].sort()).toEqual([200, 410]);
+    expect(await h.prisma.membership.count({ where: { projectId: h.projectId, userId: { in: [a.user.id, b.user.id] } } })).toBe(1);
+  });
+
   it('смена роли выкидывает сокеты из комнат проекта; последний pm не понижается и не удаляется (409)', async () => {
     const dev = await h.prisma.user.findUniqueOrThrow({ where: { email: `dev-${tag}@test.dev` } });
     const login = await h.http.post('/api/v1/auth/login').send({ email: dev.email, password: 'secret-12' }).expect(200);

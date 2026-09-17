@@ -124,7 +124,7 @@ import { Skeleton } from '../ui/skeleton';
                       <button type="button" class="btn btn--danger-text btn--sm" (click)="revoke(inv)">{{ copy.revoke }}</button>
                     </span>
                     @if (links()[inv.id]; as fresh) {
-                      <span class="meta inv__ready" role="status">{{ copy.linkReady }}</span>
+                      <span class="meta inv__ready" role="status">{{ fresh.emailed ? copy.linkReadyMailed : copy.linkReady }}</span>
                       <input class="input inv__url" type="text" readonly [value]="link(fresh)" (focus)="selectAll($event)" />
                     }
                   </li>
@@ -345,7 +345,15 @@ export class TeamPage {
     this.addNote.set(null);
     try {
       const result = await this.api.addMember(this.projectId(), { email: this.email().trim(), role: this.side() });
-      this.addNote.set(result.kind === 'member' ? this.copy.addedMember(result.member.name) : result.invitation.emailed ? this.copy.addedInvitationMailed(result.invitation.email) : this.copy.addedInvitation(result.invitation.email));
+      this.addNote.set(
+        result.kind === 'member'
+          ? result.emailed
+            ? this.copy.addedMemberMailed(result.member.name)
+            : this.copy.addedMember(result.member.name)
+          : result.invitation.emailed
+            ? this.copy.addedInvitationMailed(result.invitation.email)
+            : this.copy.addedInvitation(result.invitation.email),
+      );
       if (result.kind === 'invitation') this.remember(result.invitation.id, result.invitation);
       this.email.set('');
       await this.load();
@@ -405,7 +413,7 @@ export class TeamPage {
 
   /** Сервер отдаёт токен один раз (ADR 006): держим его в памяти страницы и показываем текстом — буфер обмена может быть недоступен. */
   private remember(id: string, fresh: InvitationLink): void {
-    this.links.update((all) => ({ ...all, [id]: { token: fresh.token, expiresAt: fresh.expiresAt } }));
+    this.links.update((all) => ({ ...all, [id]: { token: fresh.token, expiresAt: fresh.expiresAt, emailed: fresh.emailed } }));
   }
 
   protected async newLink(inv: InvitationSummary): Promise<void> {

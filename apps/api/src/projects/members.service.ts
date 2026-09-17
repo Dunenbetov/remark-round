@@ -20,8 +20,8 @@ export interface MembersView {
   invitations: InvitationSummary[];
 }
 
-/** Приглашение отдаёт сырой `token` один раз (ADR 006): дальше только «Новая ссылка». */
-export type AddMemberResult = { kind: 'member'; member: MemberSummary } | { kind: 'invitation'; invitation: InvitationCreated };
+/** Приглашение отдаёт сырой `token` один раз (ADR 006): дальше только «Новая ссылка». `emailed` — письмо ушло (ADR 009). */
+export type AddMemberResult = { kind: 'member'; member: MemberSummary; emailed: boolean } | { kind: 'invitation'; invitation: InvitationCreated };
 
 export const LAST_PM = 'Единственный руководитель приёмки — сначала назначьте другого';
 
@@ -64,7 +64,9 @@ export class MembersService {
     ]);
     if (existing && existing.role !== role) this.tenancy.revoke(user.id, ctx.projectId);
     securityEvent(existing ? 'member.role' : 'member.add', { projectId: ctx.projectId, by: ctx.userId, userId: user.id, role, from: existing?.role });
-    return { kind: 'member', member: toSummary(user, membership) };
+    // Новому участнику — письмо «вы в проекте» (I-3); смена роли уже участника письма не требует
+    const emailed = existing ? false : await this.invitations.notifyAdded(ctx, { email: user.email, name: user.name }, role);
+    return { kind: 'member', member: toSummary(user, membership), emailed };
   }
 
   async changeRole(ctx: ProjectContext, userId: string, role: Role): Promise<MemberSummary> {

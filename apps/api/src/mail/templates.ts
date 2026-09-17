@@ -67,6 +67,27 @@ export function invitationMail(i: InvitationMailInput): MailMessage {
   };
 }
 
+export interface MemberAddedMailInput {
+  to: string;
+  name: string;
+  projectName: string;
+  role: Role;
+  inviterName: string;
+  /** Адрес проекта в SPA: `${WEB_ORIGIN}/<slug>`. */
+  url: string;
+}
+
+/** Зарегистрированного PM добавляет напрямую, без ссылки (ADR 006) — иначе человек узнал бы о проекте, только открыв приложение (I-3). */
+export function memberAddedMail(i: MemberAddedMailInput): MailMessage {
+  const role = ROLE_LABEL[i.role];
+  return {
+    to: i.to,
+    subject: `RemarkRound: вы в проекте «${i.projectName}»`,
+    text: [`${i.name}, здравствуйте.`, '', `${i.inviterName} добавляет вас в проект «${i.projectName}» — ${role}.`, '', `Открыть проект: ${i.url}`].join('\n'),
+    html: [`<p>${esc(i.name)}, здравствуйте.</p>`, `<p>${esc(i.inviterName)} добавляет вас в проект «${esc(i.projectName)}» — ${role}.</p>`, `<p><a href="${esc(i.url)}">Открыть проект</a></p>`].join('\n'),
+  };
+}
+
 function plural(n: number, one: string, few: string, many: string): string {
   const m10 = n % 10;
   const m100 = n % 100;

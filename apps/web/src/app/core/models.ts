@@ -137,6 +137,8 @@ export interface InvitationSummary {
 export interface InvitationLink {
   token: string;
   expiresAt: string;
+  /** Письмо с этой ссылкой ушло приглашённому (ADR 009); без SMTP — false или пусто. */
+  emailed?: boolean;
 }
 
 export type InvitationCreated = InvitationSummary & InvitationLink & {
@@ -156,7 +158,7 @@ export interface MembersView {
   invitations: InvitationSummary[];
 }
 
-export type AddMemberResult = { kind: 'member'; member: MemberSummary } | { kind: 'invitation'; invitation: InvitationCreated };
+export type AddMemberResult = { kind: 'member'; member: MemberSummary; emailed: boolean } | { kind: 'invitation'; invitation: InvitationCreated };
 
 /** /admin/users (ADR 006): человек поперёк проектов. */
 export interface AdminUser {
