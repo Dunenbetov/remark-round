@@ -42,6 +42,7 @@
 | DELETE | `/admin/invitations/:invitationId` | администратор инстанса | Отозвать; 204 |
 | POST | `/admin/invitations/:invitationId/link` | администратор инстанса | «Новая ссылка»: `{ token, expiresAt, emailed }`; прежняя перестаёт работать |
 | GET/POST | `/projects/:projectId/documents` | admin, pm | Пакет документов |
+| GET | `/projects/:projectId/documents/:id` | member | Мета + статус индекса одного документа (фронт берёт список; маршрут держат спеки и внешние клиенты) |
 | POST | `/projects/:projectId/documents/:id/reindex` | admin, pm | |
 | GET/POST | `/projects/:projectId/rounds` | member POST: pm/business | Раунды: `{ id, number, status, remarks, pending, closed, changeRequests, duplicates, createdAt, closedAt, closedByName, closedByRole }`; `pending` — нерешённые замечания (всё, кроме `closed` / `change_request` / `duplicate`); кто закрыл — имя и роль на момент закрытия (событие раунда, ADR 011). Каждое открытие, закрытие и повторное открытие пишет `RoundEvent`. Новый раунд — 409, пока в проекте есть нерешённые: «Новый раунд можно открыть, когда в раунде N не останется нерешённых замечаний (ещё K)» |
 | POST | `/projects/:projectId/rounds/:roundId/close` | pm, business | «Здесь мы остановились»: только когда все замечания решены (`closed` / `change_request` / `duplicate`), иначе 409 с перечнем нерешённого. Закрытый раунд — только для чтения: нельзя добавить замечание, импортировать журнал и связать повтор (409) |

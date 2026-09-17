@@ -50,6 +50,12 @@ export class DocumentsController {
     });
   }
 
+  /** Мета и статус индекса одного документа: фронт берёт список, но спеки и MCP-клиенты читают по id. */
+  @Get(':documentId')
+  get(@Ctx() ctx: ProjectContext, @Param('documentId') documentId: string): Promise<DocumentSummary> {
+    return this.documents.get(ctx, documentId);
+  }
+
   @Post(':documentId/reindex')
   @Roles('admin', 'pm')
   @HttpCode(202)
