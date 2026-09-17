@@ -40,6 +40,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
+      # @remarkround/db отдаёт dist/ (main/types): без сборки tsc API не видит модуль — локально dist есть, в CI нет
+      - run: pnpm --filter @remarkround/db build
       - run: pnpm db:migrate:deploy
       - name: Уязвимости prod-зависимостей (high и выше — красный)
         run: pnpm audit --prod --audit-level=high
