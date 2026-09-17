@@ -17,3 +17,6 @@ langfuse-data/
 
 # файлы пакета документов и скринов (локальное хранилище API)
 apps/api/storage/
+
+# Локальный запуск dev-сервера в Claude Code: абсолютные пути машины; образец — .claude/launch.example.json
+.claude/launch.json

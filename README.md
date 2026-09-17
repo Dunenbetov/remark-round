@@ -78,7 +78,7 @@ docker compose up
 | A/B с выводом в код | [`docs/EVALS.md`](docs/EVALS.md), `DEFAULT_RETEST_STRATEGY` | три живых прогона 4 сентября 2026 |
 | Выбор LLM и гиперпараметров | EVALS «Выбор модели», ARCHITECTURE «Стоимость, латентность, fallback» | стоимость в `AgentRun.costUsd` |
 | Веб-фронт | `apps/web` (Angular) | скриншоты выше |
-| README, ARCHITECTURE, EVALS, презентация, запуск | этот файл, `docs/ARCHITECTURE.md`, `docs/EVALS.md`, [`docs/presentation/`](docs/presentation/), `docker compose up` | — |
+| README, ARCHITECTURE, EVALS, презентация, запуск | этот файл, `docs/ARCHITECTURE.md`, `docs/EVALS.md`, [`docs/archive/presentation/`](docs/archive/presentation/), `docker compose up` | — |
 | Рекомендованное | guardrails, Docker Compose, auth + роли, CI с evals, fallback на правила без модели, свой eval-раннер | — |
 
 ## Ограничения, честно
@@ -122,10 +122,11 @@ docs/             ARCHITECTURE, EVALS, GRAPH, API, WS, STATUS, DEMO, ADR, UI-к�
 | [`AGENTS.md`](AGENTS.md) | Вход для Cursor / агентов |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Один лист системы, путь запроса, trade-off |
 | [`docs/EVALS.md`](docs/EVALS.md) | Метрики, три итерации, A/B, выбор моделей |
-| [`docs/presentation/`](docs/presentation/) | Презентация защиты (PDF и исходник) |
+| [`docs/archive/presentation/`](docs/archive/presentation/) | Презентация защиты (PDF и исходник) — артефакт курса в прежнем дизайне |
 | [`docs/DEMO.md`](docs/DEMO.md) | Сюжет защиты 10 мин |
 | [`docs/GRAPH.md`](docs/GRAPH.md) · [`docs/WS.md`](docs/WS.md) · [`docs/API.md`](docs/API.md) · [`docs/STATUS.md`](docs/STATUS.md) | Контракты |
 | [`docs/ENGINEERING.md`](docs/ENGINEERING.md) | Паттерны Nest, тесты-ворота |
-| [`docs/PHASES.md`](docs/PHASES.md) | Что и когда сделано |
+| [`docs/BETA-REVIEW.md`](docs/BETA-REVIEW.md) | Ревью перед бетой и ход работ (что делается сейчас) |
+| [`docs/archive/PHASES.md`](docs/archive/PHASES.md) | История фаз 0–11 (закрыты 5 сентября 2026) |
 | [`docs/adr/`](docs/adr/) | Не Jira · pixel-diff · MCP-фасад · совет разработчика · аккаунты · контур доступа · что видит заказчик · релизы и права |
 | [`docs/ui/`](docs/ui/) | COPY, эталон, антипаттерны |

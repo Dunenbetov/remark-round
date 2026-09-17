@@ -1,6 +1,6 @@
 # RemarkRound — эталонный референс проекта
 
-**Навигация по папке:** [README.md](README.md) · агентам: [AGENTS.md](AGENTS.md) · фазы: [docs/PHASES.md](docs/PHASES.md) · UI: [docs/ui/VISUAL.md](docs/ui/VISUAL.md) · [docs/ui/COPY.md](docs/ui/COPY.md)
+**Навигация по папке:** [README.md](README.md) · агентам: [AGENTS.md](AGENTS.md) · работы: [docs/BETA-REVIEW.md](docs/BETA-REVIEW.md) (история фаз — [docs/archive/PHASES.md](docs/archive/PHASES.md)) · UI: [docs/ui/VISUAL.md](docs/ui/VISUAL.md) · [docs/ui/COPY.md](docs/ui/COPY.md)
 
 **Для кого этот файл:** человек и любой агент, который пишет код.  
 **Статус:** финальная доктрина. Не переизобретать продукт, не смягчать ограничения, не «улучшать» доктрину без явного запроса владельца.  
@@ -359,7 +359,7 @@ load original remark + old screenshot + new screenshot
 
 Статусы `Remark` (не раздувать в Jira-машину):
 
-`imported` → `triaging` → `awaiting_pm` → `defect` | `change_request` | `unspecified` | `duplicate` | `cannot_tell` → (для defect) `in_dev` (опционально, можно заменить комментарием) → `ready_for_retest` → `awaiting_business_close` → `closed` | `reopened` (заказчик, проверивший сам: `ready_for_retest` → `closed`, ADR 010)
+`imported` → `triaging` → `awaiting_pm` → `defect` | `change_request` | `unspecified` | `duplicate` | `cannot_tell` → (для defect) `ready_for_retest` → `awaiting_business_close` → `closed` | `reopened` (заказчик, проверивший сам: `ready_for_retest` → `closed`, ADR 010)
 
 Разработчик **не** видит очередь `awaiting_pm` как «свои задачи». PM не может быть обойден.
 

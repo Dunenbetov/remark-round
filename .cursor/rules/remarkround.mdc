@@ -5,7 +5,7 @@ alwaysApply: true
 
 # RemarkRound
 
-Канон: `REMARKROUND.md` в корне. Вход: `AGENTS.md`. Фазы: `docs/PHASES.md`.
+Канон: `REMARKROUND.md` в корне. Вход: `AGENTS.md`. Актуальные работы: `docs/BETA-REVIEW.md` (фазы 0–11 закрыты, история — `docs/archive/PHASES.md`).
 
 Доктрина: ТЗ — опора, решает человек. Нет автозакрытия. Нет работы разработчику до кнопки PM. Скрин меняет ответ. Ретест — pixel-diff + пояснение модели, LLM не сравнивает пиксели. `unspecified` ≠ CR. `projectId` только SQL/RLS.
 

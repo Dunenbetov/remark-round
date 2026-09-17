@@ -49,7 +49,7 @@
 
 ## Компоненты (apps/web/src/app/ui)
 
-`rr-app-bar`, `rr-segmented`, `rr-theme-toggle`, `rr-brand-mark`, `rr-icon`, `rr-page-header`, `rr-hint-line`, `rr-round-tiles`, `rr-group-header`, `rr-queue-rail`, `rr-card-nav`, `rr-card-header`, `rr-decision-panel`, `rr-stamp`, `rr-run-steps`, `rr-compare-stage`, `rr-drop-zone`, `rr-citation`, `rr-status-pill`, `rr-phase-line`, `rr-shot`, `rr-shot-viewer`, `rr-menu`, `rr-skeleton`, `rr-empty-state`, `rr-error-banner`, `rr-undo-bar`, `rr-doc-card`, `rr-doc-search`.
+`rr-app-bar`, `rr-segmented`, `rr-theme-toggle`, `rr-brand-mark`, `rr-icon`, `rr-page-header`, `rr-round-tiles`, `rr-group-header`, `rr-queue-rail`, `rr-card-nav`, `rr-card-header`, `rr-decision-panel`, `rr-stamp`, `rr-run-steps`, `rr-compare-stage`, `rr-drop-zone`, `rr-citation`, `rr-status-pill`, `rr-phase-line`, `rr-shot`, `rr-shot-viewer`, `rr-menu`, `rr-skeleton`, `rr-empty-state`, `rr-error-banner`, `rr-undo-bar`, `rr-doc-card`, `rr-doc-search`.
 
 ## Движение
 

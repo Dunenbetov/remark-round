@@ -5,8 +5,8 @@
 ## Обязательно прочитай до первого diff
 
 1. [`REMARKROUND.md`](REMARKROUND.md) — доктрина §2 и запреты §15.
-2. [`docs/PHASES.md`](docs/PHASES.md) — работай **только** в названной фазе. Не начинай с графа.
-3. Контракт фазы: Prisma / API / WS / GRAPH / UI.
+2. [`docs/BETA-REVIEW.md`](docs/BETA-REVIEW.md) — актуальный список работ и «Ход работ» в начале; фазы 0–11 закрыты, их история — [`docs/archive/PHASES.md`](docs/archive/PHASES.md). Правила исполнителя — раздел 0 ревью.
+3. Контракты: [`packages/db/prisma/schema.prisma`](packages/db/prisma/schema.prisma), [`docs/API.md`](docs/API.md), [`docs/WS.md`](docs/WS.md), [`docs/GRAPH.md`](docs/GRAPH.md), [`docs/STATUS.md`](docs/STATUS.md).
 4. Если трогаешь `apps/web`: [`docs/ui/COPY.md`](docs/ui/COPY.md), [`docs/ui/VISUAL.md`](docs/ui/VISUAL.md), [`docs/ui/ANTI.md`](docs/ui/ANTI.md), токены — только [`apps/web/src/styles/tokens.css`](apps/web/src/styles/tokens.css). Эталон дизайна «Arc · Индиго» — само приложение. Промпт: [`docs/ui/AGENT-PROMPT.md`](docs/ui/AGENT-PROMPT.md).
 
 ## Доктрина в одном абзаце
