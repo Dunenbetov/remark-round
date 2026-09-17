@@ -56,13 +56,31 @@ jobs:
           path: evals/results/ci-offline.*
       - name: Сборка фронта (web-тестов нет: сборка ловит ошибки шаблонов и типов)
         run: pnpm --filter @remarkround/web build
-      - name: Прод-override compose валиден
+      - name: Прод-override compose валиден (без профиля observability — как на бете, R-B1)
         run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
         env:
           JWT_SECRET: 0123456789abcdef0123456789abcdef
           POSTGRES_PASSWORD: ci-only
           PUBLIC_HOST: rr.example.com
           ADMIN_EMAILS: admin@rr.example.com
+      - name: Прод-override compose валиден с профилем observability (self-hosted Langfuse на сервере ≥ 16 ГБ)
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
+        env:
+          COMPOSE_PROFILES: observability
+          JWT_SECRET: 0123456789abcdef0123456789abcdef
+          POSTGRES_PASSWORD: ci-only
+          PUBLIC_HOST: rr.example.com
+          ADMIN_EMAILS: admin@rr.example.com
+          LANGFUSE_DB_PASSWORD: ci-only
+          CLICKHOUSE_PASSWORD: ci-only
+          MINIO_ROOT_PASSWORD: ci-only-minio
+          REDIS_AUTH: ci-only
+          SALT: ci-only
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          NEXTAUTH_SECRET: ci-only
+          LANGFUSE_PUBLIC_KEY: pk-lf-ci
+          LANGFUSE_SECRET_KEY: sk-lf-ci
+          LANGFUSE_INIT_USER_PASSWORD: ci-only
 
   # Релизные образы (аудит: no-release-artifacts): на push в main и на тег v* собираем api/web/mcp с GIT_SHA
   # и публикуем в GHCR. Прод делает `docker compose pull` по RR_TAG вместо сборки на боевом сервере (docs/PROD.md).

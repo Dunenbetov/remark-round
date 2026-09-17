@@ -52,9 +52,10 @@ export class ObservabilityService implements OnApplicationShutdown {
   constructor() {
     const publicKey = process.env['LANGFUSE_PUBLIC_KEY'];
     const secretKey = process.env['LANGFUSE_SECRET_KEY'];
-    const baseUrl = process.env['LANGFUSE_BASE_URL'] ?? process.env['LANGFUSE_HOST'] ?? DEFAULT_BASE_URL;
-    this.publicUrl = (process.env['LANGFUSE_PUBLIC_URL'] ?? baseUrl).replace(/\/$/, '');
-    this.projectId = process.env['LANGFUSE_PROJECT_ID'] ?? DEFAULT_PROJECT_ID;
+    // `||`, а не `??`: compose подставляет `${VAR:-}` пустой строкой, и пустой публичный адрес ломал бы ссылку на трейс
+    const baseUrl = process.env['LANGFUSE_BASE_URL'] || process.env['LANGFUSE_HOST'] || DEFAULT_BASE_URL;
+    this.publicUrl = (process.env['LANGFUSE_PUBLIC_URL'] || baseUrl).replace(/\/$/, '');
+    this.projectId = process.env['LANGFUSE_PROJECT_ID'] || DEFAULT_PROJECT_ID;
     const off = process.env['LANGFUSE_TRACING_ENABLED'] === 'false';
     this.enabled = Boolean(publicKey && secretKey) && !off;
     if (!this.enabled) {

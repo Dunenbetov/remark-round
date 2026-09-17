@@ -4,7 +4,7 @@
 
 ## Что нужно
 
-- Сервер Linux **4 vCPU / 8 ГБ**: лимиты памяти в `docker-compose.prod.yml` в сумме ≈ 7 ГБ (api 1.5, postgres 1, ClickHouse 1.5, langfuse-web 1, worker 0.75, остальное по мелочи); на 4 ГБ Langfuse-стек и база начнут вытеснять друг друга. Docker ≥ 24 с compose ≥ 2.24.
+- Сервер Linux **4 vCPU / 8 ГБ**: лимиты памяти в `docker-compose.prod.yml` без профиля `observability` в сумме ≈ 4,3 ГБ (api 2, postgres 1,5, web/mcp/caddy/backup по мелочи), остальное — ОС и page cache. Self-hosted Langfuse-стек (профиль `observability`, ещё 4,3 ГБ лимитов) — только на **16 ГБ**; на бете трейсы идут в Langfuse Cloud (см. «Langfuse в проде»). Docker ≥ 24 с compose ≥ 2.24.
 - DNS: `PUBLIC_HOST` (например `rr.company.kz`) → IP сервера. Caddy сам получит сертификат Let's Encrypt.
 - `OPENAI_API_KEY` и решение, можно ли слать тексты замечаний и кадры заказчика во внешнюю модель (`REMARKROUND.md` §12: без договора — нельзя; альтернатива — локальная модель за `LlmModule`).
 
@@ -25,7 +25,7 @@ cp .env.example .env
 | `ADMIN_EMAILS` | администраторы инстанса через запятую (ADR 006): регистрируются всегда, выдают право создавать проекты, отключают людей и завершают их сессии на странице «Администрирование» |
 | `REGISTRATION_MODE`, `REGISTRATION_DOMAINS` | необязательно: в production регистрация по умолчанию только по ссылке приглашения (`invite_only`); `REGISTRATION_DOMAINS=company.kz` пускает сотрудников с этого домена без ссылки; `open` — как на демо |
 | `OPENAI_API_KEY` | без него граф работает правилами по retrieve (честно, но грубее) |
-| `NEXTAUTH_SECRET`, `SALT`, `ENCRYPTION_KEY`, `CLICKHOUSE_PASSWORD`, `REDIS_AUTH`, `MINIO_ROOT_PASSWORD`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_INIT_USER_PASSWORD` | секреты Langfuse: заменить плейсхолдеры `change-me-local-dev` |
+| `LANGFUSE_CLOUD_URL`, `LANGFUSE_PROJECT_ID`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | Langfuse Cloud: адрес региона, id проекта и ключи из настроек проекта; без трейсов — `LANGFUSE_TRACING_ENABLED=false` (плейсхолдеры `pk-lf-/sk-lf-remarkround-local` в production API не примет). Секреты self-hosted стека (`NEXTAUTH_SECRET`, `SALT`, `ENCRYPTION_KEY`, `CLICKHOUSE_PASSWORD`, `REDIS_AUTH`, `MINIO_ROOT_PASSWORD`, `LANGFUSE_DB_PASSWORD`, `LANGFUSE_INIT_USER_PASSWORD`) нужны только с профилем `observability` |
 | `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` | чтобы не писать `-f` каждый раз |
 
 Образы не собираются на сервере: CI публикует их в GHCR на каждый push в `main` и тег `v*` ([ADR 008](adr/008-release-and-ownership.md)). В `.env` укажите, какую сборку поднимать: `RR_TAG=sha-<короткий sha>` (или `v1.2.0`; `latest` — последний `main`). Запуск и проверка:
@@ -43,7 +43,7 @@ curl -s https://$PUBLIC_HOST/api/v1/auth/options    # {"demoLogins":false,"regis
 
 Первым регистрируется администратор инстанса (e-mail из `ADMIN_EMAILS`) на `https://$PUBLIC_HOST/register` — только ему регистрация в закрытом режиме открыта без ссылки. В меню аккаунта → «Администрирование» он выдаёт руководителю приёмки право создавать проекты (или регистрирует его по ссылке приглашения); дальше руководитель создаёт проект и рассылает ссылки участникам (`docs/adr/006-access-contour.md`). Ссылка живёт 7 дней и показывается один раз: пропала — «Новая ссылка» на странице «Участники». Демо-аккаунтов `pm@remarkround.dev` в проде нет — и не должно быть.
 
-Прод-override делает: `NODE_ENV=production` (fail-fast на слабом секрете), `SEED_ON_START=false`, `DEMO_LOGINS=false`, `REGISTRATION_MODE=invite_only`, срок токена сутки (`JWT_EXPIRES_SECONDS`), `TRUST_PROXY_HOPS=2` (Caddy → nginx → API), кадры и документы в томе `api-storage`, ротация логов, `restart: always`, сервисы `caddy` и `backup`.
+Прод-override делает: `NODE_ENV=production` (fail-fast на слабом секрете), `SEED_ON_START=false`, `DEMO_LOGINS=false`, `REGISTRATION_MODE=invite_only`, срок токена сутки (`JWT_EXPIRES_SECONDS`), `TRUST_PROXY_HOPS=2` (Caddy → nginx → API), кадры и документы в томе `api-storage`, лимиты памяти и куча Node ниже лимита контейнера (`NODE_OPTIONS`), ротация логов у всех сервисов, `restart: always`, сервисы `caddy` и `backup`; Langfuse-стек прячет за профиль `observability` (не поднимается).
 
 ## Обновление
 
@@ -83,7 +83,7 @@ docker compose exec postgres psql -U remarkround -c "select count(*) as verdicts
 - **Репетиция восстановления — до первого пилота и потом раз в квартал.** На чистой машине: `.env` с теми же секретами, `docker compose pull`, `docker compose up -d postgres`, restore дампа как выше, `rclone copy offsite:<bucket>/storage` в том `api-storage`, `docker compose up -d`, вход администратора, открыть карточку с кадром. Засечь время — это и есть RTO; RPO при суточной копии — до 24 часов (`BACKUP_SCHEDULE` и `OFFSITE_INTERVAL_SECONDS` можно сделать чаще). Записать дату и время репетиции сюда: последняя — _не проводилась_.
 - **Пояс дат в xlsx-журнале** — `REPORT_TIMEZONE` (IANA, по умолчанию `Asia/Almaty`; неверное значение — API не стартует). Смещение подписано в шапке колонок файла.
 - **Доказательная база живёт в основной БД, а не в бэкапах** (ADR 011): дампы хранятся 6 месяцев, а история замечаний, события раундов и кадры (включая заменённые) нужны годами. История только дописывается — это держит триггер `rr_append_only`; строки истории и кадры не удаляются ни приложением, ни чисткой очереди. Удаление данных заказчика по требованию — вручную, в транзакции: `ALTER TABLE "RemarkStatusChange" DISABLE TRIGGER "RemarkStatusChange_append_only"` (и `RoundEvent_append_only`, `RemarkScreenshot_no_delete`), удаление, `ENABLE TRIGGER`, затем файлы проекта из тома `api-storage`; запись о том, кто и по какому запросу это сделал, — в журнал обслуживания.
-- Трейсы Langfuse (тома `langfuse-*`) **не бэкапятся** осознанно: это наблюдаемость, не данные приёмки; при потере сервера они пропадают вместе со ссылками «Трейс в Langfuse» на карточках.
+- Трейсы Langfuse **не бэкапятся** осознанно: это наблюдаемость, не данные приёмки. В Langfuse Cloud они живут у провайдера по его ретеншну; при self-hosted профиле (тома `langfuse-*`) с потерей сервера пропадают вместе со ссылками «Трейс в Langfuse» на карточках.
 
 ## Наблюдаемость и алерты
 
@@ -110,11 +110,13 @@ docker compose exec postgres psql -U remarkround -c "select count(*) as verdicts
 
 ## Langfuse в проде
 
-UI Langfuse наружу не публикуется (порт 3000 только на 127.0.0.1 сервера). Смотреть трейсы: `ssh -L 3000:127.0.0.1:3000 user@server`, затем `http://localhost:3000` (вход — `LANGFUSE_INIT_USER_EMAIL` / `_PASSWORD`). Ссылка «Трейс в Langfuse» на карточке у PM ведёт на `LANGFUSE_PUBLIC_URL` (по умолчанию `http://localhost:3000`) — работает у того, кто в туннеле. В трейсах — тексты замечаний и цитаты ТЗ заказчика: это ещё одна причина держать Langfuse внутри.
+На бете трейсы уходят в **Langfuse Cloud** (решение владельца по R-B1 из `docs/BETA-REVIEW.md`: на одном сервере 8 ГБ self-hosted стек съедал 4,3 ГБ лимитов и ронял ClickHouse по OOM). В `.env`: `LANGFUSE_CLOUD_URL`, `LANGFUSE_PROJECT_ID` и ключи проекта, затем `docker compose up -d api`; `/health` → `tracing: 'on'`. Ссылка «Трейс в Langfuse» на карточке у PM ведёт на `LANGFUSE_PUBLIC_URL` (по умолчанию — тот же адрес, что и `LANGFUSE_CLOUD_URL`). **В трейсах — тексты замечаний и цитаты ТЗ заказчика**: они уходят во внешний сервис так же, как в модель OpenAI, — это тот же класс решения (`REMARKROUND.md` §12), фиксируйте его вместе с решением по модели. Выключить трейсы совсем — `LANGFUSE_TRACING_ENABLED=false` (`tracing: 'off'`, ключи не нужны).
+
+Self-hosted стек (6 сервисов) остался за профилем `observability`: `COMPOSE_PROFILES=offsite,observability`, все секреты стека в `.env` (`NEXTAUTH_SECRET`, `SALT`, `ENCRYPTION_KEY`, `CLICKHOUSE_PASSWORD`, `REDIS_AUTH`, `MINIO_ROOT_PASSWORD`, `LANGFUSE_DB_PASSWORD`, `LANGFUSE_INIT_USER_PASSWORD`, ключи), `LANGFUSE_CLOUD_URL` не задавать, `LANGFUSE_PUBLIC_URL=http://localhost:3000`. Нужен сервер **16 ГБ**. UI наружу не публикуется (порт 3000 только на 127.0.0.1): `ssh -L 3000:127.0.0.1:3000 user@server`, затем `http://localhost:3000` (вход — `LANGFUSE_INIT_USER_EMAIL` / `_PASSWORD`) — ссылка с карточки работает у того, кто в туннеле. Compose не проверяет секреты выключенного профиля: при включённом профиле с пустыми секретами langfuse-web/worker и minio не стартуют, а clickhouse и redis поднимутся без пароля — смотрите `docker compose ps` после `up`.
 
 ## Чеклист перед запуском
 
-- [ ] `JWT_SECRET`, `POSTGRES_PASSWORD`, `PUBLIC_HOST`, `ADMIN_EMAILS` заданы; плейсхолдеры `change-me-local-dev` в `.env` не остались.
+- [ ] `JWT_SECRET`, `POSTGRES_PASSWORD`, `PUBLIC_HOST`, `ADMIN_EMAILS` заданы; ключи Langfuse Cloud настоящие (или `LANGFUSE_TRACING_ENABLED=false`); плейсхолдеры `change-me-local-dev` в `.env` не остались; `COMPOSE_PROFILES` без `observability`.
 - [ ] `docker compose config -q` без ошибок; `docker compose ps` — все healthy.
 - [ ] `/api/v1/auth/options` → `{ demoLogins: false, registration: 'invite_only' }`; вход `pm@remarkround.dev` → 401; регистрация с чужого адреса без ссылки → 403.
 - [ ] Администратор зарегистрировался → выдал право создавать проекты → PM создал проект → приглашение по ссылке → второй человек вошёл.
@@ -122,7 +124,7 @@ UI Langfuse наружу не публикуется (порт 3000 только
 - [ ] `docker compose exec backup ls /backups/daily` — дамп есть; профиль `offsite` включён и `docker compose ps offsite` — healthy; репетиция восстановления проведена, дата записана выше.
 - [ ] Внешний uptime-монитор на `/health` заведён; `deploy/alerts.sh` в cron и прислал тестовое сообщение (`DISK_MIN_FREE_PCT=100 ./deploy/alerts.sh`).
 - [ ] `RR_TAG` в `.env` = тег из CI, `/api/v1/health` показывает его в `version`; `git tag v…` поставлен на выкаченный коммит.
-- [ ] Порты 5432/5433/8123/9000/3000 снаружи закрыты (`nmap` или `ss -tlnp` на сервере: только 80/443 и ssh).
+- [ ] Порты 5432 (и 5433/8123/9000/3000, если включён профиль `observability`) снаружи закрыты (`nmap` или `ss -tlnp` на сервере: только 80/443 и ssh); `/health` → `tracing: 'on'`.
 - [ ] Решение по ПДн в облачной модели зафиксировано (договор или локальная модель).
 
 ## Что ещё не сделано (осознанно)

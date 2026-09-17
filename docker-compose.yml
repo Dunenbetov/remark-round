@@ -2,6 +2,8 @@
 # cp .env.example .env && docker compose up  →  web :4200, api :3001, mcp :3002, Langfuse :3000
 # API сам применяет миграции и кладёт демо-данные (apps/api/docker-entrypoint.sh)
 # Порты опубликованы только на 127.0.0.1: наружу в проде смотрит caddy из docker-compose.prod.yml (docs/PROD.md)
+# Langfuse-стек (6 сервисов ниже) на демо поднимается всегда; прод-оверлей прячет его за профиль `observability`,
+# а трейсы шлёт в Langfuse Cloud (LANGFUSE_CLOUD_URL) — на одном сервере 8 ГБ self-host не помещается (docs/BETA-REVIEW.md R-B1)
 
 services:
   postgres:
@@ -36,11 +38,11 @@ services:
       args:
         GIT_SHA: ${GIT_SHA:-dev}
     restart: unless-stopped
+    # Зависимости от langfuse-web нет намеренно: в проде стек за профилем, compose отказал бы в `up`;
+    # экспортёр OpenTelemetry сам переждёт, пока Langfuse поднимется
     depends_on:
       postgres:
         condition: service_healthy
-      langfuse-web:
-        condition: service_started
     environment:
       PORT: 3000
       # Демо-стенд (фаза 11): в образе NODE_ENV=production, но здесь — development: seed и карточки ролей на входе.
@@ -69,8 +71,10 @@ services:
       STORAGE_DIR: /app/apps/api/storage
       # Langfuse (фаза 8): API шлёт span'ы внутрь сети compose, ссылки для человека — на публичный адрес UI.
       # Ключи совпадают с LANGFUSE_INIT_* у langfuse-web: проект и ключи создаются при первом старте.
-      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      # LANGFUSE_CLOUD_URL (не LANGFUSE_BASE_URL: та в .env задаёт адрес для API с хоста) переключает на Langfuse Cloud
+      LANGFUSE_BASE_URL: ${LANGFUSE_CLOUD_URL:-http://langfuse-web:3000}
       LANGFUSE_PUBLIC_URL: ${LANGFUSE_PUBLIC_URL:-http://localhost:3000}
+      LANGFUSE_TRACING_ENABLED: ${LANGFUSE_TRACING_ENABLED:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-remarkround-local}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-remarkround-local}
       LANGFUSE_PROJECT_ID: ${LANGFUSE_PROJECT_ID:-remarkround}
