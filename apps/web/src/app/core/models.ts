@@ -76,8 +76,6 @@ export interface User {
   canCreateProjects: boolean;
   /** E-mail из ADMIN_EMAILS: видит /admin — люди и проекты инстанса. */
   isInstanceAdmin: boolean;
-  /** Письма «вас ждёт кнопка» (ADR 009): выключаются в профиле. */
-  notifyByEmail: boolean;
 }
 
 export interface Session {
@@ -102,8 +100,6 @@ export interface AuthOptions {
   demoLogins: boolean;
   /** invite_only — регистрация только по ссылке приглашения (ADR 006): ссылку «Зарегистрироваться» на входе не показываем. */
   registration: RegistrationMode;
-  /** SMTP настроен: приглашения и «вас ждёт кнопка» уходят письмом (ADR 009). */
-  mail: boolean;
   /** Демо-персоны стенда и их пароль — приходят только при demoLogins; в бандле их нет. */
   demoAccounts?: ReadonlyArray<{ email: string; name: string; role: Role; does: string }>;
   demoPassword?: string;
@@ -128,27 +124,36 @@ export interface MemberSummary {
   createdAt: string;
 }
 
-/** Приглашённый, который ещё не зарегистрировался: ссылка `${origin}/join/${token}`. */
+/** Приглашение, которое ещё не приняли: ссылка `${origin}/join/${token}` или колокольчик у зарегистрированного (ADR 013). */
 export interface InvitationSummary {
   id: string;
   email: string;
   role: Role;
   createdAt: string;
   expiresAt: string | null;
+  /** Имя аккаунта с этим e-mail, если человек уже зарегистрирован: PM сверяет, того ли зовёт. */
+  inviteeName: string | null;
 }
 
-/** Сырой токен ссылки /join/<token> приходит один раз: при создании и по «Новая ссылка» (ADR 006). */
+/** Сырой токен ссылки приходит один раз: при создании и по «Новая ссылка» (ADR 006). Писем нет (ADR 013) — ссылку отправляют сами. */
 export interface InvitationLink {
   token: string;
   expiresAt: string;
-  /** Письмо с этой ссылкой ушло приглашённому (ADR 009); без SMTP — false или пусто. */
-  emailed?: boolean;
 }
 
-export type InvitationCreated = InvitationSummary & InvitationLink & {
-  /** Письмо со ссылкой ушло приглашённому; иначе ссылку шлёт PM сам. */
-  emailed: boolean;
-};
+export type InvitationCreated = InvitationSummary & InvitationLink;
+
+/** GET /auth/invitations — приглашения на мой e-mail, колокольчик в шапке (ADR 013). */
+export interface InboxInvitation {
+  id: string;
+  projectId: string;
+  projectName: string;
+  projectSlug: string;
+  role: Role;
+  inviterName: string;
+  createdAt: string;
+  expiresAt: string | null;
+}
 
 export interface InvitationPeek {
   /** `project` — в проект с ролью; `instance` — руководителем приёмки от администратора (право создавать проекты). */
@@ -164,7 +169,7 @@ export interface MembersView {
   invitations: InvitationSummary[];
 }
 
-export type AddMemberResult = { kind: 'member'; member: MemberSummary; emailed: boolean } | { kind: 'invitation'; invitation: InvitationCreated };
+export type AddMemberResult = { kind: 'member'; member: MemberSummary } | { kind: 'invitation'; invitation: InvitationCreated };
 
 /** /admin/users (ADR 006): человек поперёк проектов. */
 export interface AdminUser {

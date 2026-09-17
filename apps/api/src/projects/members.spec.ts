@@ -1,7 +1,8 @@
 /**
- * members.spec — фаза 11 (ADR 005) и контур доступа (ADR 006): участников ведёт pm; приглашение принимается
- * только по ссылке (токен — один раз, «Новая ссылка» выпускает заново); совпадение e-mail без ссылки ничего
- * не даёт; последний pm не снимается; удалённый или пониженный участник теряет доступ сразу (REST и WS).
+ * members.spec — фаза 11 (ADR 005), контур доступа (ADR 006) и приглашения без почты (ADR 013): участников ведёт pm;
+ * напрямую в проект никого не записывают — приглашение принимается по ссылке (токен — один раз, «Новая ссылка»
+ * выпускает заново) или из колокольчика владельцем адреса; последний pm не снимается; удалённый или пониженный
+ * участник теряет доступ сразу (REST и WS).
  */
 import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
@@ -20,7 +21,7 @@ describe('members and invitations', () => {
   });
 
   afterAll(async () => {
-    await h.prisma.invitation.deleteMany({ where: { projectId: h.projectId } });
+    await h.prisma.invitation.deleteMany({ where: { OR: [{ projectId: h.projectId }, { invitedById: { in: created } }] } });
     await h.prisma.membership.deleteMany({ where: { userId: { in: created } } });
     await h.prisma.user.deleteMany({ where: { id: { in: created } } });
     await h.cleanup();
@@ -53,20 +54,25 @@ describe('members and invitations', () => {
     await h.http.patch(url(`/members/${h.users.developer.id}`)).set(h.auth('pm')).send({ role: 'admin' }).expect(422);
   });
 
-  it('зарегистрированный — участник сразу; незнакомый e-mail — приглашение с token', async () => {
+  it('зарегистрированный не участник — приглашение с именем аккаунта (ADR 013); уже участник — смена роли; незнакомый e-mail — приглашение с token', async () => {
     const dev = await register(`dev-${tag}@test.dev`, 'developer');
-    const added = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `DEV-${tag}@test.dev`, role: 'developer' }).expect(201);
-    expect(added.body).toMatchObject({ kind: 'member', member: { userId: dev.user.id, role: 'developer' } });
+    const devInvite = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `DEV-${tag}@test.dev`, role: 'business' }).expect(201);
+    expect(devInvite.body).toMatchObject({ kind: 'invitation', invitation: { email: `dev-${tag}@test.dev`, role: 'business', inviteeName: `dev-${tag}` } });
+    expect(await h.prisma.membership.count({ where: { projectId: h.projectId, userId: dev.user.id } })).toBe(0);
+    await h.http.post(`/api/v1/auth/invitations/${devInvite.body.invitation.id}/accept`).set(bearer(dev.accessToken)).expect(200);
+    const changed = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `DEV-${tag}@test.dev`, role: 'developer' }).expect(201);
+    expect(changed.body).toEqual({ kind: 'member', member: expect.objectContaining({ userId: dev.user.id, role: 'developer' }) });
 
     const invited = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `Biz-${tag}@test.dev`, role: 'business' }).expect(201);
     expect(invited.body.kind).toBe('invitation');
-    expect(invited.body.invitation).toMatchObject({ email: `biz-${tag}@test.dev`, role: 'business' });
+    expect(invited.body.invitation).toMatchObject({ email: `biz-${tag}@test.dev`, role: 'business', inviteeName: null });
     expect(invited.body.invitation.token.length).toBeGreaterThanOrEqual(20);
     firstToken = invited.body.invitation.token;
 
     // В списке токена нет (ADR 006): в БД хранится только хэш
     const list = await h.http.get(url('/members')).set(h.auth('pm')).expect(200);
     expect(list.body.invitations).toHaveLength(1);
+    expect(list.body.invitations[0]).toMatchObject({ email: `biz-${tag}@test.dev`, inviteeName: null });
     expect(list.body.invitations[0].token).toBeUndefined();
     expect(JSON.stringify(list.body)).not.toContain(firstToken);
     const stored = await h.prisma.invitation.findUniqueOrThrow({ where: { id: list.body.invitations[0].id } });
@@ -112,7 +118,7 @@ describe('members and invitations', () => {
     await h.http.post(`/api/v1/invitations/${inv3.body.invitation.token}/accept`).set(bearer(later.accessToken)).expect(404);
   });
 
-  it('совпадение e-mail без ссылки ничего не даёт (ADR 006): регистрация, вход и /auth/me не принимают приглашение; PM добавляет напрямую', async () => {
+  it('совпадение e-mail само ничего не даёт: регистрация, вход и /auth/me не принимают приглашение; повтор PM — снова приглашение, уже с именем', async () => {
     const inv = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `late-${tag}@test.dev`, role: 'developer' }).expect(201);
     expect(inv.body.kind).toBe('invitation');
     const late = await register(`late-${tag}@test.dev`, 'developer');
@@ -123,48 +129,70 @@ describe('members and invitations', () => {
     expect(me.body.memberships).toEqual([]);
     await h.http.get(`/api/v1/invitations/${inv.body.invitation.token}`).expect(200);
 
-    // Человек уже зарегистрирован: PM добавляет его напрямую, ожидающая ссылка снимается
-    const added = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `late-${tag}@test.dev`, role: 'developer' }).expect(201);
-    expect(added.body.kind).toBe('member');
+    // Человек уже зарегистрирован: повтор PM — то же приглашение с новой ссылкой (старая гаснет) и именем аккаунта;
+    // PM видит имя и в списке, человек — в колокольчике
+    const again = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `late-${tag}@test.dev`, role: 'developer' }).expect(201);
+    expect(again.body).toMatchObject({ kind: 'invitation', invitation: { id: inv.body.invitation.id, inviteeName: `late-${tag}` } });
     await h.http.get(`/api/v1/invitations/${inv.body.invitation.token}`).expect(404);
+    const list = await h.http.get(url('/members')).set(h.auth('pm')).expect(200);
+    expect(list.body.invitations).toEqual(expect.arrayContaining([expect.objectContaining({ email: `late-${tag}@test.dev`, inviteeName: `late-${tag}` })]));
+    const bell = await h.http.get('/api/v1/auth/invitations').set(bearer(login.body.accessToken)).expect(200);
+    expect(bell.body).toEqual([expect.objectContaining({ id: inv.body.invitation.id, role: 'developer' })]);
+    await h.http.delete(url(`/invitations/${inv.body.invitation.id}`)).set(h.auth('pm')).expect(204);
   });
 
-  /** Письма предыдущих тестов доходят асинхронно — считаем только адресованные конкретному человеку. */
-  const mailsTo = async (to: string, count: number) => {
-    for (let i = 0; i < 100 && h.mail.sent.filter((m) => m.to === to).length < count; i++) await new Promise((r) => setTimeout(r, 100));
-    const list = h.mail.sent.filter((m) => m.to === to);
-    expect(list.length).toBeGreaterThanOrEqual(count);
-    return list;
-  };
+  it('колокольчик (ADR 013): видны только живые приглашения в проекты на свой e-mail; принять — участник и свежий MeResult', async () => {
+    const email = `bell-${tag}@test.dev`;
+    const bell = await register(email, 'developer');
+    const stranger = await register(`bell-other-${tag}@test.dev`, 'developer');
+    const inv = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: email.toUpperCase(), role: 'developer' }).expect(201);
+    expect(inv.body).toMatchObject({ kind: 'invitation', invitation: { email, role: 'developer', inviteeName: `bell-${tag}` } });
+    // Приглашение руководителя без проекта в колокольчик не попадает
+    const admin = await h.prisma.user.create({ data: { email: `bell-admin-${tag}@test.dev`, name: 'админ' } });
+    created.push(admin.id);
+    await h.prisma.invitation.create({ data: { projectId: null, email, role: 'pm', tokenHash: `bell-instance-${tag}`, invitedById: admin.id } });
 
-  it('почта (ADR 009, I-1..I-3): «Новая ссылка» шлёт письмо с новым токеном; зарегистрированному — письмо о проекте; токен не задерживается в очереди', async () => {
-    const invitee = `mail-${tag}@test.dev`;
-    const inv = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: invitee, role: 'developer' }).expect(201);
-    expect(inv.body.invitation.emailed).toBe(true);
-    const [first] = await mailsTo(invitee, 1);
-    expect(first!.text).toContain(`/join/${inv.body.invitation.token}`);
+    const inbox = await h.http.get('/api/v1/auth/invitations').set(bearer(bell.accessToken)).expect(200);
+    expect(inbox.body).toEqual([
+      { id: inv.body.invitation.id, projectId: h.projectId, projectName: expect.any(String), projectSlug: expect.any(String), role: 'developer', inviterName: 'pm', createdAt: expect.any(String), expiresAt: expect.any(String) },
+    ]);
+    const others = await h.http.get('/api/v1/auth/invitations').set(bearer(stranger.accessToken)).expect(200);
+    expect(others.body).toEqual([]);
+    // Чужое приглашение по id — 404, а не 403: наличие не раскрываем; принять его нельзя
+    await h.http.post(`/api/v1/auth/invitations/${inv.body.invitation.id}/accept`).set(bearer(stranger.accessToken)).expect(404);
+    await h.http.post(`/api/v1/auth/invitations/${inv.body.invitation.id}/decline`).set(bearer(stranger.accessToken)).expect(404);
+    await h.http.post('/api/v1/auth/invitations/00000000-0000-4000-8000-000000000000/accept').set(bearer(bell.accessToken)).expect(404);
+    // Токен MCP (ADR 003) — личные маршруты для него не существуют
+    const mcp = await h.http.post(url('/mcp-token')).set(h.auth('developer')).expect(200);
+    await h.http.get('/api/v1/auth/invitations').set(bearer(mcp.body.token)).expect(404);
 
-    const fresh = await h.http.post(url(`/invitations/${inv.body.invitation.id}/link`)).set(h.auth('pm')).expect(200);
-    expect(fresh.body.emailed).toBe(true);
-    const [, second] = await mailsTo(invitee, 2);
-    expect(second!.text).toContain(`/join/${fresh.body.token}`);
-    expect(second!.text).not.toContain(inv.body.invitation.token);
+    const accepted = await h.http.post(`/api/v1/auth/invitations/${inv.body.invitation.id}/accept`).set(bearer(bell.accessToken)).expect(200);
+    expect(accepted.body.user).toMatchObject({ id: bell.user.id });
+    expect(accepted.body.memberships).toEqual([expect.objectContaining({ projectId: h.projectId, role: 'developer' })]);
+    // Второе нажатие (соседняя вкладка) — 410; колокольчик пуст, ссылка того же приглашения тоже отработала
+    await h.http.post(`/api/v1/auth/invitations/${inv.body.invitation.id}/accept`).set(bearer(bell.accessToken)).expect(410);
+    await h.http.post(`/api/v1/auth/invitations/${inv.body.invitation.id}/decline`).set(bearer(bell.accessToken)).expect(410);
+    expect((await h.http.get('/api/v1/auth/invitations').set(bearer(bell.accessToken)).expect(200)).body).toEqual([]);
+    await h.http.get(`/api/v1/invitations/${inv.body.invitation.token}`).expect(410);
+  });
 
-    const known = `known-${tag}@test.dev`;
-    await register(known, 'business');
-    const added = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: known, role: 'business' }).expect(201);
-    expect(added.body).toMatchObject({ kind: 'member', emailed: true, member: { role: 'business' } });
-    const [third] = await mailsTo(known, 1);
-    expect(third!.subject).toMatch(/вы в проекте/);
-    expect(third!.text).not.toContain('/join/');
-    // Смена роли уже участника письма не шлёт
-    const again = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `known-${tag}@test.dev`, role: 'developer' }).expect(201);
-    expect(again.body).toMatchObject({ kind: 'member', emailed: false });
+  it('колокольчик: отклонить — строки нет, PM её больше не видит; истёкшее не показывается и не принимается (404)', async () => {
+    const email = `decline-${tag}@test.dev`;
+    const person = await register(email, 'business');
+    const inv = await h.http.post(url('/members')).set(h.auth('pm')).send({ email, role: 'business' }).expect(201);
+    await h.http.post(`/api/v1/auth/invitations/${inv.body.invitation.id}/decline`).set(bearer(person.accessToken)).expect(204);
+    expect(await h.prisma.invitation.findUnique({ where: { id: inv.body.invitation.id } })).toBeNull();
+    const list = await h.http.get(url('/members')).set(h.auth('pm')).expect(200);
+    expect(list.body.invitations.map((i: { email: string }) => i.email)).not.toContain(email);
+    await h.http.post(`/api/v1/auth/invitations/${inv.body.invitation.id}/accept`).set(bearer(person.accessToken)).expect(404);
 
-    // Сырой токен ссылки не хранится в таблице задач (I-1): строка send_mail удаляется сразу после отправки
-    for (let i = 0; i < 50 && (await h.prisma.job.count({ where: { kind: 'send_mail', projectId: h.projectId, status: { in: ['queued', 'running'] } } })) > 0; i++) await new Promise((r) => setTimeout(r, 100));
-    const left = await h.prisma.job.findMany({ where: { kind: 'send_mail', projectId: h.projectId } });
-    expect(left).toEqual([]);
+    const again = await h.http.post(url('/members')).set(h.auth('pm')).send({ email, role: 'business' }).expect(201);
+    await h.prisma.invitation.update({ where: { id: again.body.invitation.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    expect((await h.http.get('/api/v1/auth/invitations').set(bearer(person.accessToken)).expect(200)).body).toEqual([]);
+    await h.http.post(`/api/v1/auth/invitations/${again.body.invitation.id}/accept`).set(bearer(person.accessToken)).expect(404);
+    await h.http.post(`/api/v1/auth/invitations/${again.body.invitation.id}/decline`).set(bearer(person.accessToken)).expect(404);
+    expect(await h.prisma.membership.count({ where: { projectId: h.projectId, userId: person.user.id } })).toBe(0);
+    await h.http.delete(url(`/invitations/${again.body.invitation.id}`)).set(h.auth('pm')).expect(204);
   });
 
   it('одну ссылку нельзя принять дважды параллельно (I-4): один 200, другой 410, место в проекте одно', async () => {
@@ -222,7 +250,8 @@ describe('members and invitations', () => {
 
     // Второй pm — теперь первого можно убрать
     const pm2 = await register(`pm2-${tag}@test.dev`, 'pm');
-    await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `pm2-${tag}@test.dev`, role: 'pm' }).expect(201);
+    const inv = await h.http.post(url('/members')).set(h.auth('pm')).send({ email: `pm2-${tag}@test.dev`, role: 'pm' }).expect(201);
+    await h.http.post(`/api/v1/auth/invitations/${inv.body.invitation.id}/accept`).set(bearer(pm2.accessToken)).expect(200);
     await h.http.delete(url(`/members/${h.users.pm.id}`)).set(bearer(pm2.accessToken)).expect(204);
     await h.http.get(url('')).set(h.auth('pm')).expect(404);
     // Возвращаем pm харнесса, чтобы cleanup прошёл штатно

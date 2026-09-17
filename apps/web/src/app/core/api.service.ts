@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse, HttpInterceptorFn, HttpParams } from '@a
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, firstValueFrom } from 'rxjs';
-import type { AddMemberResult, AdminInviteResult, AdminProject, AdminUser, AuthOptions, DocumentKind, ImportJob, InvitationLink, InvitationPeek, InvitationSummary, MeResult, MemberSummary, MembersView, ProjectSummary, Remark, RemarkHistoryEntry, Role, Round, SearchHit, Session, Side, User, VerdictCode } from './models';
+import type { AddMemberResult, AdminInviteResult, AdminProject, AdminUser, AuthOptions, DocumentKind, ImportJob, InboxInvitation, InvitationLink, InvitationPeek, InvitationSummary, MeResult, MemberSummary, MembersView, ProjectSummary, Remark, RemarkHistoryEntry, Role, Round, SearchHit, Session, Side, User, VerdictCode } from './models';
 import { SessionService } from './session.service';
 
 const API_BASE = '/api/v1';
@@ -61,7 +61,7 @@ export class ApiService {
     return this.run(this.http.get<AuthOptions>(`${API_BASE}/auth/options`));
   }
 
-  updateProfile(body: { name?: string; preferredRole?: Side; notifyByEmail?: boolean }): Promise<User> {
+  updateProfile(body: { name?: string; preferredRole?: Side }): Promise<User> {
     return this.run(this.http.patch<User>(`${API_BASE}/auth/profile`, body));
   }
 
@@ -70,14 +70,24 @@ export class ApiService {
     return this.run(this.http.post<{ accessToken: string }>(`${API_BASE}/auth/password`, body));
   }
 
-  /** «Забыли пароль» (ADR 012): всегда 204 — есть ли адрес, сервер не говорит. */
-  forgotPassword(email: string): Promise<void> {
-    return this.run(this.http.post<void>(`${API_BASE}/auth/forgot`, { email }));
-  }
-
-  /** Новый пароль по ссылке из письма: 204; мёртвая ссылка — 404, использованная — 410. */
+  /** Новый пароль по ссылке от администратора (ADR 013): 204; мёртвая ссылка — 404, использованная — 410. */
   resetPassword(token: string, password: string): Promise<void> {
     return this.run(this.http.post<void>(`${API_BASE}/auth/reset`, { token, password }));
+  }
+
+  // Колокольчик (ADR 013): приглашения на мой e-mail — без писем и без ссылки
+
+  myInvitations(): Promise<InboxInvitation[]> {
+    return this.run(this.http.get<InboxInvitation[]>(`${API_BASE}/auth/invitations`));
+  }
+
+  /** Принять из колокольчика: ответ как у принятия по ссылке; 404 — отозвали, 410 — истекло. */
+  acceptInboxInvitation(id: string): Promise<MeResult> {
+    return this.run(this.http.post<MeResult>(`${API_BASE}/auth/invitations/${encodeURIComponent(id)}/accept`, {}));
+  }
+
+  declineInboxInvitation(id: string): Promise<void> {
+    return this.run(this.http.post<void>(`${API_BASE}/auth/invitations/${encodeURIComponent(id)}/decline`, {}));
   }
 
   createProject(name: string): Promise<ProjectSummary> {
@@ -129,6 +139,11 @@ export class ApiService {
 
   adminRevokeSessions(userId: string): Promise<void> {
     return this.run(this.http.post<void>(`${API_BASE}/admin/users/${userId}/revoke-sessions`, {}));
+  }
+
+  /** Ссылка /reset/<token> на 24 часа (ADR 013): администратор отправляет её человеку сам; 409 — человек отключён. */
+  adminResetLink(userId: string): Promise<InvitationLink> {
+    return this.run(this.http.post<InvitationLink>(`${API_BASE}/admin/users/${userId}/reset-link`, {}));
   }
 
   // Приглашение руководителя приёмки без проекта (ADR 006, 17.09)

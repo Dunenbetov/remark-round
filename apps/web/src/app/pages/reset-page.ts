@@ -6,8 +6,9 @@ import { errorMessage, errorStatus } from '../core/errors';
 import { BrandMark } from '../ui/brand-mark';
 
 /**
- * Новый пароль по ссылке из письма (ADR 012). После 204 — на вход с подсказкой «пароль изменён»: сессию сервер
- * по ссылке не выдаёт. Мёртвая или использованная ссылка (404/410) — предложение запросить новую.
+ * Новый пароль по ссылке /reset/<token>, которую прислал администратор (ADR 012, ADR 013 — писем нет). После 204 — на вход
+ * с подсказкой «пароль изменён»: сессию сервер по ссылке не выдаёт. Мёртвая или использованная ссылка (404/410) — попросить
+ * у администратора новую.
  */
 @Component({
   selector: 'rr-reset-page',
@@ -23,7 +24,6 @@ import { BrandMark } from '../ui/brand-mark';
         <h1 class="rp__title">{{ copy.pageTitle }}</h1>
         @if (dead()) {
           <p class="rp__note" role="alert">{{ copy.dead }}</p>
-          <a class="btn btn--primary btn--lg" routerLink="/forgot">{{ copy.again }}</a>
         } @else {
           <label class="field">
             <span class="field__label field__label--soft">{{ copy.password }}</span>

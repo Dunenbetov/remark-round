@@ -12,18 +12,19 @@ import { ErrorBanner } from '../ui/error-banner';
 import { Menu, MenuItem } from '../ui/menu';
 import { PageHeader } from '../ui/page-header';
 import { SegmentItem, Segmented } from '../ui/segmented';
+import { ShareLink } from '../ui/share-link';
 import { Skeleton } from '../ui/skeleton';
 
 /**
- * Участники проекта (ADR 005, ADR 006): руководитель приёмки добавляет по e-mail — зарегистрированный входит сразу,
- * незнакомый получает ссылку-приглашение, которая уходит письмом при настроенном SMTP (ADR 009), иначе PM копирует и шлёт сам. Токен ссылки сервер отдаёт
- * один раз; «Новая ссылка» выпускает заново. Роль — на проект, меняется здесь же; «Убрать из проекта» — через
+ * Участники проекта (ADR 005, ADR 006, ADR 013): руководитель приёмки добавляет по e-mail — и всегда получает приглашение.
+ * Писем нет: ссылку PM отправляет сам (rr-share-link), а у уже зарегистрированного приглашение ещё и в колокольчике.
+ * Токен ссылки сервер отдаёт один раз; «Новая ссылка» выпускает заново. Роль — на проект, меняется здесь же; «Убрать из проекта» — через
  * 5-секундную отмену, как любое необратимое действие.
  */
 @Component({
   selector: 'rr-team-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppBar, PageHeader, ErrorBanner, Segmented, Menu, Skeleton],
+  imports: [AppBar, PageHeader, ErrorBanner, Segmented, Menu, Skeleton, ShareLink],
   template: `
     <div class="page">
       <rr-app-bar />
@@ -48,6 +49,9 @@ import { Skeleton } from '../ui/skeleton';
           }
           @if (addNote(); as note) {
             <div class="meta add__note" role="status">{{ note }}</div>
+          }
+          @if (added(); as a) {
+            <rr-share-link [url]="link(a.fresh)" [text]="shareText(a.role)" [note]="copy.expires(date(a.fresh.expiresAt))" />
           }
         </form>
 
@@ -107,26 +111,30 @@ import { Skeleton } from '../ui/skeleton';
             <section class="paper inv" [attr.aria-label]="copy.invitationsTitle">
               <div class="inv__head">
                 <div class="eyebrow">{{ copy.invitationsTitle }}</div>
-                <p class="meta inv__hint">{{ mailOn() ? copy.invitationsHintMail : copy.invitationsHint }}</p>
+                <p class="meta inv__hint">{{ copy.invitationsHint }}</p>
               </div>
               <ul class="inv__list">
                 @for (inv of invitations(); track inv.id) {
                   <li class="inv__row">
                     <span class="inv__who">
                       <span class="inv__email">{{ inv.email }}</span>
+                      @if (inv.inviteeName) {
+                        <span class="meta">{{ copy.inviteeAccount(inv.inviteeName) }}</span>
+                      }
                       <span class="meta">{{ roleSide[sideOf(inv.role)] }}@if (inv.expiresAt) { · {{ copy.expires(date(inv.expiresAt)) }}}</span>
                     </span>
                     <span class="inv__actions">
-                      @if (links()[inv.id]; as fresh) {
-                        <button type="button" class="btn btn--secondary btn--sm" (click)="copyLink(inv.id, fresh)">{{ copiedId() === inv.id ? copy.copied : copy.copyLink }}</button>
-                      } @else {
-                        <button type="button" class="btn btn--secondary btn--sm" [disabled]="linking() === inv.id" (click)="newLink(inv)">{{ copy.newLink }}</button>
+                      @if (!links()[inv.id]) {
+                        <button type="button" class="btn btn--secondary btn--sm" [class.btn--busy]="linking() === inv.id" [disabled]="linking() === inv.id" (click)="newLink(inv)">{{ copy.newLink }}</button>
                       }
                       <button type="button" class="btn btn--danger-text btn--sm" (click)="revoke(inv)">{{ copy.revoke }}</button>
                     </span>
+                    <!-- ссылка только что созданного приглашения уже показана в форме выше -->
                     @if (links()[inv.id]; as fresh) {
-                      <span class="meta inv__ready" role="status">{{ fresh.emailed ? copy.linkReadyMailed : copy.linkReady }}</span>
-                      <input class="input inv__url" type="text" readonly [value]="link(fresh)" (focus)="selectAll($event)" />
+                      @if (added()?.id !== inv.id) {
+                        <span class="meta inv__ready" role="status">{{ copy.linkReady }}</span>
+                        <rr-share-link class="inv__share" [url]="link(fresh)" [text]="shareText(inv.role)" [note]="copy.expires(date(fresh.expiresAt))" />
+                      }
                     }
                   </li>
                 }
@@ -232,7 +240,7 @@ import { Skeleton } from '../ui/skeleton';
       gap: var(--sp-2);
     }
     .inv__ready,
-    .inv__url {
+    .inv__share {
       grid-column: 1 / -1;
     }
     .inv__ready {
@@ -273,11 +281,10 @@ export class TeamPage {
   protected readonly adding = signal(false);
   protected readonly addError = signal<string | null>(null);
   protected readonly addNote = signal<string | null>(null);
-  protected readonly copiedId = signal<string | null>(null);
   /** Сырые токены, полученные в этой сессии страницы (создание или «Новая ссылка»): сервер их больше не отдаст. */
   protected readonly links = signal<Record<string, InvitationLink>>({});
-  /** Письма настроены на сервере (ADR 009): подсказка про ссылку меняется. */
-  protected readonly mailOn = signal(false);
+  /** Только что созданное приглашение: его ссылка — под формой добавления. */
+  protected readonly added = signal<{ id: string; role: Role; fresh: InvitationLink } | null>(null);
   protected readonly linking = signal<string | null>(null);
   /** Строка, ждущая отмены: скрыта, пока идёт отсчёт; отмена возвращает её. */
   private readonly hiddenUserId = signal<string | null>(null);
@@ -304,7 +311,6 @@ export class TeamPage {
   }
 
   protected async load(): Promise<void> {
-    this.api.authOptions().then((o) => this.mailOn.set(o.mail)).catch(() => null);
     this.loading.set(true);
     this.error.set(null);
     try {
@@ -344,18 +350,18 @@ export class TeamPage {
     this.adding.set(true);
     this.addError.set(null);
     this.addNote.set(null);
+    this.added.set(null);
     try {
       const result = await this.api.addMember(this.projectId(), { email: this.email().trim(), role: this.side() });
-      this.addNote.set(
-        result.kind === 'member'
-          ? result.emailed
-            ? this.copy.addedMemberMailed(result.member.name)
-            : this.copy.addedMember(result.member.name)
-          : result.invitation.emailed
-            ? this.copy.addedInvitationMailed(result.invitation.email)
-            : this.copy.addedInvitation(result.invitation.email),
-      );
-      if (result.kind === 'invitation') this.remember(result.invitation.id, result.invitation);
+      if (result.kind === 'member') {
+        // Уже участник — сервер сменил роль
+        this.addNote.set(this.copy.addedMember(result.member.name));
+      } else {
+        const inv = result.invitation;
+        this.addNote.set(inv.inviteeName ? this.copy.addedInvitee(inv.inviteeName) : this.copy.addedInvitation(inv.email));
+        this.remember(inv.id, inv);
+        this.added.set({ id: inv.id, role: inv.role, fresh: { token: inv.token, expiresAt: inv.expiresAt } });
+      }
       this.email.set('');
       await this.load();
     } catch (err) {
@@ -403,6 +409,10 @@ export class TeamPage {
     try {
       await this.api.revokeInvitation(this.projectId(), inv.id);
       this.invitations.update((list) => list.filter((x) => x.id !== inv.id));
+      if (this.added()?.id === inv.id) {
+        this.added.set(null);
+        this.addNote.set(null);
+      }
     } catch (err) {
       this.error.set(this.message(err));
     }
@@ -412,9 +422,14 @@ export class TeamPage {
     return `${location.origin}/join/${fresh.token}`;
   }
 
+  /** Текст сообщения рядом со ссылкой в мессенджере. */
+  protected shareText(role: Role): string {
+    return this.copy.inviteText(this.projectName(), ROLE_SIDE[this.sideOf(role)]);
+  }
+
   /** Сервер отдаёт токен один раз (ADR 006): держим его в памяти страницы и показываем текстом — буфер обмена может быть недоступен. */
   private remember(id: string, fresh: InvitationLink): void {
-    this.links.update((all) => ({ ...all, [id]: { token: fresh.token, expiresAt: fresh.expiresAt, emailed: fresh.emailed } }));
+    this.links.update((all) => ({ ...all, [id]: { token: fresh.token, expiresAt: fresh.expiresAt } }));
   }
 
   protected async newLink(inv: InvitationSummary): Promise<void> {
@@ -430,20 +445,6 @@ export class TeamPage {
     } finally {
       this.linking.set(null);
     }
-  }
-
-  protected async copyLink(id: string, fresh: InvitationLink): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(this.link(fresh));
-      this.copiedId.set(id);
-      setTimeout(() => this.copiedId.update((current) => (current === id ? null : current)), 2000);
-    } catch {
-      // Буфер недоступен (http без TLS, старый браузер): ссылка и так показана текстом под строкой
-    }
-  }
-
-  protected selectAll(e: Event): void {
-    (e.target as HTMLInputElement).select();
   }
 
   protected date(iso: string): string {

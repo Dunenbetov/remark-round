@@ -102,16 +102,11 @@ describe('instance admin', () => {
     h.users.developer.token = back.body.accessToken;
   });
 
-  it('приглашает руководителя без проекта (A-1): письмо со ссылкой, регистрация по ней даёт право создавать проекты; известному e-mail — право сразу', async () => {
+  it('приглашает руководителя без проекта (A-1): ссылка, регистрация по ней даёт право создавать проекты; известному e-mail — право сразу', async () => {
     await h.http.post('/api/v1/admin/invitations').set(h.auth('pm')).send({ email: 'x@test.dev' }).expect(403);
-    h.mail.sent.length = 0;
     const email = `lead-${tag}@test.dev`;
     const inv = await h.http.post('/api/v1/admin/invitations').set(bearer(adminToken)).send({ email: email.toUpperCase() }).expect(201);
-    expect(inv.body).toMatchObject({ kind: 'invitation', invitation: { email, role: 'pm', emailed: true } });
-    const [mail] = await h.mail.waitFor(1);
-    expect(mail!.to).toBe(email);
-    expect(mail!.subject).toMatch(/руководителя приёмки/);
-    expect(mail!.text).toContain(`/join/${inv.body.invitation.token}`);
+    expect(inv.body).toMatchObject({ kind: 'invitation', invitation: { email, role: 'pm', inviteeName: null } });
     const peek = await h.http.get(`/api/v1/invitations/${inv.body.invitation.token}`).expect(200);
     expect(peek.body).toMatchObject({ kind: 'instance', projectName: null, role: 'pm', inviterName: expect.any(String) });
 
@@ -135,7 +130,7 @@ describe('instance admin', () => {
     await h.prisma.project.delete({ where: { id: project.body.id } });
     expect((await h.http.get('/api/v1/admin/invitations').set(bearer(adminToken)).expect(200)).body.map((i: { email: string }) => i.email)).not.toContain(email);
 
-    // Известный e-mail — право сразу, без приглашения и письма
+    // Известный e-mail — право сразу, без приглашения
     const known = await h.http.post('/api/v1/admin/invitations').set(bearer(adminToken)).send({ email: h.users.business.email }).expect(201);
     expect(known.body).toMatchObject({ kind: 'user', user: { id: h.users.business.id, canCreateProjects: true } });
     await h.prisma.user.update({ where: { id: h.users.business.id }, data: { canCreateProjects: false } });
@@ -143,7 +138,7 @@ describe('instance admin', () => {
     // «Новая ссылка» и отзыв
     const inv2 = await h.http.post('/api/v1/admin/invitations').set(bearer(adminToken)).send({ email: `lead2-${tag}@test.dev` }).expect(201);
     const fresh = await h.http.post(`/api/v1/admin/invitations/${inv2.body.invitation.id}/link`).set(bearer(adminToken)).expect(200);
-    expect(fresh.body).toMatchObject({ emailed: true });
+    expect(Object.keys(fresh.body).sort()).toEqual(['expiresAt', 'token']);
     await h.http.get(`/api/v1/invitations/${inv2.body.invitation.token}`).expect(404);
     await h.http.get(`/api/v1/invitations/${fresh.body.token}`).expect(200);
     await h.http.delete(`/api/v1/admin/invitations/${inv2.body.invitation.id}`).set(bearer(adminToken)).expect(204);

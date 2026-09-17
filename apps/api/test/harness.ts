@@ -14,12 +14,10 @@ import { hashPassword } from '../src/auth/password';
 import { DocumentsService } from '../src/documents/documents.service';
 import { EmbeddingsService } from '../src/llm/embeddings.service';
 import { LlmService } from '../src/llm/llm.service';
-import { MAIL_TRANSPORT } from '../src/mail/mail.transport';
 import { validationPipe } from '../src/main';
 import { RagService } from '../src/rag/rag.service';
 import { FakeEmbeddingsService } from './fake-embeddings';
 import { FakeLlmService } from './fake-llm';
-import { FakeMailTransport } from './fake-mail';
 
 export const TZ = readFileSync(resolve(__dirname, '../../../fixtures/spec/TZ.md'));
 export const PROTOCOL = readFileSync(resolve(__dirname, '../../../fixtures/protocol/PROTOCOL.md'));
@@ -35,8 +33,6 @@ export interface Harness {
   auth: (role: Role) => Record<string, string>;
   /** Подменённый LLM графа: правила + ручки для тестов ворот. */
   llm: FakeLlmService;
-  /** Почта в памяти: письма очереди `send_mail` и `notify_digest` (ADR 009). */
-  mail: FakeMailTransport;
   /**
    * Разбор идёт в фоне (фазы — по WS): тест ждёт нужный статус, как клиент ждёт `run.persisted`.
    * Возвращает карточку в этом статусе.
@@ -47,14 +43,11 @@ export interface Harness {
 
 export async function createHarness(): Promise<Harness> {
   const llm = new FakeLlmService();
-  const mail = new FakeMailTransport();
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(EmbeddingsService)
     .useValue(new FakeEmbeddingsService())
     .overrideProvider(LlmService)
     .useValue(llm)
-    .overrideProvider(MAIL_TRANSPORT)
-    .useValue(mail)
     .compile();
   const app = moduleRef.createNestApplication();
   app.setGlobalPrefix('api/v1');
@@ -92,7 +85,6 @@ export async function createHarness(): Promise<Harness> {
     users,
     auth: (role) => ({ Authorization: `Bearer ${users[role].token}` }),
     llm,
-    mail,
     waitFor: async (remarkId, statuses, role = 'pm', timeoutMs = 20000) => {
       const started = Date.now();
       let last = '';

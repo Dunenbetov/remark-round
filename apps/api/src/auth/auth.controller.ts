@@ -1,9 +1,9 @@
-import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { InvitationsService, type InboxInvitation } from '../tenancy/invitations.service';
 import { AuthOptions, AuthService, AuthUser, LoginResult, MeResult } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -17,6 +17,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly passwordReset: PasswordResetService,
+    private readonly invitations: InvitationsService,
   ) {}
 
   @Public()
@@ -59,16 +60,31 @@ export class AuthController {
     return this.auth.changePassword(user.id, dto);
   }
 
-  /** «Забыли пароль» (ADR 012): всегда 204 — есть ли такой адрес, наружу не видно. */
-  @Public()
-  @Throttle(AUTH_THROTTLE)
-  @Post('forgot')
-  @HttpCode(204)
-  forgot(@Body() dto: ForgotPasswordDto): Promise<void> {
-    return this.passwordReset.forgot(dto.email);
+  /**
+   * «Колокольчик» (ADR 013): приглашения в проекты на e-mail вошедшего — писем нет, зарегистрированный видит их здесь.
+   * Токен MCP сюда не пускает JwtAuthGuard (в пути нет projectId — 404), как и остальные личные маршруты.
+   */
+  @Get('invitations')
+  inbox(@CurrentUser() user: AuthUser): Promise<InboxInvitation[]> {
+    return this.invitations.listInbox(user.email);
   }
 
-  /** Новый пароль по ссылке из письма: 204, дальше — обычный вход; мёртвая ссылка — 404, использованная — 410. */
+  /** Принять из колокольчика: 200 и свежие membership, как POST /invitations/:token/accept; чужое или истёкшее — 404, принятое — 410. */
+  @Post('invitations/:invitationId/accept')
+  @HttpCode(200)
+  async acceptInvitation(@CurrentUser() user: AuthUser, @Param('invitationId') invitationId: string): Promise<MeResult> {
+    await this.invitations.acceptFromInbox(user, invitationId);
+    return this.auth.me(user.id);
+  }
+
+  /** Отклонить: строка приглашения удаляется, PM видит, что ожидающего больше нет. */
+  @Post('invitations/:invitationId/decline')
+  @HttpCode(204)
+  declineInvitation(@CurrentUser() user: AuthUser, @Param('invitationId') invitationId: string): Promise<void> {
+    return this.invitations.declineFromInbox(user, invitationId);
+  }
+
+  /** Новый пароль по ссылке от администратора (ADR 013): 204, дальше — обычный вход; мёртвая ссылка — 404, использованная — 410. */
   @Public()
   @Throttle(AUTH_THROTTLE)
   @Post('reset')

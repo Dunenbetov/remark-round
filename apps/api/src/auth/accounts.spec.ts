@@ -1,10 +1,12 @@
 /**
  * accounts.spec — фаза 11 (ADR 005) и контур доступа (ADR 006): регистрация и её режимы, свежие membership
- * без перелогина, профиль, смена пароля как отзыв токенов, право создавать проекты как флаг, демо-опции.
+ * без перелогина, профиль, смена пароля как отзыв токенов, ссылка смены пароля от администратора (ADR 013),
+ * право создавать проекты как флаг, демо-опции.
  */
 import { randomUUID } from 'node:crypto';
 import { createHarness, type Harness } from '../../test/harness';
 import { resetConfig } from '../config';
+import { hashPassword } from './password';
 import { hashToken } from '../tenancy/invitations.service';
 
 describe('accounts', () => {
@@ -120,59 +122,69 @@ describe('accounts', () => {
     }
   });
 
-  describe('«Забыли пароль» (ADR 012)', () => {
-    const email = `forgot-${tag}@test.dev`;
+  describe('Ссылка смены пароля от администратора (ADR 012, ADR 013)', () => {
+    const email = `reset-${tag}@test.dev`;
     let userId = '';
-    let token = '';
+    let adminToken = '';
+    const resetLink = (id: string, auth: Record<string, string>) => h.http.post(`/api/v1/admin/users/${id}/reset-link`).set(auth);
 
     beforeAll(async () => {
       const res = await register({ name: 'Забыла', email, password: 'secret-12', preferredRole: 'business' }).expect(201);
       userId = res.body.user.id;
       created.push(userId);
+      // ADMIN_EMAILS (test/setup.ts): первый адрес — этой спеки; блок invite_only ниже пересоздаёт его регистрацией
+      const admin = await h.prisma.user.upsert({
+        where: { email: 'instance-admin@test.dev' },
+        update: { passwordHash: await hashPassword('secret-12'), disabledAt: null },
+        create: { email: 'instance-admin@test.dev', name: 'Админ', passwordHash: await hashPassword('secret-12') },
+      });
+      created.push(admin.id);
+      adminToken = (await h.http.post('/api/v1/auth/login').send({ email: admin.email, password: 'secret-12' }).expect(200)).body.accessToken;
     });
 
-    it('неизвестный e-mail — 204 без письма; известный — письмо со ссылкой /reset/<token>; повтор в течение минуты — без второго письма', async () => {
-      h.mail.sent.length = 0;
-      await h.http.post('/api/v1/auth/forgot').send({ email: `nobody-${tag}@test.dev` }).expect(204);
-      await h.http.post('/api/v1/auth/forgot').send({ email: 'not-an-email' }).expect(422);
-      await new Promise((r) => setTimeout(r, 400));
-      expect(h.mail.sent).toHaveLength(0);
+    it('писем нет — ссылку выдаёт только администратор инстанса — pm 403, неизвестный 404, отключённый 409', async () => {
+      const options = await h.http.get('/api/v1/auth/options').expect(200);
+      expect(options.body.mail).toBeUndefined();
 
-      await h.http.post('/api/v1/auth/forgot').send({ email: email.toUpperCase() }).expect(204);
-      const [mail] = await h.mail.waitFor(1);
-      expect(mail!.to).toBe(email);
-      expect(mail!.subject).toMatch(/смена пароля/);
-      token = /\/reset\/([A-Za-z0-9_-]+)/.exec(mail!.text)![1]!;
-      expect(token.length).toBeGreaterThanOrEqual(20);
-      expect((await h.prisma.passwordReset.findUniqueOrThrow({ where: { tokenHash: hashToken(token) } })).userId).toBe(userId);
-
-      await h.http.post('/api/v1/auth/forgot').send({ email }).expect(204);
-      await new Promise((r) => setTimeout(r, 400));
-      expect(h.mail.sent).toHaveLength(1);
+      await resetLink(userId, h.auth('pm')).expect(403);
+      await resetLink('00000000-0000-4000-8000-000000000000', bearer(adminToken)).expect(404);
+      await h.prisma.user.update({ where: { id: userId }, data: { disabledAt: new Date() } });
+      const disabled = await resetLink(userId, bearer(adminToken)).expect(409);
+      expect(disabled.body.message).toBe('Человек отключён — сначала включите его');
+      await h.prisma.user.update({ where: { id: userId }, data: { disabledAt: null } });
+      expect(await h.prisma.passwordReset.count({ where: { userId } })).toBe(0);
     });
 
-    it('сброс: короткий пароль — 422; по ссылке пароль меняется, старые токены — 401; ссылка одноразовая (410); истёкшая и чужая — 404', async () => {
+    it('ссылка живёт сутки и в БД — только хэш; вторая ссылка гасит первую; сброс = выход везде; ссылка одноразовая (410); истёкшая и чужая — 404', async () => {
       const login = await h.http.post('/api/v1/auth/login').send({ email, password: 'secret-12' }).expect(200);
       const old = bearer(login.body.accessToken);
+
+      const first = await resetLink(userId, bearer(adminToken)).expect(200);
+      expect(first.body.token.length).toBeGreaterThanOrEqual(20);
+      const ttl = new Date(first.body.expiresAt).getTime() - Date.now();
+      expect(ttl).toBeGreaterThan(23 * 3600_000);
+      expect(ttl).toBeLessThanOrEqual(24 * 3600_000);
+      expect((await h.prisma.passwordReset.findUniqueOrThrow({ where: { tokenHash: hashToken(first.body.token) } })).userId).toBe(userId);
+
+      const second = await resetLink(userId, bearer(adminToken)).expect(200);
+      expect(second.body.token).not.toBe(first.body.token);
+      const dead = await h.http.post('/api/v1/auth/reset').send({ token: first.body.token, password: 'secret-99' }).expect(404);
+      expect(dead.body.message).toBe('Ссылка для смены пароля не действует — попросите администратора выдать новую');
+
+      const token = second.body.token as string;
       await h.http.post('/api/v1/auth/reset').send({ token, password: '1234567' }).expect(422);
       await h.http.post('/api/v1/auth/reset').send({ token, password: 'secret-99' }).expect(204);
       await h.http.get('/api/v1/auth/me').set(old).expect(401);
       await h.http.post('/api/v1/auth/login').send({ email, password: 'secret-12' }).expect(401);
       await h.http.post('/api/v1/auth/login').send({ email, password: 'secret-99' }).expect(200);
-      await h.http.post('/api/v1/auth/reset').send({ token, password: 'secret-77' }).expect(410);
+      const used = await h.http.post('/api/v1/auth/reset').send({ token, password: 'secret-77' }).expect(410);
+      expect(used.body.message).toBe('Ссылка уже использована — попросите администратора выдать новую');
 
       const expired = 'expired-token-0000000000';
       await h.prisma.passwordReset.create({ data: { userId, tokenHash: hashToken(expired), expiresAt: new Date(Date.now() - 1000) } });
       await h.http.post('/api/v1/auth/reset').send({ token: expired, password: 'secret-77' }).expect(404);
       await h.http.post('/api/v1/auth/reset').send({ token: 'unknown-token-00000000000', password: 'secret-77' }).expect(404);
       await h.http.post('/api/v1/auth/login').send({ email, password: 'secret-99' }).expect(200);
-    });
-
-    it('без пароля (passwordHash null) письмо не уходит, ответ всё равно 204', async () => {
-      h.mail.sent.length = 0;
-      await h.http.post('/api/v1/auth/forgot').send({ email: `google-${tag}@test.dev` }).expect(204);
-      await new Promise((r) => setTimeout(r, 400));
-      expect(h.mail.sent).toHaveLength(0);
     });
   });
 

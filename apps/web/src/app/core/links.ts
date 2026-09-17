@@ -62,7 +62,7 @@ export function remarkMatcher(segments: UrlSegment[]): UrlMatchResult | null {
   return s && segments.length === 1 && REMARK_SEGMENT.test(s.path) ? { consumed: [s], posParams: { remark: s } } : null;
 }
 
-/** Старые ссылки /p/<uuid>/… (письма, закладки): съедаем весь адрес, legacyUrlGuard переписывает его на новый. */
+/** Старые ссылки /p/<uuid>/… (закладки, старые ссылки): съедаем весь адрес, legacyUrlGuard переписывает его на новый. */
 export function legacyMatcher(segments: UrlSegment[]): UrlMatchResult | null {
   return segments[0]?.path === 'p' && segments.length >= 2 ? { consumed: segments } : null;
 }

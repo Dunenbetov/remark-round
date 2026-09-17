@@ -51,11 +51,6 @@ const Schema = z
     SENTRY_DSN: z.string().optional(),
     SENTRY_DSN_WEB: z.string().optional(),
     SENTRY_ENVIRONMENT: z.string().optional(),
-    /** Почта (ADR 009): smtp://user:pass@host:587 или smtps://…:465. Без значения писем нет — приглашения только ссылкой. */
-    SMTP_URL: z.string().optional(),
-    SMTP_FROM: z.string().default('RemarkRound <no-reply@localhost>'),
-    /** Окно, за которое уведомления одного человека склеиваются в одно письмо (мс). */
-    NOTIFY_DIGEST_MS: z.coerce.number().int().min(0).default(5 * 60 * 1000),
     /**
      * Пояс выгрузки журнала (ADR 011): даты в xlsx — время этого пояса, смещение подписано в шапке колонок. Сервер живёт
      * в UTC, а Excel поясов не знает: без явного пояса «16:09» в файле было бы UTC, и через год не понять, когда закрыли.
@@ -109,8 +104,6 @@ export type AppConfig = z.infer<typeof Schema> & {
   readonly registrationDomains: readonly string[];
   /** Нормализованные (lower-case) e-mail администраторов инстанса. */
   readonly adminEmails: ReadonlySet<string>;
-  /** SMTP_URL задан: письма отправляются (приглашения, «вас ждёт кнопка»). */
-  readonly mailEnabled: boolean;
 };
 
 let cached: AppConfig | null = null;
@@ -138,7 +131,6 @@ export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     registrationMode: c.REGISTRATION_MODE ?? (c.NODE_ENV === 'production' ? 'invite_only' : 'open'),
     registrationDomains: splitList(c.REGISTRATION_DOMAINS).map((d) => d.replace(/^@/, '')),
     adminEmails: new Set(splitList(c.ADMIN_EMAILS)),
-    mailEnabled: Boolean(c.SMTP_URL),
   };
 }
 

@@ -90,9 +90,6 @@ importers:
       nestjs-pino:
         specifier: ^5.1.0
         version: 5.1.0(@nestjs/common@11.2.1(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.1)(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
-      nodemailer:
-        specifier: ^10.0.0
-        version: 10.0.0
       openai:
         specifier: ^7.9.0
         version: 7.9.0(ws@8.21.3)(zod@3.25.76)
@@ -151,9 +148,6 @@ importers:
       '@types/node':
         specifier: ^22.17.2
         version: 22.20.1
-      '@types/nodemailer':
-        specifier: ^8.0.1
-        version: 8.0.1
       '@types/pdf-parse':
         specifier: ^1.1.5
         version: 1.1.5
@@ -2363,9 +2357,6 @@ packages:
   '@types/node@22.20.1':
     resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
 
-  '@types/nodemailer@8.0.1':
-    resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
-
   '@types/pdf-parse@1.1.5':
     resolution: {integrity: sha512-kBfrSXsloMnUJOKi25s3+hRmkycHfLK6A09eRGqF/N8BkQoPUmaCr+q8Cli5FnfohEz/rsv82zAiPz/LXtOGhA==}
 
@@ -4312,10 +4303,6 @@ packages:
   node-releases@2.0.53:
     resolution: {integrity: sha512-D9UOmYG3UH1V+ENW56t5QXBwJw1YEY18ruVeus89Rw+SyIgjPkCO84bRzO3uNIYosJbNwiabWVn48o3uJLjxFQ==}
     engines: {node: '>=18'}
-
-  nodemailer@10.0.0:
-    resolution: {integrity: sha512-wdv+hXBg0iIPIOf108FaZyTxqjQpCvQeAJt9pHHTooPy/y3vQtI9eiImM9AIVKR3e/0FeMA1oueNfBjFJcaK+Q==}
-    engines: {node: '>=20.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -7535,10 +7522,6 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
-  '@types/nodemailer@8.0.1':
-    dependencies:
-      '@types/node': 22.20.1
-
   '@types/pdf-parse@1.1.5':
     dependencies:
       '@types/node': 22.20.1
@@ -9679,8 +9662,6 @@ snapshots:
   node-int64@0.4.0: {}
 
   node-releases@2.0.53: {}
-
-  nodemailer@10.0.0: {}
 
   normalize-path@3.0.0: {}
 

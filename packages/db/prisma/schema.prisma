@@ -124,12 +124,9 @@ model User {
   disabledAt   DateTime?
   /// Версия сессий: токены с другой `tv` недействительны — «завершить все сессии» без смены пароля (ADR 006)
   tokenVersion Int          @default(0)
-  /// Письма «вас ждёт кнопка» (ADR 009): человек выключает в профиле; приглашения и служебные письма это не трогает
-  notifyByEmail Boolean     @default(true)
   memberships  Membership[]
   verdicts     HumanVerdict[]
   advices      DeveloperAdvice[]
-  notifications Notification[]
   statusChanges RemarkStatusChange[]
   roundEvents   RoundEvent[]
   authoredRemarks Remark[]     @relation("RemarkAuthor")
@@ -143,8 +140,8 @@ model User {
   createdAt    DateTime     @default(now())
 }
 
-/// Сброс пароля по e-mail (ADR 012): токен в БД — sha256, живёт час, одноразовый (usedAt ставится условно);
-/// новый запрос гасит прежние ссылки человека. Письмо со ссылкой /reset/<token> — задача send_mail, строка удаляется после отправки.
+/// Сброс пароля (ADR 012, ADR 013): ссылку /reset/<token> выдаёт администратор инстанса и передаёт человеку сам.
+/// Токен в БД — sha256, живёт сутки, одноразовый (usedAt ставится условно); новая ссылка гасит прежние ссылки человека.
 model PasswordReset {
   id        String    @id @default(uuid())
   userId    String
@@ -167,7 +164,6 @@ model Project {
   invitations Invitation[]
   documents   Document[]
   rounds      Round[]
-  notifications Notification[]
   /// Прямые FK тенантных колонок (аудит: tenancy-not-enforced): Postgres не даст записать замечание, прогон или чанк в несуществующий проект
   remarks     Remark[]
   runs        AgentRun[]
@@ -193,9 +189,9 @@ model Membership {
   @@index([projectId])
 }
 
-/// Приглашение в проект (ADR 005, ADR 006). Со SMTP письмо со ссылкой уходит само (ADR 009), без него ссылку /join/<token> PM отправляет сам.
-/// Принимается только по ссылке: регистрацией с inviteToken или вошедшим пользователем. Совпадение e-mail
-/// без ссылки ничего не даёт — иначе место в проекте забирал бы тот, кто первым зарегистрировал этот адрес.
+/// Приглашение в проект (ADR 005, ADR 006, ADR 013). Ссылку /join/<token> PM отправляет сам (писем нет).
+/// Принимается по ссылке (регистрацией с inviteToken или вошедшим пользователем) либо из «колокольчика» вошедшим,
+/// чей e-mail совпал с адресом приглашения (ADR 013): PM видит имя этого аккаунта до того, как человек примет.
 /// projectId = null — приглашение руководителя приёмки от администратора инстанса (ADR 006, дополнение 17.09):
 /// принятие выдаёт canCreateProjects, membership не создаёт; уникальность таких строк по e-mail держит сервис.
 model Invitation {
@@ -314,7 +310,6 @@ model Remark {
   screenshots    RemarkScreenshot[]
   citations      EvidenceCitation[]
   runs           AgentRun[]
-  notifications  Notification[]
   /// История переходов (аудит: remark-history): строка на каждый переход, кто и когда
   history        RemarkStatusChange[]
   verdicts       HumanVerdict[]
@@ -482,7 +477,7 @@ model ImportRow {
 /// не теряет работу: running с протухшим lockedAt возвращается в queued, временные ошибки модели — повтор с паузой.
 model Job {
   id          String    @id @default(uuid())
-  /// graph | index_document | send_mail | notify_digest — лимиты вида (сколько разом, сколько на проект) держит claim воркера
+  /// graph | index_document — лимиты вида (сколько разом, сколько на проект) держит claim воркера
   kind        String
   projectId   String?
   /// Для graph — runId прогона: cancel помечает очередь этого прогона cancelled
@@ -505,42 +500,6 @@ model Job {
 
   @@index([status, runAfter])
   @@index([runId])
-}
-
-/// Кому и о чём написать (ADR 009): статус замечания, который ждёт роль этого человека
-enum NotificationKind {
-  awaiting_pm
-  defect
-  ready_for_retest
-  awaiting_business_close
-  cannot_tell
-}
-
-enum NotificationStatus {
-  pending
-  sent
-  skipped
-  failed
-}
-
-/// Уведомление одному человеку об одном замечании (ADR 009). Копятся `pending`, задача `notify_digest` собирает
-/// всё ожидающее для человека в одно письмо; `skipped` — письма выключены (профиль, SMTP не настроен, человек отключён).
-model Notification {
-  id        String             @id @default(uuid())
-  userId    String
-  projectId String
-  remarkId  String
-  kind      NotificationKind
-  status    NotificationStatus @default(pending)
-  createdAt DateTime           @default(now())
-  sentAt    DateTime?
-  error     String?
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  remark    Remark             @relation(fields: [remarkId], references: [id], onDelete: Cascade)
-
-  @@index([userId, status])
-  @@index([projectId])
 }
 
 /// Строка на каждый переход замечания (аудит: remark-history): откуда, куда, кто (и в какой роли), каким прогоном,

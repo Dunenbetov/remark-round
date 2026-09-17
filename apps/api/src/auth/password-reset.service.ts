@@ -1,25 +1,30 @@
-import { GoneException, Injectable, NotFoundException } from '@nestjs/common';
-import { config } from '../config';
-import { MailService } from '../mail/mail.service';
-import { passwordResetMail } from '../mail/templates';
+import { ConflictException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import { securityEvent } from '../observability/security-log';
 import { PrismaService } from '../prisma/prisma.service';
-import { hashToken, newToken, normalizeEmail } from '../tenancy/invitations.service';
+import { hashToken, newToken } from '../tenancy/invitations.service';
 import { TenancyService } from '../tenancy/tenancy.service';
 import { hashPassword } from './password';
 
-/** Ссылка живёт час: письмо читают сразу, а токен в почте и в access-логах прокси не должен работать неделю. */
-export const RESET_TTL_MS = 60 * 60 * 1000;
-/** Повтор раньше минуты — без второго письма: 120 запросов в минуту с IP не должны превращаться в флуд чужого ящика. */
-export const RESET_COOLDOWN_MS = 60 * 1000;
+/**
+ * Ссылка живёт сутки (ADR 013): писем нет, администратор передаёт её человеку сам — в мессенджере или лично,
+ * и человек может открыть её не сразу. Дольше не нужно: токен в чате и в access-логах прокси не должен работать неделю.
+ */
+export const RESET_TTL_MS = 24 * 60 * 60 * 1000;
 
-export const RESET_LINK_DEAD = 'Ссылка для смены пароля не действует — запросите новую';
-export const RESET_LINK_USED = 'Ссылка уже использована — запросите новую';
+export const RESET_LINK_DEAD = 'Ссылка для смены пароля не действует — попросите администратора выдать новую';
+export const RESET_LINK_USED = 'Ссылка уже использована — попросите администратора выдать новую';
+export const RESET_USER_DISABLED = 'Человек отключён — сначала включите его';
+
+/** Ссылка /reset/<token>: сырой токен отдаётся администратору один раз, как у приглашений. */
+export interface PasswordResetLink {
+  token: string;
+  expiresAt: string;
+}
 
 /**
- * «Забыли пароль» (ADR 012, ревью беты I-5). /auth/forgot всегда отвечает 204: существование адреса не раскрывается,
- * поиск делается в любом случае. Токен — как у приглашений: в БД sha256, наружу один раз в письме; одноразовый
- * (usedAt ставится условно, второй параллельный сброс получает 410); новый запрос гасит прежние ссылки человека.
+ * Смена забытого пароля (ADR 012, изменено ADR 013). Писем нет: ссылку выдаёт администратор инстанса
+ * (POST /admin/users/:userId/reset-link) и передаёт человеку сам. Токен — как у приглашений: в БД sha256, наружу один раз;
+ * одноразовый (usedAt ставится условно, второй параллельный сброс получает 410); новая ссылка гасит прежние ссылки человека.
  * Сброс = выход везде, как смена пароля: passwordChangedAt и tokenVersion. Сессию с публичного эндпоинта не выдаём —
  * человек входит на /login с новым паролем.
  */
@@ -27,26 +32,23 @@ export const RESET_LINK_USED = 'Ссылка уже использована —
 export class PasswordResetService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly mail: MailService,
     private readonly tenancy: TenancyService,
   ) {}
 
-  async forgot(email: string): Promise<void> {
-    const normalized = normalizeEmail(email);
-    const user = await this.prisma.user.findUnique({ where: { email: normalized } });
-    securityEvent('password.forgot', { email: normalized, known: Boolean(user) });
-    // Без пароля (вход через провайдера), отключённый, почта выключена — молча: ответ тот же 204
-    if (!user || !user.passwordHash || user.disabledAt || !this.mail.enabled) return;
-    const recent = await this.prisma.passwordReset.findFirst({ where: { userId: user.id, createdAt: { gt: new Date(Date.now() - RESET_COOLDOWN_MS) } } });
-    if (recent) return;
+  /** Только администратор инстанса (guard на контроллере). Отключённому ссылку не выдаём: войти он всё равно не сможет. */
+  async issueLink(actorUserId: string, userId: string): Promise<PasswordResetLink> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, disabledAt: true } });
+    if (!user) throw new NotFoundException();
+    if (user.disabledAt) throw new ConflictException(RESET_USER_DISABLED);
     const token = newToken();
     const expiresAt = new Date(Date.now() + RESET_TTL_MS);
     await this.prisma.$transaction([
       // Действует только последняя ссылка; отработавшие старше суток — в корзину, таблица не растёт
-      this.prisma.passwordReset.deleteMany({ where: { userId: user.id, OR: [{ usedAt: null }, { createdAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } }] } }),
-      this.prisma.passwordReset.create({ data: { userId: user.id, tokenHash: hashToken(token), expiresAt } }),
+      this.prisma.passwordReset.deleteMany({ where: { userId, OR: [{ usedAt: null }, { createdAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } }] } }),
+      this.prisma.passwordReset.create({ data: { userId, tokenHash: hashToken(token), expiresAt } }),
     ]);
-    await this.mail.enqueue(passwordResetMail({ to: user.email, name: user.name, url: `${config().WEB_ORIGIN}/reset/${token}`, expiresAt }));
+    securityEvent('password.reset_link', { by: actorUserId, userId });
+    return { token, expiresAt: expiresAt.toISOString() };
   }
 
   async reset(token: string, password: string): Promise<void> {

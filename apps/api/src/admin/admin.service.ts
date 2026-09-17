@@ -3,7 +3,7 @@ import type { Role, User } from '@remarkround/db';
 import { isInstanceAdmin } from '../auth/auth.service';
 import { securityEvent } from '../observability/security-log';
 import { PrismaService } from '../prisma/prisma.service';
-import { InvitationsService, normalizeEmail, type InvitationCreated, type InvitationRelink, type InvitationSummary } from '../tenancy/invitations.service';
+import { InvitationsService, normalizeEmail, type InvitationCreated, type InvitationLink, type InvitationSummary } from '../tenancy/invitations.service';
 import { TenancyService } from '../tenancy/tenancy.service';
 import type { AdminUpdateUserDto } from './dto/update-user.dto';
 
@@ -65,7 +65,7 @@ export class AdminService {
     return this.invitations.revokeInstance(actorId, invitationId);
   }
 
-  invitationLink(actorId: string, invitationId: string): Promise<InvitationRelink> {
+  invitationLink(actorId: string, invitationId: string): Promise<InvitationLink> {
     return this.invitations.regenerateInstanceLink(actorId, invitationId);
   }
 

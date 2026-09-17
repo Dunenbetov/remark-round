@@ -10,7 +10,7 @@
 
 Решения владельца от 17.09 (раздел 8): Langfuse — **Cloud**; Sentry — **да**, за `SENTRY_DSN`; презентация и старые скриншоты — **в `docs/archive/`**; A-3 и I-7 — как рекомендовано (оставить / нестрого); R-H3 — лимит 100 строк / 5 МБ на бету; лимит модели — 20 $ в сутки на проект.
 
-**Итог 17.09.2026 (агент):** дни 1–6 раздела 7 закрыты, 20 коммитов на `main` (без push). Сделано: R-B1–R-B3, R-H1, R-H2, R-H4, R-H5, R-M2, R-M6, R-M7, R-L5, R-H3 (бета-лимит), I-1–I-6, A-1, A-2, D-1–D-5, разделы 3.1–3.3. Проверено: `pnpm --filter @remarkround/api test` — 241 тест (два прогона; спека закрытия без кадра один раз флейкнула под нагрузкой и прошла 2/2 отдельно), tsc, сборка mcp и web (894 кБ при пороге 900), `pnpm evals -- --offline` (binding 21/30, faithfulness 30/30, leakage ok — базовая линия режима правил), `docker compose config` без профиля и с ним; стенд пересобран на новый образ. **Владельцу:** аккаунт SMTP и DNS (4.2), проект в Langfuse Cloud и ключи, `SENTRY_DSN`/`SENTRY_DSN_WEB`, `.env` по чеклисту 6.4, репетиция restore (R-M3), тег `v0.9.0-beta` и push. На первые две недели: R-M4, R-M5, I-7, R-L1–R-L4, R-L6, R-L7, фоновый импорт (R-H3), слайдер «Сравнить», удаление `admin` из enum.
+**Итог 17.09.2026 (агент):** дни 1–6 раздела 7 закрыты, 20 коммитов на `main` (без push). Сделано: R-B1–R-B3, R-H1, R-H2, R-H4, R-H5, R-M2, R-M6, R-M7, R-L5, R-H3 (бета-лимит), I-1–I-6, A-1, A-2, D-1–D-5, разделы 3.1–3.3. Проверено: `pnpm --filter @remarkround/api test` — 241 тест (два прогона; спека закрытия без кадра один раз флейкнула под нагрузкой и прошла 2/2 отдельно), tsc, сборка mcp и web (894 кБ при пороге 900), `pnpm evals -- --offline` (binding 21/30, faithfulness 30/30, leakage ok — базовая линия режима правил), `docker compose config` без профиля и с ним; стенд пересобран на новый образ. **Владельцу:** ~~аккаунт SMTP и DNS (4.2)~~ (отменено ADR 013), проект в Langfuse Cloud и ключи, `SENTRY_DSN`/`SENTRY_DSN_WEB`, `.env` по чеклисту 6.4, репетиция restore (R-M3), тег `v0.9.0-beta` и push. На первые две недели: R-M4, R-M5, I-7, R-L1–R-L4, R-L6, R-L7, фоновый импорт (R-H3), слайдер «Сравнить», удаление `admin` из enum.
 
 | Дата | Ключи | Что сделано |
 |---|---|---|
@@ -33,6 +33,7 @@
 | 17.09 | R-H3 (бета) | Потолки импорта из env: `IMPORT_MAX_ROWS` (500) и `IMPORT_MAX_BYTES` (20 МБ), прод-override ставит 100 / 5 МБ; спека на 422; фоновый импорт (`ImportJob` + задача `import_journal`) — вторая неделя беты |
 | 17.09 | R-M2 | `AgentService.pruneCheckpoints`: чекпоинты прогонов persisted/failed/cancelled старше 7 дней удаляются на старте и раз в сутки; `JobsService.pruneFinished` тоже раз в сутки, не только на старте; спека в `run-deadline.spec` |
 | 17.09 | R-L5 | Sentry за флагом: `@sentry/node` (`instrument.ts` первым импортом; 5xx с `requestId` из фильтра, падения процесса с flush, сбои прогона `unknown`), `@sentry/browser` (DSN из `GET /auth/options` при `SENTRY_DSN_WEB`, `ReportingErrorHandler`, только ошибки — без трейсинга и replay); `/health.sentry`; PROD «Наблюдаемость», `.env.example` |
+| 17.09 | ADR 013 (почта отменена) | Решение владельца: домена и SMTP на бете нет — почта удалена целиком. Удалены `mail/`, `notifications/`, `nodemailer`, `SMTP_URL`/`SMTP_FROM`/`NOTIFY_DIGEST_MS`, `options.mail`, `emailed` в ответах, опция `sensitive` очереди; миграция `20260917180000_no_mail` (таблица `Notification`, её enum'ы, `User.notifyByEmail`, задачи `send_mail`/`notify_digest`). PM больше не записывает зарегистрированного напрямую: не участник — приглашение с `inviteeName`, колокольчик `GET /auth/invitations` + `…/:id/accept` (200 `MeResult`) и `…/:id/decline` (204); чужое и истёкшее — 404, принятое — 410. `POST /auth/forgot` удалён, ссылку смены пароля на 24 ч выдаёт администратор (`POST /admin/users/:userId/reset-link`). Спеки `members.spec`, `accounts.spec`, `admin.spec` (234 теста зелёные); ADR 013, ADR 009 заменён, ADR 012 изменён |
 
 ---
 
@@ -235,7 +236,7 @@
 
 **Итого: «сервис почты» строить не нужно.** Нужен аккаунт у SMTP-провайдера и одна строка в `.env`.
 
-### 4.2 Провайдер SMTP (владелец, 0 кода)
+### 4.2 Провайдер SMTP (владелец, 0 кода) — отменено ADR 013 (17.09: домена и SMTP на бете нет)
 
 Код на nodemailer принимает любой SMTP. Для одного сервера и < 1 000 писем/мес:
 
@@ -251,6 +252,8 @@
 Шаги: домен → SPF/DKIM/DMARC у провайдера → `SMTP_URL`, `SMTP_FROM='RemarkRound <rr@<domain>>'` в `.env` → `docker compose up -d api` → пригласить тестовый адрес → `docker compose logs api | grep send_mail` (`docs/PROD.md:102`).
 
 ### 4.3 Доработки (код), по приоритету
+
+> 17.09, ADR 013: почта удалена из продукта. I-1, I-2 (письмо), I-3, I-6 и почтовая часть I-5 **отменены** — вместо писем: ссылка и колокольчик для приглашений, ссылка смены пароля от администратора. I-4 (атомарный accept) остаётся и переиспользуется колокольчиком.
 
 - **I-1. Сырой токен утекает в `Job.payload` (безопасность).** `mail.service.ts:34` кладёт готовый текст письма с URL `/join/<token>` в JSON `Job.payload` (`schema.prisma:474`); done-задачи хранятся 30 дней (`jobs.service.ts:146`). Это обесценивает хранение `tokenHash`. **Задача:** для `kind='send_mail'` удалять строку `Job` сразу после `done` (`jobs.service.ts:205` — `delete` вместо `update`), `lastError` без тела письма. Тест: после отправки в БД нет `Job` с `payload.text ~ '/join/'`.
 - **I-2. «Отправить ещё раз».** `regenerateLink` (`invitations.service.ts:87`) должен звать `sendLink` и возвращать `{ token, expiresAt, emailed }`; `team-page.ts:411` показывает «письмо ушло». Тест в `members.spec`.
@@ -309,11 +312,11 @@
 1. Поднимать **только** `docker compose -f docker-compose.yml -f docker-compose.prod.yml` или `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` в `.env`; проверить `docker compose config | grep NODE_ENV` → `production`.
 2. `JWT_SECRET` (≥ 32, `openssl rand -hex 32`), `POSTGRES_PASSWORD` ≠ `remarkround`, `ADMIN_EMAILS` = ваш реальный e-mail, `PUBLIC_HOST`. Langfuse Cloud (R-B1, решение 17.09): `LANGFUSE_CLOUD_URL`, `LANGFUSE_PROJECT_ID`, настоящие `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` (плейсхолдеры допустимы только при `LANGFUSE_TRACING_ENABLED=false`); секреты self-hosted стека нужны лишь с профилем `observability` (сервер ≥ 16 ГБ). Sentry (R-L5): `SENTRY_DSN`, `SENTRY_DSN_WEB`.
 3. `OPENAI_API_KEY` задан; `LLM_MODE=rules` **не** ставить.
-4. `SMTP_URL`, `SMTP_FROM` (раздел 4.2). `REGISTRATION_MODE` не задавать (по умолчанию `invite_only`) или `REGISTRATION_DOMAINS=<домен компании>`.
+4. ~~`SMTP_URL`, `SMTP_FROM` (раздел 4.2)~~ — отменено ADR 013. `REGISTRATION_MODE` не задавать (по умолчанию `invite_only`) или `REGISTRATION_DOMAINS=<домен компании>`.
 5. `SEED_FORCE` отсутствует; `SEED_ON_START`/`DEMO_LOGINS` не переопределены на `true`.
 6. Прод-БД — **новый** том. Проверить: `select email from "User" where email like '%remarkround.dev' or email like '%other-tenant.dev'` → 0 строк.
 7. `TRUST_PROXY_HOPS=2`, `COMPOSE_PROFILES=offsite` + `OFFSITE_*` (лимиты после R-H5 — по пользователю, `THROTTLE_LIMIT` менять не нужно).
-8. Смоук после старта (`docs/PROD.md`, «Чеклист»): `GET /api/v1/auth/options` → `{ demoLogins:false, registration:'invite_only', mail:true }` без `demoAccounts`; вход `pm@remarkround.dev` → 401 (иначе `docker compose run --rm api seed:remove`); `/health` → `llm:'openai'`, `tracing:'on'`, `sentry:'on'`; порты 5432 (и 5433/8123/9000/3000 при профиле) снаружи закрыты; внешний uptime-монитор на `/health`; `deploy/alerts.sh` в cron; журнал импорта на бете — до 100 строк / 5 МБ (`IMPORT_MAX_*`).
+8. Смоук после старта (`docs/PROD.md`, «Чеклист»): `GET /api/v1/auth/options` → `{ demoLogins:false, registration:'invite_only' }` без `demoAccounts`; вход `pm@remarkround.dev` → 401 (иначе `docker compose run --rm api seed:remove`); `/health` → `llm:'openai'`, `tracing:'on'`, `sentry:'on'`; порты 5432 (и 5433/8123/9000/3000 при профиле) снаружи закрыты; внешний uptime-монитор на `/health`; `deploy/alerts.sh` в cron; журнал импорта на бете — до 100 строк / 5 МБ (`IMPORT_MAX_*`).
 
 ---
 
@@ -323,7 +326,7 @@
 
 | День | Задачи | Из раздела |
 |---|---|---|
-| 1 | Владелец: аккаунт у SMTP-провайдера, DNS (SPF/DKIM/DMARC), `.env` по чеклисту 6.4. Агент: R-B1 (Langfuse в профиль, лимиты), R-M6 (logging postgres, NODE_OPTIONS) | 4.2, 6.4, 2.1, 2.3 |
+| 1 | Владелец: ~~аккаунт у SMTP-провайдера, DNS (SPF/DKIM/DMARC)~~ (отменено ADR 013), `.env` по чеклисту 6.4. Агент: R-B1 (Langfuse в профиль, лимиты), R-M6 (logging postgres, NODE_OPTIONS) | 4.2, 6.4, 2.1, 2.3 |
 | 2 | R-B2 (fair claim в очереди) + R-B3 (батчевый INSERT чанков, таймауты транзакций) + R-H1 (пул 25, P2024 → 503) | 2.1, 2.2 |
 | 3 | R-H2 (дедлайн прогона, дневной USD-лимит) + R-H5 (throttle по userId) + I-1 (токен из `Job`) + I-2 («Отправить ещё раз») + I-3 (письмо зарегистрированному) | 2.2, 4.3 |
 | 4 | A-1 (админское приглашение PM без проекта) + A-2 (убрать `admin` из DTO) + I-5 («забыли пароль») + I-6 (переключатель в профиле) | 5.2, 4.3 |
@@ -338,7 +341,7 @@
 ## 8. Решения, которые должен принять владелец
 
 1. **Langfuse на бете:** выключить (профиль) или Langfuse Cloud? Рекомендация — Cloud или выключить; на 8 ГБ вместе с приложением он не живёт.
-2. **SMTP-провайдер и домен писем** (4.2). Рекомендация — Resend на вашем домене.
+2. ~~**SMTP-провайдер и домен писем** (4.2).~~ Решено 17.09: почты на бете нет (ADR 013).
 3. **Кто раздаёт роль `pm` внутри проекта** (A-3): оставить как есть (PM проекта может) или только админ? Рекомендация — оставить.
 4. **Сверка e-mail при принятии приглашения** (I-7): строгая или «ссылку можно переслать»? Рекомендация — нестрогая на бету, флаг на будущее.
 5. **Лимит журнала на бету** (R-H3): делать импорт в фоне сейчас или ограничить 100 строк / 5 МБ и сделать после? Рекомендация — ограничить, сделать во вторую неделю.

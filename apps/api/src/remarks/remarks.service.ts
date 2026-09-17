@@ -2,7 +2,6 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException, U
 import type { Prisma, ProposedClass, Remark, RemarkStatus, RetestOutcome, Role, ScreenshotKind, VerdictCode } from '@remarkround/db';
 import type { LlmUsage } from '../llm/triage-llm';
 import { ObservabilityService } from '../observability/observability.service';
-import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
@@ -89,7 +88,6 @@ export class RemarksService {
     private readonly prisma: PrismaService,
     private readonly observability: ObservabilityService,
     private readonly storage: StorageService,
-    private readonly notifications: NotificationsService,
   ) {}
 
   /** Кадр из тела запроса — только ключ этого проекта той же формы, что выдаёт POST /media: чужой иначе ушёл бы в vision и pixel-diff (фаза 11). */
@@ -374,7 +372,6 @@ export class RemarksService {
         where: { id: runId },
         data: { status: 'awaiting_human', proposedClass: proposal.proposedClass, rationale: proposal.rationale.join('\n\n'), visionFacts: proposal.visionFacts ?? null, ...usageData(proposal.usage) },
       });
-      await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'awaiting_pm', ctx.userId);
     });
     return this.get(ctx, remarkId);
   }
@@ -482,7 +479,6 @@ export class RemarksService {
       await this.transition(tx, remarkId, [row.status], 'verdict', { status: next, duplicateOfId: duplicateOf?.id ?? row.duplicateOfId }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status, runId: dto.runId, comment: dto.comment?.trim() || null });
       await tx.humanVerdict.create({ data: { remarkId, runId: dto.runId, userId: ctx.userId, code: dto.verdict, comment: dto.comment?.trim() || null, idempotencyKey: dto.idempotencyKey } });
       await tx.agentRun.update({ where: { id: dto.runId }, data: { status: 'persisted' } });
-      await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, next, ctx.userId);
     });
     return { remark: await this.get(ctx, remarkId), applied: true };
   }
@@ -520,7 +516,6 @@ export class RemarksService {
     this.assertTransition(row.status, ['defect'], 'ready_for_retest');
     await this.prisma.$transaction(async (tx) => {
       await this.transition(tx, remarkId, ['defect'], 'ready_for_retest', { status: 'ready_for_retest', fixedByUserId: ctx.userId }, { userId: ctx.userId, role: ctx.role, fromStatus: row.status });
-      await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'ready_for_retest', ctx.userId);
     });
     return this.get(ctx, remarkId);
   }
@@ -601,8 +596,6 @@ export class RemarksService {
       const diff = result.diffShot ? await tx.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...result.diffShot } }) : null;
       await this.transition(tx, remarkId, ['ready_for_retest'], 'retest_result', { status: 'awaiting_business_close', retestOutcome: result.outcome, retestExplanation: result.explanation }, { userId: null, role: null, fromStatus: row.status, runId, detail: [RETEST_OUTCOME_RU[result.outcome], result.explanation].filter(Boolean).join(' — ').slice(0, 300), screenshotId: diff?.id ?? null });
       await tx.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human', ...usageData(result.usage) } });
-      // Ретест запускает сам заказчик и, пока граф сравнивает кадры, мог уйти: письмо — и ему тоже (actor = null)
-      await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'awaiting_business_close', null);
     });
     return this.get(ctx, remarkId);
   }
@@ -638,7 +631,6 @@ export class RemarksService {
       // Кадр, которым заказчик показал «не исправлено», остаётся в истории (ADR 011): с карточки уходит, из базы — нет
       await supersede(tx, remarkId, ['retest', 'diff']);
       await tx.agentRun.updateMany({ where: { remarkId, mode: 'retest', status: 'awaiting_human' }, data: { status: 'persisted' } });
-      await this.notifications.remarkChanged(tx, ctx.projectId, remarkId, 'defect', ctx.userId);
     });
     return this.get(ctx, remarkId);
   }

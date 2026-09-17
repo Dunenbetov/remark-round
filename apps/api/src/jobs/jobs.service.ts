@@ -20,7 +20,7 @@ export type JobHandler = (payload: unknown, ctx: JobContext) => Promise<void>;
 /**
  * Лимиты вида задач (аудит беты R-B2, head-of-line blocking): очередь не берёт задачу, если её вид или пара
  * (вид, проект) уже занимает столько слотов. Импорт на 200 строк ставит 200 прогонов одного проекта — при
- * `maxPerProject: 2` два идут, остальные ждут в очереди, а индексация, письма и прогоны других проектов не стоят.
+ * `maxPerProject: 2` два идут, остальные ждут в очереди, а индексация и прогоны других проектов не стоят.
  * Считается по памяти процесса: один инстанс API (docs/PROD.md), второй удвоил бы лимиты.
  */
 export interface JobKindOptions {
@@ -28,12 +28,6 @@ export interface JobKindOptions {
   maxConcurrent?: number;
   /** Сколько задач этого вида одновременно на один projectId; задачи без проекта лимит не считают. */
   maxPerProject?: number;
-  /**
-   * Payload — секрет (письмо со ссылкой /join/<token> или /reset/<token>, I-1): после отправки строка Job удаляется,
-   * а не хранится 30 дней как done; при окончательном сбое payload обнуляется, остаётся только lastError.
-   * На повторе payload нужен — до последней попытки он на месте.
-   */
-  sensitive?: boolean;
 }
 
 interface ActiveJob {
@@ -281,8 +275,7 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
       if (!handler) throw new Error(`нет обработчика для задачи ${job.kind}`);
       await handler(job.payload, { attempt: job.attempts, maxAttempts: job.maxAttempts, signal: ac.signal });
       if (ac.signal.aborted) return; // остановка: onApplicationShutdown вернул задачу в очередь
-      if (this.options.get(job.kind)?.sensitive) await this.prisma.job.delete({ where: { id: job.id } }).catch(() => null);
-      else await this.prisma.job.update({ where: { id: job.id }, data: { status: 'done', finishedAt: new Date(), lockedAt: null } });
+      await this.prisma.job.update({ where: { id: job.id }, data: { status: 'done', finishedAt: new Date(), lockedAt: null } });
     } catch (e) {
       if (ac.signal.aborted) return;
       const err = e as Error;
@@ -293,8 +286,7 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
         await this.prisma.job.update({ where: { id: job.id }, data: { status: 'queued', runAfter: new Date(Date.now() + delay), lockedAt: null, lockedBy: null, lastError: err.message } }).catch(() => null);
       } else {
         this.log.error({ msg: `job ${job.kind} ${job.id} failed: ${err.message}`, jobId: job.id, runId: job.runId, err: { name: err.name, message: err.message, stack: err.stack } });
-        const scrub = this.options.get(job.kind)?.sensitive ? { payload: {} } : {};
-        await this.prisma.job.update({ where: { id: job.id }, data: { status: 'failed', finishedAt: new Date(), lockedAt: null, lastError: err.message, ...scrub } }).catch(() => null);
+        await this.prisma.job.update({ where: { id: job.id }, data: { status: 'failed', finishedAt: new Date(), lockedAt: null, lastError: err.message } }).catch(() => null);
       }
     } finally {
       this.active.delete(job.id);

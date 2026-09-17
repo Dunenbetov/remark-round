@@ -3,24 +3,26 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ApiService } from '../core/api.service';
 import { ADMIN, ERROR, ROLE_SHORT } from '../core/copy';
 import type { AdminProject, AdminUser, InvitationLink, InvitationSummary } from '../core/models';
-import { errorMessage } from '../core/errors';
-import { dateRu } from '../core/format';
+import { errorMessage, errorStatus } from '../core/errors';
+import { dateRu, dateTimeRu } from '../core/format';
 import { SessionService } from '../core/session.service';
 import { AppBar } from '../ui/app-bar';
 import { ErrorBanner } from '../ui/error-banner';
 import { PageHeader } from '../ui/page-header';
+import { ShareLink } from '../ui/share-link';
 import { Skeleton } from '../ui/skeleton';
 
 /**
  * Администрирование инстанса (ADR 006): люди и проекты поперёк тенантов для e-mail из ADMIN_EMAILS.
  * Три действия — выдать/снять право создавать проекты, отключить/включить человека, завершить его сессии —
  * и приглашение руководителя приёмки без проекта (ссылка /join, как у участников; токен показывается один раз).
+ * Писем нет (ADR 013): «Забыли пароль» — это «Ссылка для смены пароля» здесь; обе ссылки администратор отправляет сам (rr-share-link).
  * Роли внутри проектов здесь не меняются: это дело руководителя приёмки на «Участниках».
  */
 @Component({
   selector: 'rr-admin-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppBar, PageHeader, ErrorBanner, Skeleton],
+  imports: [AppBar, PageHeader, ErrorBanner, Skeleton, ShareLink],
   template: `
     <div class="page">
       <rr-app-bar [brandOnly]="true" />
@@ -89,6 +91,9 @@ import { Skeleton } from '../ui/skeleton';
                       </td>
                       <td class="adm__act">
                         @if (u.id !== meId()) {
+                          @if (!u.disabledAt) {
+                            <button type="button" class="btn btn--text btn--sm" [class.btn--busy]="busy() === 'reset:' + u.id" [disabled]="busy() === u.id || busy() === 'reset:' + u.id" (click)="resetLink(u)">{{ copy.resetLink }}</button>
+                          }
                           <button type="button" class="btn btn--text btn--sm" [disabled]="busy() === u.id" (click)="revokeSessions(u)">{{ copy.revokeSessions }}</button>
                           <button type="button" class="btn btn--sm" [class.btn--danger-text]="!u.disabledAt" [class.btn--secondary]="u.disabledAt" [disabled]="busy() === u.id" [attr.title]="u.disabledAt ? null : copy.disableHint" (click)="toggleDisabled(u)">
                             {{ u.disabledAt ? copy.enable : copy.disable }}
@@ -96,6 +101,16 @@ import { Skeleton } from '../ui/skeleton';
                         }
                       </td>
                     </tr>
+                    @if (reset()?.userId === u.id && !u.disabledAt) {
+                      <tr class="adm__reset-row">
+                        <td [attr.colspan]="copy.columns.length + 1">
+                          <div class="adm__reset">
+                            <p class="meta adm__reset-ready" role="status">{{ copy.resetReady(u.name) }}</p>
+                            <rr-share-link [url]="resetUrl()" [text]="copy.resetText(u.name)" [note]="copy.resetNote(dateTime(reset()!.expiresAt))" />
+                          </div>
+                        </td>
+                      </tr>
+                    }
                   }
                 </tbody>
               </table>
@@ -117,7 +132,10 @@ import { Skeleton } from '../ui/skeleton';
                 <button type="submit" class="btn btn--primary" [class.btn--busy]="inviting()" [disabled]="inviting() || !inviteEmail().trim()">{{ copy.invite }}</button>
               </div>
               @if (inviteNote(); as n) {
-                <p class="meta" role="status">{{ n }}</p>
+                <p class="meta adm__invite-note" role="status">{{ n }}</p>
+              }
+              @if (invited(); as a) {
+                <rr-share-link [url]="link(a.fresh)" [text]="copy.inviteText" [note]="copy.expires(date(a.fresh.expiresAt))" />
               }
               @if (inviteError(); as err) {
                 <div class="adm__error" role="alert">{{ err }}</div>
@@ -134,16 +152,17 @@ import { Skeleton } from '../ui/skeleton';
                         }
                       </span>
                       <span class="adm__inv-actions">
-                        @if (links()[inv.id]; as fresh) {
-                          <button type="button" class="btn btn--secondary btn--sm" (click)="copyLink(inv.id, fresh)">{{ copiedId() === inv.id ? copy.copied : copy.copyLink }}</button>
-                        } @else {
-                          <button type="button" class="btn btn--secondary btn--sm" [disabled]="busy() === inv.id" (click)="newLink(inv)">{{ copy.newLink }}</button>
+                        @if (!links()[inv.id]) {
+                          <button type="button" class="btn btn--secondary btn--sm" [class.btn--busy]="busy() === inv.id" [disabled]="busy() === inv.id" (click)="newLink(inv)">{{ copy.newLink }}</button>
                         }
                         <button type="button" class="btn btn--danger-text btn--sm" [disabled]="busy() === inv.id" (click)="revokeInvitation(inv)">{{ copy.revoke }}</button>
                       </span>
+                      <!-- ссылка только что созданного приглашения уже показана под формой -->
                       @if (links()[inv.id]; as fresh) {
-                        <span class="meta adm__inv-ready" role="status">{{ fresh.emailed ? copy.linkReadyMailed : copy.linkReady }}</span>
-                        <input class="input adm__inv-url" type="text" readonly [value]="link(fresh)" (focus)="selectAll($event)" />
+                        @if (invited()?.id !== inv.id) {
+                          <span class="meta adm__inv-ready" role="status">{{ copy.linkReady }}</span>
+                          <rr-share-link class="adm__inv-share" [url]="link(fresh)" [text]="copy.inviteText" [note]="copy.expires(date(fresh.expiresAt))" />
+                        }
                       }
                     </li>
                   }
@@ -269,8 +288,24 @@ import { Skeleton } from '../ui/skeleton';
       white-space: nowrap;
     }
     .adm__inv-ready,
-    .adm__inv-url {
+    .adm__inv-share {
       grid-column: 1 / -1;
+    }
+    .adm__inv-ready,
+    .adm__reset-ready {
+      margin: 0;
+      color: var(--rr-accent-2-text);
+      font-weight: var(--fw-semibold);
+    }
+    .adm__invite-note {
+      margin: 0;
+    }
+    .adm__reset {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+      max-width: 760px;
+      white-space: normal;
     }
     @media (max-width: 900px) {
       .adm__email {
@@ -299,7 +334,11 @@ export class AdminPage {
   protected readonly inviting = signal(false);
   protected readonly inviteNote = signal<string | null>(null);
   protected readonly inviteError = signal<string | null>(null);
-  protected readonly copiedId = signal<string | null>(null);
+  /** Только что созданное приглашение: его ссылка — под формой. */
+  protected readonly invited = signal<{ id: string; fresh: InvitationLink } | null>(null);
+  /** Ссылка для смены пароля (ADR 013): одна на странице, токен приходит один раз. */
+  protected readonly reset = signal<{ userId: string; token: string; expiresAt: string } | null>(null);
+  protected readonly resetUrl = computed(() => `${location.origin}/reset/${this.reset()?.token ?? ''}`);
 
   constructor() {
     void this.load();
@@ -331,14 +370,17 @@ export class AdminPage {
     this.inviting.set(true);
     this.inviteError.set(null);
     this.inviteNote.set(null);
+    this.invited.set(null);
     try {
       const result = await this.api.adminInvite(email);
       if (result.kind === 'user') {
         this.inviteNote.set(this.copy.granted(result.user.name));
         this.users.update((list) => list.map((x) => (x.id === result.user.id ? { ...result.user, memberships: x.memberships } : x)));
       } else {
-        this.inviteNote.set(result.invitation.emailed ? this.copy.invitedMailed(result.invitation.email) : this.copy.invited(result.invitation.email));
-        this.remember(result.invitation.id, result.invitation);
+        const inv = result.invitation;
+        this.inviteNote.set(this.copy.invited(inv.email));
+        this.remember(inv.id, inv);
+        this.invited.set({ id: inv.id, fresh: { token: inv.token, expiresAt: inv.expiresAt } });
         this.invitations.update((list) => [...list.filter((x) => x.id !== result.invitation.id), result.invitation]);
       }
       this.inviteEmail.set('');
@@ -354,7 +396,7 @@ export class AdminPage {
   }
 
   private remember(id: string, fresh: InvitationLink): void {
-    this.links.update((all) => ({ ...all, [id]: { token: fresh.token, expiresAt: fresh.expiresAt, emailed: fresh.emailed } }));
+    this.links.update((all) => ({ ...all, [id]: { token: fresh.token, expiresAt: fresh.expiresAt } }));
   }
 
   protected async newLink(inv: InvitationSummary): Promise<void> {
@@ -379,6 +421,10 @@ export class AdminPage {
     try {
       await this.api.adminRevokeInvitation(inv.id);
       this.invitations.update((list) => list.filter((x) => x.id !== inv.id));
+      if (this.invited()?.id === inv.id) {
+        this.invited.set(null);
+        this.inviteNote.set(null);
+      }
     } catch (err) {
       this.inviteError.set(errorMessage(err));
     } finally {
@@ -386,18 +432,20 @@ export class AdminPage {
     }
   }
 
-  protected async copyLink(id: string, fresh: InvitationLink): Promise<void> {
+  /** «Ссылка для смены пароля»: прежняя ссылка этого человека перестаёт работать; 409 — человек отключён. */
+  protected async resetLink(u: AdminUser): Promise<void> {
+    if (this.busy()) return;
+    this.busy.set(`reset:${u.id}`);
+    this.error.set(null);
+    this.note.set(null);
     try {
-      await navigator.clipboard.writeText(this.link(fresh));
-      this.copiedId.set(id);
-      setTimeout(() => this.copiedId.update((current) => (current === id ? null : current)), 2000);
-    } catch {
-      // буфер обмена недоступен (http, iframe): ссылка видна текстом в поле ниже
+      const fresh = await this.api.adminResetLink(u.id);
+      this.reset.set({ userId: u.id, token: fresh.token, expiresAt: fresh.expiresAt });
+    } catch (err) {
+      this.error.set(errorStatus(err) === 409 ? this.copy.resetDisabled : errorMessage(err));
+    } finally {
+      this.busy.set(null);
     }
-  }
-
-  protected selectAll(e: Event): void {
-    (e.target as HTMLInputElement).select();
   }
 
   protected toggleCreate(u: AdminUser): Promise<void> {
@@ -440,6 +488,10 @@ export class AdminPage {
 
   protected date(iso: string): string {
     return dateRu(iso);
+  }
+
+  protected dateTime(iso: string): string {
+    return dateTimeRu(iso);
   }
 
   private message(err: unknown): string {

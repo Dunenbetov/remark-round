@@ -16,6 +16,7 @@ import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { BrandMark } from './brand-mark';
 import { Icon } from './icons';
+import { InvitationsBell } from './invitations-bell';
 import { Menu, MenuItem } from './menu';
 import { SegmentItem, Segmented } from './segmented';
 import { ThemeToggle } from './theme-toggle';
@@ -25,13 +26,13 @@ export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'acc
 
 /**
  * Верхняя панель — плавающая белая полоса со скруглением: бренд-знак + RemarkRound + контекст «Проект · Раунд ▾» | сегменты |
- * «Добавить замечание» (бизнес) · тумблер темы · аватар. Роль человека — в заголовке страницы и в меню аватара.
+ * «Добавить замечание» (бизнес) · колокольчик приглашений (ADR 013) · тумблер темы · аватар. Роль человека — в заголовке страницы и в меню аватара.
  * На узком экране разделы уезжают в нижний таб-бар.
  */
 @Component({
   selector: 'rr-app-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Menu, Segmented, ThemeToggle, BrandMark, Icon],
+  imports: [RouterLink, Menu, Segmented, ThemeToggle, BrandMark, Icon, InvitationsBell],
   template: `
     <a class="skip" href="#main" (click)="skipToMain($event)">{{ nav.skip }}</a>
     <header class="bar">
@@ -64,6 +65,9 @@ export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'acc
               <rr-icon name="plus" [size]="16" />
               {{ nav.addRemark }}
             </a>
+          }
+          @if (user()) {
+            <rr-invitations-bell />
           }
           <rr-theme-toggle />
           @if (user(); as u) {
@@ -123,6 +127,13 @@ export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'acc
       align-items: center;
       gap: var(--sp-3);
       min-width: 0;
+    }
+    /* Контекст сжимается с многоточием, а не уезжает под колокольчик и навигацию */
+    .bar__left rr-menu {
+      min-width: 0;
+    }
+    .bar__left ::ng-deep .switch {
+      max-width: min(320px, 100%);
     }
     .bar__brand {
       display: inline-flex;

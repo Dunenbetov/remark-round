@@ -26,8 +26,3 @@ process.env['LANGFUSE_TRACING_ENABLED'] ??= 'false';
 // Очередь задач: повтор после временной ошибки модели — через 200 мс, а не через полминуты (jobs.spec)
 process.env['JOBS_BACKOFF_MS'] ??= '200,200,200';
 process.env['JOBS_POLL_MS'] ??= '250';
-// Почта (ADR 009): транспорт подменён в harness (FakeMailTransport), но включённость читается из SMTP_URL;
-// окно склейки уведомлений — 300 мс вместо пяти минут (notifications.spec)
-process.env['SMTP_URL'] ??= 'smtp://test:test@localhost:2525';
-process.env['SMTP_FROM'] ??= 'RemarkRound <no-reply@test.dev>';
-process.env['NOTIFY_DIGEST_MS'] ??= '300';

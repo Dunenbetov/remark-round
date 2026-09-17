@@ -124,9 +124,7 @@ const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', a
           @if (resetOk()) {
             <p class="meta login__switch" role="status">{{ copy.resetDone }}</p>
           }
-          @if (mailOn()) {
-            <p class="meta login__switch"><a class="link" routerLink="/forgot">{{ copy.forgot }}</a></p>
-          }
+          <p class="meta login__switch">{{ copy.lostPassword }}</p>
           @if (registrationOpen() || registerParams()['invite']) {
             <p class="meta login__switch">{{ copy.noAccount }} <a class="link" routerLink="/register" [queryParams]="registerParams()">{{ copy.toRegister }}</a></p>
           } @else {
@@ -379,8 +377,6 @@ export class LoginPage {
   protected readonly demo = signal(false);
   /** invite_only (ADR 006): ссылку «Зарегистрироваться» показываем только пришедшим по приглашению. */
   protected readonly registrationOpen = signal(false);
-  /** «Забыли пароль?» — только когда настроен SMTP (ADR 012): без писем ссылка вела бы в тупик. */
-  protected readonly mailOn = signal(false);
   /** После сброса пароля (/reset → /login?reset=ok): одна строка подтверждения. */
   protected readonly resetOk = signal(false);
 
@@ -394,7 +390,6 @@ export class LoginPage {
         this.demoAccounts.set(o.demoAccounts ?? []);
         this.demoPassword.set(o.demoPassword ?? '');
         this.registrationOpen.set(o.registration === 'open');
-        this.mailOn.set(o.mail);
       })
       .catch(() => this.demo.set(false));
     afterNextRender(() => this.host.nativeElement.querySelector<HTMLInputElement>('input[name=email]')?.focus());

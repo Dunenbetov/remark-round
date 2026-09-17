@@ -16,12 +16,12 @@ export interface MemberSummary {
 
 export interface MembersView {
   members: MemberSummary[];
-  /** Ещё не зарегистрированы: ссылка ждёт человека */
+  /** Ещё не приняли: ссылка или колокольчик ждут человека (ADR 013) */
   invitations: InvitationSummary[];
 }
 
-/** Приглашение отдаёт сырой `token` один раз (ADR 006): дальше только «Новая ссылка». `emailed` — письмо ушло (ADR 009). */
-export type AddMemberResult = { kind: 'member'; member: MemberSummary; emailed: boolean } | { kind: 'invitation'; invitation: InvitationCreated };
+/** `member` — уже участник, сменили роль; иначе приглашение: сырой `token` один раз (ADR 006), дальше только «Новая ссылка». */
+export type AddMemberResult = { kind: 'member'; member: MemberSummary } | { kind: 'invitation'; invitation: InvitationCreated };
 
 export const LAST_PM = 'Единственный руководитель приёмки — сначала назначьте другого';
 
@@ -46,27 +46,21 @@ export class MembersService {
     return { members: rows.map((m) => toSummary(m.user, m)), invitations: await this.invitations.listPending(ctx.projectId) };
   }
 
-  /** Зарегистрированный — участник сразу (повтор меняет роль); незнакомый e-mail — приглашение со ссылкой (token — один раз). */
+  /**
+   * Уже участник — повтор меняет роль. Любой другой, зарегистрированный или нет, — приглашение (ADR 013): напрямую
+   * в проект никого не записываем. Зарегистрированный увидит его в колокольчике и примет сам, остальным PM отправит
+   * ссылку (token — один раз); `inviteeName` показывает PM, чей аккаунт стоит за адресом.
+   */
   async add(ctx: ProjectContext, email: string, role: Role): Promise<AddMemberResult> {
     const normalized = normalizeEmail(email);
     const user = await this.prisma.user.findUnique({ where: { email: normalized } });
-    if (!user) return { kind: 'invitation', invitation: await this.invitations.create(ctx, normalized, role) };
-    const existing = await this.prisma.membership.findUnique({ where: { userId_projectId: { userId: user.id, projectId: ctx.projectId } } });
-    if (existing?.role === 'pm' && role !== 'pm') await this.assertNotLastPm(ctx.projectId, user.id);
-    const [membership] = await this.prisma.$transaction([
-      this.prisma.membership.upsert({
-        where: { userId_projectId: { userId: user.id, projectId: ctx.projectId } },
-        create: { userId: user.id, projectId: ctx.projectId, role, invitedById: ctx.userId },
-        update: { role },
-      }),
-      // Человек зарегистрировался без ссылки, пока приглашение ждало: PM добавил его напрямую, ссылка больше не нужна
-      this.prisma.invitation.deleteMany({ where: { projectId: ctx.projectId, email: normalized, acceptedAt: null } }),
-    ]);
-    if (existing && existing.role !== role) this.tenancy.revoke(user.id, ctx.projectId);
-    securityEvent(existing ? 'member.role' : 'member.add', { projectId: ctx.projectId, by: ctx.userId, userId: user.id, role, from: existing?.role });
-    // Новому участнику — письмо «вы в проекте» (I-3); смена роли уже участника письма не требует
-    const emailed = existing ? false : await this.invitations.notifyAdded(ctx, { email: user.email, name: user.name }, role);
-    return { kind: 'member', member: toSummary(user, membership), emailed };
+    const existing = user ? await this.prisma.membership.findUnique({ where: { userId_projectId: { userId: user.id, projectId: ctx.projectId } } }) : null;
+    if (!user || !existing) return { kind: 'invitation', invitation: await this.invitations.create(ctx, normalized, role) };
+    if (existing.role === 'pm' && role !== 'pm') await this.assertNotLastPm(ctx.projectId, user.id);
+    const membership = await this.prisma.membership.update({ where: { id: existing.id }, data: { role } });
+    if (existing.role !== role) this.tenancy.revoke(user.id, ctx.projectId);
+    securityEvent('member.role', { projectId: ctx.projectId, by: ctx.userId, userId: user.id, role, from: existing.role });
+    return { kind: 'member', member: toSummary(user, membership) };
   }
 
   async changeRole(ctx: ProjectContext, userId: string, role: Role): Promise<MemberSummary> {

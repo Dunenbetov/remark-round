@@ -14,22 +14,24 @@
 | Метод | Путь | Роли | Смысл |
 |---|---|---|---|
 | POST | `/auth/login` | — | JWT + `user` (`preferredRole`, `canCreateProjects`, `isInstanceAdmin`) + `memberships`. Отключённый администратором — 403. Лимит `THROTTLE_AUTH_LIMIT`/мин с IP |
-| POST | `/auth/register` | — | `{ name, email, password ≥ 8, preferredRole: business \| pm \| developer, inviteToken? }` → 201, ответ как у входа; дубликат e-mail — 409. Режим (ADR 006): `open` — всем; `invite_only` (в production по умолчанию) — только с живым `inviteToken` (мёртвая ссылка — 404, аккаунт не создаётся), с домена из `REGISTRATION_DOMAINS` или e-mail из `ADMIN_EMAILS`; иначе 403. Приглашение принимается только по ссылке |
+| POST | `/auth/register` | — | `{ name, email, password ≥ 8, preferredRole: business \| pm \| developer, inviteToken? }` → 201, ответ как у входа; дубликат e-mail — 409. Режим (ADR 006): `open` — всем; `invite_only` (в production по умолчанию) — только с живым `inviteToken` (мёртвая ссылка — 404, аккаунт не создаётся), с домена из `REGISTRATION_DOMAINS` или e-mail из `ADMIN_EMAILS`; иначе 403. Приглашение принимается по ссылке или из колокольчика (`/auth/invitations`, ADR 013) |
 | GET | `/auth/me` | any | Свежие `{ user, memberships }` без перелогина — страница ожидания опрашивает это. Membership: `{ projectId, projectName, projectSlug, role }`; `projectSlug` — первый сегмент адреса SPA |
-| PATCH | `/auth/profile` | any | `{ name?, preferredRole?, notifyByEmail? }` — `notifyByEmail` выключает письма «вас ждёт кнопка» (ADR 009) |
+| PATCH | `/auth/profile` | any | `{ name?, preferredRole? }` |
 | POST | `/auth/password` | any | `{ current, next ≥ 8 }` → `{ accessToken }`; неверный текущий — 422; все прежние токены (и MCP) недействительны |
-| POST | `/auth/forgot` | — | `{ email }` → всегда 204 (ADR 012): если адрес есть, у него есть пароль, он не отключён и настроен SMTP — письмо со ссылкой `/reset/<token>` на час; повтор раньше минуты письма не шлёт. Лимит `THROTTLE_AUTH_LIMIT`/мин с IP |
-| POST | `/auth/reset` | — | `{ token, password ≥ 8 }` → 204: пароль заменён, все прежние токены (и MCP) недействительны, сессия не выдаётся — вход на `/login`; неизвестная или истёкшая ссылка — 404, использованная — 410 |
-| GET | `/auth/options` | — | `{ demoLogins, registration: open \| invite_only, mail, release, demoAccounts?, demoPassword?, sentryDsn? }` — карточки демо-персон на входе приходят только при `demoLogins` (в production выключены), режим регистрации, настроена ли почта, версия сборки, DSN Sentry для SPA (только при `SENTRY_DSN_WEB`) |
+| GET | `/auth/invitations` | any | Колокольчик (ADR 013): живые приглашения в проекты на e-mail вошедшего, старые сверху — `[{ id, projectId, projectName, projectSlug, role, inviterName, createdAt, expiresAt }]`. Приглашения руководителя без проекта сюда не попадают. MCP-токен — 404 |
+| POST | `/auth/invitations/:invitationId/accept` | any | Принять → 200 `{ user, memberships }` (как `/invitations/:token/accept`); не на мой e-mail, неизвестное или истёкшее — 404, уже принятое — 410 |
+| POST | `/auth/invitations/:invitationId/decline` | any | Отклонить → 204, строка приглашения удаляется; те же 404 и 410 |
+| POST | `/auth/reset` | — | `{ token, password ≥ 8 }` → 204: пароль заменён, все прежние токены (и MCP) недействительны, сессия не выдаётся — вход на `/login`; неизвестная или истёкшая ссылка — 404, использованная — 410. Ссылку выдаёт администратор инстанса (`/admin/users/:userId/reset-link`, ADR 013) |
+| GET | `/auth/options` | — | `{ demoLogins, registration: open \| invite_only, release, demoAccounts?, demoPassword?, sentryDsn? }` — карточки демо-персон на входе приходят только при `demoLogins` (в production выключены), режим регистрации, версия сборки, DSN Sentry для SPA (только при `SENTRY_DSN_WEB`) |
 | GET | `/projects` | any | Список membership: `{ id, name, slug, role, createdAt }` |
 | POST | `/projects` | `canCreateProjects` | Создать: только с правом от администратора инстанса (иначе 403); создатель становится `pm` проекта. `slug` — транслит названия (`Клиентский кабинет` → `klientskiy-kabinet`), занятый — с суффиксом `-2`; при переименовании не меняется |
 | GET | `/projects/:projectId` | member | Карточка |
-| GET | `/projects/:projectId/members` | pm, admin | `{ members[], invitations[] }` — участники и ожидающие приглашения (без токена: в БД только хэш) |
-| POST | `/projects/:projectId/members` | pm, admin | `{ email, role: business \| pm \| developer }` (проектная роль `admin` снаружи не выдаётся — путалась с администратором инстанса; в enum остаётся до миграции после беты): зарегистрированный → `{ kind: 'member', member }` сразу (повтор меняет роль, ожидающая ссылка снимается); незнакомый e-mail → `{ kind: 'invitation', invitation }` с сырым `token` для `/join/<token>` — показывается один раз; `invitation.emailed` — письмо со ссылкой ушло (SMTP настроен). У `{ kind: 'member' }` поле `emailed` — новому участнику ушло письмо «вы в проекте» со ссылкой на проект (при смене роли — false) |
+| GET | `/projects/:projectId/members` | pm, admin | `{ members[], invitations[] }` — участники и ожидающие приглашения `{ id, email, role, inviteeName, createdAt, expiresAt }` (без токена: в БД только хэш; `inviteeName` — имя аккаунта на этот e-mail или `null`, ADR 013) |
+| POST | `/projects/:projectId/members` | pm, admin | `{ email, role: business \| pm \| developer }` (проектная роль `admin` снаружи не выдаётся — путалась с администратором инстанса; в enum остаётся до миграции после беты): уже участник → `{ kind: 'member', member }` — роль меняется (последний pm — 409); любой другой, зарегистрированный или нет (ADR 013), → `{ kind: 'invitation', invitation }` с `inviteeName` и сырым `token` для `/join/<token>` — показывается один раз; зарегистрированный видит приглашение в колокольчике. Напрямую в проект никого не записываем |
 | PATCH | `/projects/:projectId/members/:userId` | pm, admin | `{ role: business \| pm \| developer }`; единственный pm не понижается — 409; сокеты человека выкидываются из комнат проекта (роль на join закеширована) |
 | DELETE | `/projects/:projectId/members/:userId` | pm, admin | 204; единственный pm — 409; сокеты удалённого выкидываются из комнат проекта |
 | DELETE | `/projects/:projectId/invitations/:invitationId` | pm, admin | Отозвать ссылку |
-| POST | `/projects/:projectId/invitations/:invitationId/link` | pm, admin | «Новая ссылка»: `{ token, expiresAt, emailed }` один раз; прежняя перестаёт работать, срок продлевается (7 дней), письмо с новой ссылкой уходит снова (`emailed`) |
+| POST | `/projects/:projectId/invitations/:invitationId/link` | pm, admin | «Новая ссылка»: `{ token, expiresAt }` один раз; прежняя перестаёт работать, срок продлевается (7 дней) |
 | GET | `/invitations/:token` | — | Что за приглашение: `{ kind: project \| instance, projectName, role, inviterName, expiresAt }` (e-mail приглашённого не показывается; `instance` — приглашение руководителя от администратора, `projectName: null`); принятое — 410, неизвестное или истёкшее (7 дней) — 404 |
 | POST | `/invitations/:token/accept` | any | Принять по ссылке вошедшим пользователем (e-mail может отличаться) → `{ user, memberships }`; два параллельных принятия одной ссылки — одно 200, второе 410 |
 | POST | `/projects/:projectId/mcp-token` | member | Токен для MCP-фасада (`apps/mcp`): JWT с `projectId` из membership, срок `MCP_TOKEN_EXPIRES_SECONDS` (30 дней). С ним существует только `/projects/:projectId/*` этого проекта: другой проект, `/projects`, `/auth/*`, `/invitations/*`, `/admin/*` — 404, даже при membership. Смена пароля, отключение и «завершить сессии» отзывают и его |
@@ -37,10 +39,11 @@
 | GET | `/admin/projects` | администратор инстанса | `{ id, name, createdAt, members }` по всем проектам |
 | PATCH | `/admin/users/:userId` | администратор инстанса | `{ canCreateProjects?, disabled? }`; отключение — вход 403, все токены и сокеты недействительны сразу; себя — 409 |
 | POST | `/admin/users/:userId/revoke-sessions` | администратор инстанса | 204: все токены человека (и MCP) — 401, он входит заново |
-| GET | `/admin/invitations` | администратор инстанса | Ожидающие приглашения руководителей приёмки без проекта (ADR 006, 17.09): `{ id, email, role: 'pm', createdAt, expiresAt }` без токена |
-| POST | `/admin/invitations` | администратор инстанса | `{ email }`: зарегистрированный → `{ kind: 'user', user }` — право создавать проекты выдано сразу; незнакомый → `{ kind: 'invitation', invitation }` с сырым `token` один раз и `emailed`; повтор на тот же e-mail выпускает новую ссылку. Принятие по ссылке ставит `canCreateProjects`, membership не создаёт |
+| POST | `/admin/users/:userId/reset-link` | администратор инстанса | 200 `{ token, expiresAt }` (ADR 013): одноразовая ссылка `/reset/<token>` на 24 часа, сырой токен один раз; прежние неиспользованные ссылки человека гаснут; неизвестный — 404, отключённый — 409 |
+| GET | `/admin/invitations` | администратор инстанса | Ожидающие приглашения руководителей приёмки без проекта (ADR 006, 17.09): `{ id, email, role: 'pm', inviteeName, createdAt, expiresAt }` без токена |
+| POST | `/admin/invitations` | администратор инстанса | `{ email }`: зарегистрированный → `{ kind: 'user', user }` — право создавать проекты выдано сразу; незнакомый → `{ kind: 'invitation', invitation }` с сырым `token` один раз; повтор на тот же e-mail выпускает новую ссылку. Принятие по ссылке ставит `canCreateProjects`, membership не создаёт |
 | DELETE | `/admin/invitations/:invitationId` | администратор инстанса | Отозвать; 204 |
-| POST | `/admin/invitations/:invitationId/link` | администратор инстанса | «Новая ссылка»: `{ token, expiresAt, emailed }`; прежняя перестаёт работать |
+| POST | `/admin/invitations/:invitationId/link` | администратор инстанса | «Новая ссылка»: `{ token, expiresAt }`; прежняя перестаёт работать |
 | GET/POST | `/projects/:projectId/documents` | admin, pm | Пакет документов |
 | GET | `/projects/:projectId/documents/:id` | member | Мета + статус индекса одного документа (фронт берёт список; маршрут держат спеки и внешние клиенты) |
 | POST | `/projects/:projectId/documents/:id/reindex` | admin, pm | |
@@ -84,7 +87,7 @@
 
 ## Аккаунты (фаза 11, ADR 005)
 
-Регистрация открыта: без проекта человек видит экран ожидания и опрашивает `GET /auth/me` — как только руководитель приёмки добавит его по e-mail, проект появится. Сторона `preferredRole` — подсказка (и право создавать проекты для `pm`); роль в проекте — всегда `Membership.role`, её ставит PM. Приглашение — ссылка `/join/<token>`: со SMTP письмо со ссылкой уходит само (ADR 009), без него PM копирует и шлёт сам; принимается только по ссылке (ADR 006). Ошибки: 409 — e-mail занят или единственный pm; 410 — ссылка уже принята; 422 — неверный текущий пароль или валидация.
+Регистрация открыта: без проекта человек видит экран ожидания и опрашивает `GET /auth/me` — как только человек примет приглашение (ссылкой или в колокольчике — `GET /auth/invitations`), проект появится. Сторона `preferredRole` — подсказка (и право создавать проекты для `pm`); роль в проекте — всегда `Membership.role`, её ставит PM. Приглашение — ссылка `/join/<token>`: писем нет (ADR 013), PM копирует и шлёт сам; зарегистрированный на этот e-mail принимает и из колокольчика. Ошибки: 409 — e-mail занят или единственный pm; 410 — ссылка уже принята; 422 — неверный текущий пароль или валидация.
 
 ## Тело решения (`verdict`)
 
@@ -111,6 +114,6 @@
 
 Тот же контракт для Cursor / Claude Desktop, без второго CRUD: tool'ы фасада зовут маршруты выше с токеном из `POST /projects/:projectId/mcp-token`. `search_spec` = `GET .../search`, `get_round_remarks` = `GET .../rounds` + `GET .../rounds/:roundId/remarks`, `apply_human_verdict` = `GET .../remarks/:id` + `POST .../remarks/:id/verdict` (фасад подставляет `runId` и `idempotencyKey`), `submit_retest_evidence` = `POST .../media` + `POST .../remarks/:id/retest`. `projectId` в аргументах tool'ов нет — он в токене. `close` через MCP недоступен. Подробнее: [`apps/mcp/README.md`](../apps/mcp/README.md).
 
-## Уведомления (ADR 009)
+## Уведомления
 
-Отдельных маршрутов нет. Переход, после которого у роли появляется кнопка, пишет `Notification` каждому участнику этой роли (кроме того, кто нажал) и через `NOTIFY_DIGEST_MS` шлёт **одно** письмо на всё накопившееся: `awaiting_pm` → pm; `defect` (решение PM или «не исправлено») → developer; `ready_for_retest`, `awaiting_business_close`, `cannot_tell` → business. Письмо содержит номер, короткое описание, что именно ждёт, и ссылку на человеческий адрес карточки `/<slug>/round-<n>/<номер>` (например `/klientskiy-kabinet/round-2/12`). Без `SMTP_URL` уведомления помечаются `skipped`, `GET /auth/options` отдаёт `mail: false`.
+Писем нет (ADR 013 заменил ADR 009). Что ждёт человека, показывает журнал («ждут меня»); приглашения — колокольчик `GET /auth/invitations`.

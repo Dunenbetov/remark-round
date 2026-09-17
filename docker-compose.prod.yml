@@ -71,10 +71,6 @@ services:
       ADMIN_EMAILS: ${ADMIN_EMAILS:?задайте ADMIN_EMAILS в .env — e-mail администраторов инстанса через запятую}
       REGISTRATION_MODE: ${REGISTRATION_MODE:-invite_only}
       REGISTRATION_DOMAINS: ${REGISTRATION_DOMAINS:-}
-      # Почта (ADR 009): приглашения и «вас ждёт кнопка»; без SMTP_URL api стартует с предупреждением
-      SMTP_URL: ${SMTP_URL:-}
-      SMTP_FROM: ${SMTP_FROM:-RemarkRound <no-reply@${PUBLIC_HOST}>}
-      NOTIFY_DIGEST_MS: ${NOTIFY_DIGEST_MS:-300000}
       TRUST_PROXY_HOPS: '2'
       WEB_ORIGIN: https://${PUBLIC_HOST:?задайте PUBLIC_HOST в .env — домен без https://}
       # Пул соединений (R-H1): каждый запрос — минимум 2 обращения к БД в guard'ах, интерактивные транзакции воркера держат

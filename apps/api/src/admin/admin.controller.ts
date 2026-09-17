@@ -1,7 +1,8 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/auth.service';
-import type { InvitationRelink, InvitationSummary } from '../tenancy/invitations.service';
+import { PasswordResetService, type PasswordResetLink } from '../auth/password-reset.service';
+import type { InvitationLink, InvitationSummary } from '../tenancy/invitations.service';
 import { AdminInviteResult, AdminProjectView, AdminService, AdminUserView } from './admin.service';
 import { AdminInviteDto } from './dto/invite.dto';
 import { AdminUpdateUserDto } from './dto/update-user.dto';
@@ -11,7 +12,10 @@ import { InstanceAdminGuard } from './instance-admin.guard';
 @Controller('admin')
 @UseGuards(InstanceAdminGuard)
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly passwordReset: PasswordResetService,
+  ) {}
 
   @Get('users')
   users(): Promise<AdminUserView[]> {
@@ -34,6 +38,16 @@ export class AdminController {
     return this.admin.revokeSessions(actor.id, userId);
   }
 
+  /**
+   * Ссылка смены пароля (ADR 013): писем нет, администратор передаёт её человеку сам. Одноразовая, живёт сутки,
+   * прежние ссылки человека гаснут; отключённому — 409.
+   */
+  @Post('users/:userId/reset-link')
+  @HttpCode(200)
+  resetLink(@CurrentUser() actor: AuthUser, @Param('userId') userId: string): Promise<PasswordResetLink> {
+    return this.passwordReset.issueLink(actor.id, userId);
+  }
+
   // Приглашение руководителя приёмки без проекта (ADR 006, 17.09): по ссылке — право создавать проекты
 
   @Get('invitations')
@@ -54,7 +68,7 @@ export class AdminController {
 
   @Post('invitations/:invitationId/link')
   @HttpCode(200)
-  invitationLink(@CurrentUser() actor: AuthUser, @Param('invitationId') invitationId: string): Promise<InvitationRelink> {
+  invitationLink(@CurrentUser() actor: AuthUser, @Param('invitationId') invitationId: string): Promise<InvitationLink> {
     return this.admin.invitationLink(actor.id, invitationId);
   }
 }

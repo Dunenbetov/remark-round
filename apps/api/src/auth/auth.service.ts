@@ -36,8 +36,6 @@ export interface AuthUser {
   canCreateProjects: boolean;
   /** E-mail в ADMIN_EMAILS: администрирование инстанса — люди, проекты, отключение, отзыв сессий. */
   isInstanceAdmin: boolean;
-  /** Письма «вас ждёт кнопка» (ADR 009): выключается в профиле. */
-  notifyByEmail: boolean;
   /** Проект, к которому привязан токен; остальные проекты для такого токена не существуют (404). */
   scopedProjectId?: string;
 }
@@ -75,8 +73,6 @@ export interface AuthOptions {
   demoLogins: boolean;
   /** open — регистрация всем; invite_only — только по ссылке приглашения (и администраторам инстанса). */
   registration: RegistrationMode;
-  /** SMTP настроен: приглашения уходят письмом, «вас ждёт кнопка» — тоже (ADR 009). */
-  mail: boolean;
   /** Демо-персоны стенда и их пароль — только при demoLogins; иначе полей нет (D-2). */
   demoAccounts?: readonly DemoAccount[];
   demoPassword?: string;
@@ -157,7 +153,6 @@ export class AuthService {
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.preferredRole !== undefined && { preferredRole: dto.preferredRole }),
-        ...(dto.notifyByEmail !== undefined && { notifyByEmail: dto.notifyByEmail }),
       },
     });
     return toAuthUser(user);
@@ -182,7 +177,7 @@ export class AuthService {
 
   options(): AuthOptions {
     const cfg = config();
-    const base: AuthOptions = { demoLogins: cfg.demoLogins, registration: cfg.registrationMode, mail: cfg.mailEnabled, release: cfg.APP_VERSION, ...(cfg.SENTRY_DSN_WEB && { sentryDsn: cfg.SENTRY_DSN_WEB }) };
+    const base: AuthOptions = { demoLogins: cfg.demoLogins, registration: cfg.registrationMode, release: cfg.APP_VERSION, ...(cfg.SENTRY_DSN_WEB && { sentryDsn: cfg.SENTRY_DSN_WEB }) };
     return cfg.demoLogins ? { ...base, demoAccounts: DEMO_ACCOUNTS, demoPassword: DEMO_PASSWORD } : base;
   }
 
@@ -272,6 +267,5 @@ export function toAuthUser(user: User): AuthUser {
     preferredRole: user.preferredRole,
     canCreateProjects: user.canCreateProjects || admin,
     isInstanceAdmin: admin,
-    notifyByEmail: user.notifyByEmail,
   };
 }
