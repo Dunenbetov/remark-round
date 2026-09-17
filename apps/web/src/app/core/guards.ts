@@ -113,11 +113,15 @@ export function roleGuard(...roles: Role[]): CanActivateFn {
   };
 }
 
-/** Корень: разработчика ведём в очередь, остальных — в последний раунд; без проекта — на страницу проектов (ожидание или создание). */
+/**
+ * Корень: разработчика ведём в очередь, остальных — в последний раунд; без проекта — на страницу проектов (ожидание или создание).
+ * Администратор инстанса без проектов (ADR 006, 17.09) — сразу в /admin: его дело — люди и приглашения, а не «ждать, пока добавят».
+ */
 export function homeUrl(session: SessionService): string {
   if (!session.isLoggedIn()) return '/login';
   const membership = session.membership(session.currentProjectId());
-  return membership ? homeUrlFor(membership) : '/projects';
+  if (membership) return homeUrlFor(membership);
+  return session.isInstanceAdmin() ? '/admin' : '/projects';
 }
 
 export function homeUrlFor(membership: Membership): string {

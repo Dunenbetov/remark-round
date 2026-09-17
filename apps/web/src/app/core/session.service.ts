@@ -1,5 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
-import type { Membership, Role, Session, User } from './models';
+import type { Membership, Role, Session, Side, User } from './models';
 
 const STORAGE_KEY = 'rr.session';
 const PROJECT_KEY = 'rr.project';
@@ -16,8 +16,8 @@ export class SessionService {
   readonly token = computed(() => this._session()?.accessToken ?? null);
   readonly memberships = computed<Membership[]>(() => this._session()?.memberships ?? []);
   readonly isLoggedIn = computed(() => this._session() !== null);
-  /** Сторона при регистрации: только подсказка для экранов (ADR 006). */
-  readonly preferredRole = computed<Role | null>(() => this._session()?.user.preferredRole ?? null);
+  /** Сторона при регистрации: только подсказка для экранов (ADR 006); у администратора инстанса её нет — null. */
+  readonly preferredRole = computed<Side | null>(() => this._session()?.user.preferredRole ?? null);
   /** Право создавать проекты выдаёт администратор инстанса; у него самого оно есть всегда. */
   readonly canCreateProjects = computed(() => this._session()?.user.canCreateProjects === true);
   readonly isInstanceAdmin = computed(() => this._session()?.user.isInstanceAdmin === true);

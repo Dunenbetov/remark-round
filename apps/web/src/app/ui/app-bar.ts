@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map } from 'rxjs';
-import { APP_NAME, NAV, ROLE_TITLE, ROUND } from '../core/copy';
+import { APP_NAME, NAV, ROLE_ADMIN, ROLE_TITLE, ROUND } from '../core/copy';
 import { journalFileName, saveBlob } from '../core/download';
 import { homeUrlFor } from '../core/guards';
 import { links, sectionOf, type Section } from '../core/links';
@@ -343,11 +343,13 @@ export class AppBar {
     items.push({ id: 'logout', label: NAV.logout, separatorBefore: true });
     return items;
   });
+  /** Шапка меню: e-mail · роль в текущем проекте; администратор инстанса (ADR 006, 17.09) — «Администратор» перед ролью, стороны у него нет. */
   protected readonly userHead = computed(() => {
     const u = this.user();
     if (!u) return null;
     const role = this.role();
-    return { title: u.name, meta: role ? `${u.email} · ${ROLE_TITLE[role]}` : u.email };
+    const who = [this.session.isInstanceAdmin() ? ROLE_ADMIN : null, role ? ROLE_TITLE[role] : null].filter(Boolean);
+    return { title: u.name, meta: [u.email, ...who].join(' · ') };
   });
 
   private readonly url = toSignal(

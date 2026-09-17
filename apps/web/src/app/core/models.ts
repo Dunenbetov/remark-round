@@ -70,8 +70,8 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  /** Сторона при регистрации (ADR 005): подсказка для экранов, прав не даёт. Роль в проекте — Membership.role. */
-  preferredRole?: Role | null;
+  /** Сторона при регистрации (ADR 005): подсказка для экранов, прав не даёт. Роль в проекте — Membership.role. У администратора инстанса — null (ADR 006, 17.09). */
+  preferredRole?: Side | null;
   /** Право создавать проекты (ADR 006): выдаёт администратор инстанса; у администратора есть всегда. */
   canCreateProjects: boolean;
   /** E-mail из ADMIN_EMAILS: видит /admin — люди и проекты инстанса. */

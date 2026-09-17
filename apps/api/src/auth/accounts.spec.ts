@@ -223,6 +223,20 @@ describe('accounts', () => {
       expect(admin.body.user).toMatchObject({ isInstanceAdmin: true, canCreateProjects: true });
     });
 
+    it('администратор инстанса — скрытая роль без стороны (ADR 006, 17.09): присланная сторона не сохраняется и не отдаётся, профиль её тоже не пишет', async () => {
+      const login = await h.http.post('/api/v1/auth/login').send({ email: 'instance-admin@test.dev', password: 'secret-12' }).expect(200);
+      expect(login.body.user).toMatchObject({ isInstanceAdmin: true, preferredRole: null });
+      expect((await h.prisma.user.findUniqueOrThrow({ where: { email: 'instance-admin@test.dev' } })).preferredRole).toBeNull();
+      const profile = await h.http.patch('/api/v1/auth/profile').set(bearer(login.body.accessToken)).send({ name: 'Админ А.', preferredRole: 'pm' }).expect(200);
+      expect(profile.body).toMatchObject({ name: 'Админ А.', preferredRole: null });
+      expect((await h.prisma.user.findUniqueOrThrow({ where: { email: 'instance-admin@test.dev' } })).preferredRole).toBeNull();
+      const me = await h.http.get('/api/v1/auth/me').set(bearer(login.body.accessToken)).expect(200);
+      expect(me.body.user.preferredRole).toBeNull();
+      // Обычный человек сторону сохраняет — как и раньше
+      const staff = await h.prisma.user.findUniqueOrThrow({ where: { email: `staff-${tag}@company.kz` } });
+      expect(staff.preferredRole).toBe('developer');
+    });
+
     it('по живой ссылке регистрируется кто угодно и сразу попадает в проект', async () => {
       const invited = await h.http.post(`/api/v1/projects/${h.projectId}/members`).set(h.auth('pm')).send({ email: `guest-${tag}@client.com`, role: 'business' }).expect(201);
       expect(invited.body.kind).toBe('invitation');

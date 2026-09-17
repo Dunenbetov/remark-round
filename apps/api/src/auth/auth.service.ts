@@ -30,7 +30,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
-  /** Сторона при регистрации (ADR 005): подсказка для экранов, прав не даёт. */
+  /** Сторона при регистрации (ADR 005): подсказка для экранов, прав не даёт. У администратора инстанса всегда null (ADR 006, 17.09). */
   preferredRole: Role | null;
   /** Право создавать проекты (ADR 006): выдаёт администратор инстанса; у администратора есть всегда. */
   canCreateProjects: boolean;
@@ -121,10 +121,12 @@ export class AuthService {
     // Ссылка проверяется до создания пользователя: по мёртвой ссылке в закрытом режиме аккаунт не появится
     if (dto.inviteToken) await this.invitations.assertUsable(dto.inviteToken).catch((e: unknown) => this.rejectInvite(e));
     if (!dto.inviteToken && !this.selfRegistrationAllowed(email)) throw new ForbiddenException(REGISTRATION_CLOSED);
+    // Администратор инстанса — скрытая роль без стороны (ADR 006, 17.09): DTO требует сторону от всех, у него она не сохраняется
+    const preferredRole = isInstanceAdmin(email) ? null : dto.preferredRole;
     let user: User;
     try {
       user = await this.prisma.user.create({
-        data: { email, name: dto.name, passwordHash: await hashPassword(dto.password), preferredRole: dto.preferredRole },
+        data: { email, name: dto.name, passwordHash: await hashPassword(dto.password), preferredRole },
       });
     } catch (e) {
       // P2002 — unique(email): одинаковый ответ не нужен, регистрация и так публична
@@ -136,7 +138,7 @@ export class AuthService {
       // Приглашение руководителя (ADR 006, 17.09) меняет самого пользователя: сессия — по свежей строке, не по созданной
       user = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     }
-    securityEvent('register', { userId: user.id, email, preferredRole: dto.preferredRole, viaInvite: Boolean(dto.inviteToken), mode: config().registrationMode });
+    securityEvent('register', { userId: user.id, email, preferredRole, viaInvite: Boolean(dto.inviteToken), mode: config().registrationMode });
     return this.session(user);
   }
 
@@ -148,11 +150,15 @@ export class AuthService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto): Promise<AuthUser> {
+    const current = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!current) throw new UnauthorizedException();
+    // Сторону администратора инстанса не пишем: у него её нет (ADR 006, 17.09), присланная — игнорируется
+    const sideChanged = dto.preferredRole !== undefined && !isInstanceAdmin(current.email);
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.preferredRole !== undefined && { preferredRole: dto.preferredRole }),
+        ...(sideChanged && { preferredRole: dto.preferredRole }),
       },
     });
     return toAuthUser(user);
@@ -258,13 +264,14 @@ export function isInstanceAdmin(email: string): boolean {
   return config().adminEmails.has(normalizeEmail(email));
 }
 
+/** Администратор инстанса — скрытая роль «Администратор», не сторона: `preferredRole` у него всегда null, что бы ни лежало в строке. */
 export function toAuthUser(user: User): AuthUser {
   const admin = isInstanceAdmin(user.email);
   return {
     id: user.id,
     email: user.email,
     name: user.name,
-    preferredRole: user.preferredRole,
+    preferredRole: admin ? null : user.preferredRole,
     canCreateProjects: user.canCreateProjects || admin,
     isInstanceAdmin: admin,
   };

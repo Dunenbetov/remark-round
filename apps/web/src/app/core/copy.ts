@@ -705,6 +705,8 @@ export const RESET = {
 
 /** Сторона при регистрации и в приглашении; в проекте роль ставит руководитель приёмки. */
 export const ROLE_SIDE: Record<Side, string> = { business: 'Заказчик', pm: 'Руководитель приёмки', developer: 'Разработчик' };
+/** Администратор инстанса (ADMIN_EMAILS, ADR 006, 17.09): скрытая роль без стороны — подпись вместо `ROLE_SIDE` в шапке и профиле. */
+export const ROLE_ADMIN = 'Администратор';
 export const SIDES: readonly Side[] = ['business', 'pm', 'developer'];
 export const SIDE_DOES: Record<Side, string> = {
   business: 'добавляет замечания, закрывает исправленное',

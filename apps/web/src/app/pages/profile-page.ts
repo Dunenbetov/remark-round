@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ApiService } from '../core/api.service';
-import { ERROR, PROFILE, REGISTER, ROLE_SHORT, ROLE_SIDE, SIDES } from '../core/copy';
+import { ERROR, PROFILE, REGISTER, ROLE_ADMIN, ROLE_SHORT, ROLE_SIDE, SIDES } from '../core/copy';
 import type { Side } from '../core/models';
 import { SessionService } from '../core/session.service';
 import { AppBar, TONE_BY_ROLE } from '../ui/app-bar';
@@ -59,8 +59,13 @@ import { SegmentItem, Segmented } from '../ui/segmented';
             </label>
             <div class="field">
               <span class="field__label field__label--soft">{{ copy.who }}</span>
-              <rr-segmented [items]="sideItems" [selected]="side()" [label]="copy.who" (pick)="pickSide($event)" />
-              <span class="meta">{{ copy.whoHint }}</span>
+              @if (isAdmin()) {
+                <!-- Администратор инстанса — скрытая роль без стороны (ADR 006, 17.09): выбирать нечего -->
+                <span class="pf-card__admin">{{ roleAdmin }}</span>
+              } @else {
+                <rr-segmented [items]="sideItems" [selected]="side()" [label]="copy.who" (pick)="pickSide($event)" />
+                <span class="meta">{{ copy.whoHint }}</span>
+              }
             </div>
             @if (profileError(); as err) {
               <div class="pf__error" role="alert">{{ err }}</div>
@@ -213,6 +218,10 @@ import { SegmentItem, Segmented } from '../ui/segmented';
       line-height: var(--lh-18);
       font-weight: var(--fw-semibold);
     }
+    /* «Администратор» вместо переключателя стороны: обычный текст в тон полю */
+    .pf-card__admin {
+      color: var(--rr-ink-2);
+    }
     /* кнопки обеих карточек на одной линии — у нижнего края */
     .pf__row {
       display: flex;
@@ -253,8 +262,11 @@ export class ProfilePage {
   protected readonly copy = PROFILE;
   protected readonly register = REGISTER;
   protected readonly roleShort = ROLE_SHORT;
+  protected readonly roleAdmin = ROLE_ADMIN;
   protected readonly sideItems: SegmentItem[] = SIDES.map((s) => ({ id: s, label: ROLE_SIDE[s] }));
   protected readonly user = this.session.user;
+  /** Администратор инстанса: стороны нет и не выбирается (ADR 006, 17.09). */
+  protected readonly isAdmin = this.session.isInstanceAdmin;
   protected readonly memberships = this.session.memberships;
   protected readonly name = signal(this.session.user()?.name ?? '');
   protected readonly side = signal<Side>(this.sideOf(this.session.preferredRole()));
@@ -270,8 +282,8 @@ export class ProfilePage {
 
   protected readonly canChange = computed(() => this.current().length > 0 && this.next().length >= 8 && this.repeat().length > 0);
   protected readonly initial = computed(() => (this.user()?.name ?? '?').charAt(0).toUpperCase());
-  /** Тон буквы — по сохранённой стороне, как у аватара в шапке по роли в проекте. */
-  protected readonly tone = computed(() => TONE_BY_ROLE[this.sideOf(this.session.preferredRole())]);
+  /** Тон буквы — по сохранённой стороне, как у аватара в шапке по роли в проекте; у администратора стороны нет — акцент. */
+  protected readonly tone = computed(() => (this.isAdmin() ? 'accent' : TONE_BY_ROLE[this.sideOf(this.session.preferredRole())]));
 
   protected value(e: Event): string {
     return (e.target as HTMLInputElement).value;
@@ -292,7 +304,8 @@ export class ProfilePage {
     this.profileError.set(null);
     this.savedNote.set(false);
     try {
-      const user = await this.api.updateProfile({ name: this.name().trim(), preferredRole: this.side() });
+      // Администратору сторону не шлём: сервер её всё равно не пишет (ADR 006, 17.09)
+      const user = await this.api.updateProfile({ name: this.name().trim(), ...(this.isAdmin() ? {} : { preferredRole: this.side() }) });
       this.session.patch({ user });
       this.savedNote.set(true);
     } catch {

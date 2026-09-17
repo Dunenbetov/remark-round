@@ -78,6 +78,7 @@
    | `JWT_EXPIRES_SECONDS` | `86400` | сессия сутки (как прод-оверлей) |
    | `WEB_ORIGIN` | `https://<домен web>` | CORS и ссылки; домен появится на шаге 3 — пока поставьте `https://example.com`, потом замените |
    | `ADMIN_EMAILS` | `you@company.kz` | администраторы инстанса (ADR 006): регистрируются первыми, приглашают руководителя приёмки |
+   | `REGISTRATION_MODE` | `open` | решение владельца 17.09 (ADR 006, дополнение): на бете регистрация открыта всем; без переменной в production — `invite_only` (только по ссылке приглашения). Право создавать проекты всё равно выдаёт администратор |
    | `OPENAI_API_KEY` | ключ | без него API в `production` не стартует (или явно `LLM_MODE=rules` — черновики правилами, грубее) |
    | `STORAGE_DIR` | `/app/apps/api/storage` | = Mount Path тома |
    | `STORAGE_MIN_FREE_MB` | `512` | порог «кончается место» (R-H4); дефолт 2048 на томе 5 ГБ отказал бы слишком рано |
@@ -90,7 +91,7 @@
    | `GIT_SHA` | `${{RAILWAY_GIT_COMMIT_SHA}}` | необязательно: версия сборки в `/health.version` вместо `dev` (Dockerfile принимает `ARG GIT_SHA`, Railway отдаёт переменные сборке). Если в `/health` всё равно `dev` — переменная не подставилась, можно убрать |
    | `NODE_OPTIONS` | `--max-old-space-size=1536` | необязательно: потолок кучи Node, чтобы утечка не превратилась в счёт за гигабайты (Railway тарифицирует фактическую память) |
 
-   **Не задавать:** `NODE_ENV` (в образе уже `production`), `DEMO_LOGINS` (в production и так `false`), `REGISTRATION_MODE` (в production по умолчанию `invite_only` — только по ссылке приглашения; `REGISTRATION_DOMAINS=company.kz` пустит сотрудников домена без ссылки), `LANGFUSE_*` кроме `LANGFUSE_TRACING_ENABLED`, `SENTRY_*`.
+   **Не задавать:** `NODE_ENV` (в образе уже `production`), `DEMO_LOGINS` (в production и так `false`), `REGISTRATION_DOMAINS` (нужна только в `invite_only`: `company.kz` пустит сотрудников домена без ссылки — на открытой бете не требуется), `LANGFUSE_*` кроме `LANGFUSE_TRACING_ENABLED`, `SENTRY_*`.
 
 6. **Deploy.** Логи: `api: prisma migrate deploy` → список миграций → `Nest application successfully started`. Healthcheck в **Deployments** станет зелёным.
 
