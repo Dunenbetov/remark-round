@@ -1,0 +1,33 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+/**
+ * Если DATABASE_URL не задан явно, берём корневой .env. Читаем сами, а не через process.loadEnvFile:
+ * jest даёт тестам копию process.env, и переменные, выставленные нативно, в неё не попадают.
+ */
+if (!process.env['DATABASE_URL']) {
+  try {
+    for (const line of readFileSync(resolve(__dirname, '../../../.env'), 'utf8').split('\n')) {
+      const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
+      if (m && !line.trimStart().startsWith('#')) process.env[m[1]!] ??= m[2]!.replace(/^(['"])(.*)\1$/, '$2');
+    }
+  } catch {
+    /* .env отсутствует — тесты упадут с понятной ошибкой Prisma */
+  }
+}
+process.env['JWT_SECRET'] ??= 'test-secret';
+// Администраторы инстанса для спеков (ADR 006): по одному адресу на спеку — accounts.spec регистрирует первый,
+// admin.spec входит вторым; спеки идут параллельно и не должны трогать одного и того же человека
+process.env['ADMIN_EMAILS'] ??= 'instance-admin@test.dev,instance-admin-2@test.dev';
+// Спеки офлайн: LLM и эмбеддинги подменены, span'ы Langfuse не шлём (observability.spec ставит свой экспортёр в памяти).
+// Ключ модели из корневого .env в jest не нужен и не должен случайно тратиться: health.spec ждёт llm: 'rules'.
+delete process.env['OPENAI_API_KEY'];
+process.env['LANGFUSE_TRACING_ENABLED'] ??= 'false';
+// Очередь задач: повтор после временной ошибки модели — через 200 мс, а не через полминуты (jobs.spec)
+process.env['JOBS_BACKOFF_MS'] ??= '200,200,200';
+process.env['JOBS_POLL_MS'] ??= '250';
+// Почта (ADR 009): транспорт подменён в harness (FakeMailTransport), но включённость читается из SMTP_URL;
+// окно склейки уведомлений — 300 мс вместо пяти минут (notifications.spec)
+process.env['SMTP_URL'] ??= 'smtp://test:test@localhost:2525';
+process.env['SMTP_FROM'] ??= 'RemarkRound <no-reply@test.dev>';
+process.env['NOTIFY_DIGEST_MS'] ??= '300';

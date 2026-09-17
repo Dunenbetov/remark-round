@@ -1,0 +1,253 @@
+# RemarkRound — прод на одном сервере (фаза 11, runbook: docs/PROD.md).
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Порты инфраструктуры в базовом файле уже на 127.0.0.1; наружу смотрит только caddy (80/443 → web).
+# Обязательные переменные .env: JWT_SECRET, POSTGRES_PASSWORD, PUBLIC_HOST, ADMIN_EMAILS и все секреты Langfuse
+# (LANGFUSE_DB_PASSWORD, CLICKHOUSE_PASSWORD, MINIO_ROOT_PASSWORD, REDIS_AUTH, SALT, ENCRYPTION_KEY, NEXTAUTH_SECRET,
+# LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_INIT_USER_PASSWORD) — без них compose не стартует.
+services:
+  postgres:
+    restart: always
+    # Память под сервер 8 ГБ (docs/PROD.md): база — до 1 ГБ, из них shared_buffers 256 МБ; дефолт образа (128 МБ / 4 МБ work_mem)
+    # лил бы векторный поиск и агрегаты журнала на диск при первом росте пакета ТЗ
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - effective_cache_size=768MB
+    shm_size: 256m
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env до первого запуска (потом менять только ALTER USER)}
+
+  api:
+    restart: always
+    # Лимиты памяти (аудит: langfuse-colocated-no-limits): без них OOM-killer снимает произвольный контейнер —
+    # в худшем случае api или postgres — ровно в момент, когда ClickHouse Langfuse разросся. Сумма лимитов ≈ 7 ГБ → сервер 8 ГБ.
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET в .env — openssl rand -hex 32}
+      JWT_EXPIRES_SECONDS: ${JWT_EXPIRES_SECONDS:-86400}
+      SEED_ON_START: 'false'
+      DEMO_LOGINS: 'false'
+      # Миграции в проде — отдельным шагом перед up (docs/PROD.md): при старте только проверка, что они применены
+      MIGRATE_ON_START: 'false'
+      # Контур доступа (ADR 006): без администратора в пустой системе некому зарегистрироваться первым
+      ADMIN_EMAILS: ${ADMIN_EMAILS:?задайте ADMIN_EMAILS в .env — e-mail администраторов инстанса через запятую}
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-invite_only}
+      REGISTRATION_DOMAINS: ${REGISTRATION_DOMAINS:-}
+      # Почта (ADR 009): приглашения и «вас ждёт кнопка»; без SMTP_URL api стартует с предупреждением
+      SMTP_URL: ${SMTP_URL:-}
+      SMTP_FROM: ${SMTP_FROM:-RemarkRound <no-reply@${PUBLIC_HOST}>}
+      NOTIFY_DIGEST_MS: ${NOTIFY_DIGEST_MS:-300000}
+      TRUST_PROXY_HOPS: '2'
+      WEB_ORIGIN: https://${PUBLIC_HOST:?задайте PUBLIC_HOST в .env — домен без https://}
+      DATABASE_URL: postgresql://remarkround:${POSTGRES_PASSWORD}@postgres:5432/remarkround?connection_limit=10
+      LANGFUSE_TRACING_ENVIRONMENT: production
+      # UI Langfuse наружу не публикуется: ссылка «Трейс в Langfuse» работает через ssh -L 3000:127.0.0.1:3000
+      LANGFUSE_PUBLIC_URL: ${LANGFUSE_PUBLIC_URL:-http://localhost:3000}
+    volumes:
+      # Именованный том вместо bind-mount демо: кадры и документы живут в docker volume api-storage (бэкап — docs/PROD.md)
+      - api-storage:/app/apps/api/storage
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '5'
+
+  web:
+    restart: always
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging: *logging
+
+  mcp:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    logging: *logging
+
+  # Секреты Langfuse-стека обязательны (аудит: дефолты change-me-local-dev поднимались молча даже под прод-оверлеем)
+  langfuse-postgres:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    environment:
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:?задайте LANGFUSE_DB_PASSWORD в .env}
+    logging: *logging
+
+  clickhouse:
+    restart: always
+    # ClickHouse читает лимит cgroup как объём RAM и держится в 90 % от него
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?задайте CLICKHOUSE_PASSWORD в .env}
+    logging: *logging
+
+  minio:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    environment:
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?задайте MINIO_ROOT_PASSWORD в .env}
+    logging: *logging
+
+  redis:
+    restart: always
+    # maxmemory + noeviction: при переполнении очередь Langfuse отказывает в записи, а не роняет сервер по OOM
+    command: >
+      --requirepass ${REDIS_AUTH:?задайте REDIS_AUTH в .env}
+      --maxmemory 192mb
+      --maxmemory-policy noeviction
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    environment:
+      REDIS_PASSWORD: ${REDIS_AUTH}
+    logging: *logging
+
+  langfuse-worker:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    environment:
+      DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD}@langfuse-postgres:5432/langfuse
+      SALT: ${SALT:?задайте SALT в .env}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?задайте ENCRYPTION_KEY в .env — openssl rand -hex 32}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      REDIS_AUTH: ${REDIS_AUTH}
+      TELEMETRY_ENABLED: 'false'
+    logging: *logging
+
+  langfuse-web:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    environment:
+      DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD}@langfuse-postgres:5432/langfuse
+      SALT: ${SALT}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      REDIS_AUTH: ${REDIS_AUTH}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?задайте NEXTAUTH_SECRET в .env}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:?задайте LANGFUSE_PUBLIC_KEY в .env}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:?задайте LANGFUSE_SECRET_KEY в .env}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:?задайте LANGFUSE_INIT_USER_PASSWORD в .env}
+      TELEMETRY_ENABLED: 'false'
+    logging: *logging
+
+  caddy:
+    image: caddy:2
+    restart: always
+    depends_on:
+      - web
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    logging: *logging
+
+  # Ежедневный pg_dump в том postgres-backups (restore — docs/PROD.md). Файлы кадров бэкапятся отдельно (том api-storage).
+  backup:
+    image: prodrigestivill/postgres-backup-local:17
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: remarkround
+      POSTGRES_USER: remarkround
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SCHEDULE: ${BACKUP_SCHEDULE:-@daily}
+      BACKUP_ON_START: 'TRUE'
+      BACKUP_KEEP_DAYS: '14'
+      BACKUP_KEEP_WEEKS: '8'
+      BACKUP_KEEP_MONTHS: '6'
+      HEALTHCHECK_PORT: '8080'
+    volumes:
+      - postgres-backups:/backups
+    logging: *logging
+
+  # Копия вне сервера (аудит: backups-dr): rclone sync дампов и файлов в S3-совместимое хранилище раз в сутки.
+  # Включается профилем: `docker compose --profile offsite up -d` (или COMPOSE_PROFILES=offsite в .env)
+  # после того, как в .env заданы RCLONE_CONFIG_OFFSITE_* и OFFSITE_REMOTE (docs/PROD.md «Бэкап»).
+  offsite:
+    image: rclone/rclone:1
+    restart: always
+    profiles: [offsite]
+    depends_on:
+      backup:
+        condition: service_started
+    entrypoint: ['sh', '/offsite-backup.sh']
+    environment:
+      # Переменные без :? — профиль необязательный, а compose проверяет их даже у выключенных сервисов; скрипт сам откажет без OFFSITE_REMOTE
+      OFFSITE_REMOTE: ${OFFSITE_REMOTE:-}
+      OFFSITE_INTERVAL_SECONDS: ${OFFSITE_INTERVAL_SECONDS:-86400}
+      RCLONE_CONFIG_OFFSITE_TYPE: ${RCLONE_CONFIG_OFFSITE_TYPE:-s3}
+      RCLONE_CONFIG_OFFSITE_PROVIDER: ${RCLONE_CONFIG_OFFSITE_PROVIDER:-Other}
+      RCLONE_CONFIG_OFFSITE_ENDPOINT: ${RCLONE_CONFIG_OFFSITE_ENDPOINT:-}
+      RCLONE_CONFIG_OFFSITE_REGION: ${RCLONE_CONFIG_OFFSITE_REGION:-}
+      RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID: ${RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID:-}
+      RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY: ${RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY:-}
+    volumes:
+      - ./deploy/offsite-backup.sh:/offsite-backup.sh:ro
+      - postgres-backups:/backups:ro
+      - api-storage:/storage:ro
+    healthcheck:
+      # Копия старше 36 часов — unhealthy: видно в docker compose ps и внешнему монитору
+      test: ['CMD-SHELL', 'test -f /tmp/offsite-last-run && test $(( $(date +%s) - $(date -d "$(cat /tmp/offsite-last-run)" +%s 2>/dev/null || echo 0) )) -lt 129600']
+      interval: 10m
+      timeout: 10s
+      retries: 3
+      start_period: 1h
+    logging: *logging
+
+volumes:
+  api-storage:
+  postgres-backups:
+  caddy-data:
+  caddy-config:

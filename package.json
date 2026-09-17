@@ -11,6 +11,15 @@
     "db:migrate:deploy": "pnpm --filter @remarkround/db migrate:deploy",
     "api:dev": "pnpm --filter @remarkround/api dev",
     "web:dev": "pnpm --filter @remarkround/web dev",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "evals": "pnpm --filter @remarkround/api evals"
+  },
+  "license": "UNLICENSED",
+  "pnpm": {
+    "overrides": {
+      "fast-uri": ">=3.1.6",
+      "deepmerge-ts": ">=8.0.0",
+      "qs": ">=6.16.0"
+    }
   }
 }

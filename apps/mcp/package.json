@@ -2,10 +2,16 @@
   "name": "@remarkround/mcp",
   "version": "0.0.0",
   "private": true,
+  "license": "UNLICENSED",
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/main.ts",
+    "mcp": "tsx src/main.ts",
     "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.17.2",

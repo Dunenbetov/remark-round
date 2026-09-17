@@ -1,16 +1,21 @@
-# RemarkRound — Docker Compose (фаза 0)
-# cp .env.example .env && docker compose up
+# RemarkRound — Docker Compose
+# cp .env.example .env && docker compose up  →  web :4200, api :3001, mcp :3002, Langfuse :3000
+# API сам применяет миграции и кладёт демо-данные (apps/api/docker-entrypoint.sh)
+# Порты опубликованы только на 127.0.0.1: наружу в проде смотрит caddy из docker-compose.prod.yml (docs/PROD.md)
 
 services:
   postgres:
     image: pgvector/pgvector:pg17
     restart: unless-stopped
+    # pg_stat_statements — «какие запросы едят базу» (docs/PROD.md «Обслуживание БД»); расширение создаёт миграция
+    command: ['postgres', '-c', 'shared_preload_libraries=pg_stat_statements', '-c', 'pg_stat_statements.track=all']
     environment:
       POSTGRES_USER: remarkround
-      POSTGRES_PASSWORD: remarkround
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-remarkround}
       POSTGRES_DB: remarkround
     ports:
-      - '5432:5432'
+      # Хост-порт: если на машине уже есть свой Postgres на 5432, задайте POSTGRES_PORT в .env
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -20,29 +25,109 @@ services:
       retries: 10
 
   api:
+    # Имя образа = реестр релизов (docs/PROD.md): CI публикует ghcr.io/…:<sha>, прод делает pull по RR_TAG;
+    # демо и dev собирают локально под тем же именем (RR_TAG=local)
+    image: ghcr.io/dunenbetov/remark-round-api:${RR_TAG:-local}
+    # Прогон графа длится 5–30 с, вызов модели — до 60 с: даём дописать перед SIGKILL при деплое (аудит: deploy-kills-inflight)
+    stop_grace_period: 90s
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+      langfuse-web:
+        condition: service_started
     environment:
       PORT: 3000
-      DATABASE_URL: postgresql://remarkround:remarkround@postgres:5432/remarkround
+      # Демо-стенд (фаза 11): в образе NODE_ENV=production, но здесь — development: seed и карточки ролей на входе.
+      # Прод — docker-compose.prod.yml (production, настоящий JWT_SECRET, без seed).
+      NODE_ENV: development
+      TRUST_PROXY_HOPS: '1'
+      DATABASE_URL: postgresql://remarkround:${POSTGRES_PASSWORD:-remarkround}@postgres:5432/remarkround
       WEB_ORIGIN: http://localhost:4200
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_MODEL_FAST: ${LLM_MODEL_FAST:-gpt-4.1-mini}
+      LLM_MODEL_STRONG: ${LLM_MODEL_STRONG:-gpt-4.1}
+      # Ветка ретеста: победитель A/B (docs/EVALS.md); llm_only — только для сравнения
+      RETEST_STRATEGY: ${RETEST_STRATEGY:-diff_explain}
+      # Демо-данные при старте (миграции всегда): PM / Business / Developer, ТЗ + протокол, раунд 2. SEED_ON_START=false — выключить
+      SEED_ON_START: ${SEED_ON_START:-true}
+      # Контур доступа (ADR 006): на демо-стенде администратор инстанса — демо-PM; регистрация открыта (NODE_ENV=development)
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-pm@remarkround.dev}
+      REGISTRATION_MODE: ${REGISTRATION_MODE:-}
+      REGISTRATION_DOMAINS: ${REGISTRATION_DOMAINS:-}
+      # Почта (ADR 009): без SMTP_URL писем нет
+      SMTP_URL: ${SMTP_URL:-}
+      SMTP_FROM: ${SMTP_FROM:-RemarkRound <no-reply@localhost>}
+      # Пояс дат в xlsx-журнале (ADR 011): сервер в UTC, Excel поясов не знает
+      REPORT_TIMEZONE: ${REPORT_TIMEZONE:-Asia/Almaty}
+      STORAGE_DIR: /app/apps/api/storage
+      # Langfuse (фаза 8): API шлёт span'ы внутрь сети compose, ссылки для человека — на публичный адрес UI.
+      # Ключи совпадают с LANGFUSE_INIT_* у langfuse-web: проект и ключи создаются при первом старте.
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_URL: ${LANGFUSE_PUBLIC_URL:-http://localhost:3000}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-remarkround-local}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-remarkround-local}
+      LANGFUSE_PROJECT_ID: ${LANGFUSE_PROJECT_ID:-remarkround}
+      LANGFUSE_TRACING_ENVIRONMENT: ${LANGFUSE_TRACING_ENVIRONMENT:-compose}
+    volumes:
+      # Та же папка, что у seed и локального API: файлы документов и кадров общие (в .gitignore)
+      - ./apps/api/storage:/app/apps/api/storage
     ports:
-      - '${API_PORT:-3001}:3000'
+      - '127.0.0.1:${API_PORT:-3001}:3000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/api/v1/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
 
   web:
+    image: ghcr.io/dunenbetov/remark-round-web:${RR_TAG:-local}
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
     restart: unless-stopped
     depends_on:
       - api
     ports:
-      - '${WEB_PORT:-4200}:80'
+      - '127.0.0.1:${WEB_PORT:-4200}:80'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1/ >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  # MCP-фасад домена (ADR 003): те же REST-маршруты, токен проекта в Authorization каждого запроса.
+  # Cursor / Claude Desktop: url http://localhost:3002/mcp + заголовок Bearer <POST /projects/:id/mcp-token>
+  mcp:
+    image: ghcr.io/dunenbetov/remark-round-mcp:${RR_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/mcp/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      MCP_TRANSPORT: http
+      MCP_PORT: 3002
+      REMARKROUND_API_URL: http://api:3000/api/v1
+    ports:
+      - '127.0.0.1:${MCP_PORT:-3002}:3002'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3002/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   # --- Langfuse self-host (official stack, separate DB from app) ---
 
@@ -51,12 +136,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${LANGFUSE_DB_PASSWORD:-postgres}
       POSTGRES_DB: langfuse
       TZ: UTC
       PGTZ: UTC
     ports:
-      - '5433:5432'
+      - '127.0.0.1:5433:5432'
     volumes:
       - langfuse-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -92,7 +177,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-local-dev}
     ports:
-      - '9090:9000'
+      - '127.0.0.1:9090:9000'
     volumes:
       - langfuse-minio-data:/data
     healthcheck:
@@ -132,10 +217,11 @@ services:
         condition: service_healthy
     environment: &langfuse-env
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-      DATABASE_URL: postgresql://postgres:postgres@langfuse-postgres:5432/langfuse
+      DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD:-postgres}@langfuse-postgres:5432/langfuse
       SALT: ${SALT:-change-me-local-dev}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
-      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
+      # Телеметрия Langfuse наружу выключена по умолчанию (аудит: неожиданный egress из корпоративной сети)
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-false}
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-false}
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
       CLICKHOUSE_URL: http://clickhouse:8123
@@ -166,11 +252,22 @@ services:
     restart: unless-stopped
     depends_on: *langfuse-depends-on
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     environment:
       <<: *langfuse-env
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-local-dev}
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
+      # Headless-инициализация (фаза 8): организация, проект, ключи и пользователь UI создаются на первом старте,
+      # чтобы `docker compose up` сразу писал трейсы. Вход в UI: LANGFUSE_INIT_USER_EMAIL / _PASSWORD.
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-remarkround}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-RemarkRound}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_PROJECT_ID:-remarkround}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-RemarkRound}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-remarkround-local}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-remarkround-local}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-pm@remarkround.dev}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-PM}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-remarkround}
 
 volumes:
   postgres-data:

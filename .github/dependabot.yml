@@ -1,0 +1,42 @@
+# Обновления зависимостей (аудит: supply-chain). Раз в неделю, группами, чтобы не тонуть в PR:
+# npm — по workspace целиком; базовые образы Dockerfile; actions в CI. Secret scanning и Dependabot alerts
+# включаются в Settings → Code security репозитория (не файлом).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Мажоры фреймворков — руками и по одному: Angular, Nest, Prisma, LangGraph
+      - dependency-name: '@angular/*'
+        update-types: [version-update:semver-major]
+      - dependency-name: '@nestjs/*'
+        update-types: [version-update:semver-major]
+      - dependency-name: 'prisma'
+        update-types: [version-update:semver-major]
+      - dependency-name: '@prisma/client'
+        update-types: [version-update:semver-major]
+      - dependency-name: '@langchain/*'
+        update-types: [version-update:semver-major]
+  - package-ecosystem: docker
+    directory: /apps/api
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /apps/web
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /apps/mcp
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

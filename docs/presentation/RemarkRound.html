@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>RemarkRound — защита</title>
+<style>
+  @page { size: 1280px 720px; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #f3efe7; color: #1d1b17; font-family: "Golos Text", "Inter", -apple-system, "Segoe UI", system-ui, sans-serif; }
+  .slide { width: 1280px; height: 720px; padding: 56px 72px; page-break-after: always; break-after: page; position: relative; overflow: hidden; display: flex; flex-direction: column; background: #f8f5ee; }
+  .slide:last-child { page-break-after: auto; }
+  h1 { font-size: 56px; margin: 0 0 12px; letter-spacing: -0.02em; font-family: Georgia, "Times New Roman", serif; }
+  h2 { font-size: 36px; margin: 0 0 22px; letter-spacing: -0.01em; }
+  h3 { font-size: 22px; margin: 0 0 8px; }
+  p, li { font-size: 22px; line-height: 1.38; margin: 0 0 10px; }
+  li { margin-bottom: 8px; }
+  ul { margin: 0; padding-left: 28px; }
+  .lead { font-size: 26px; color: #4a463f; }
+  .quote { font-style: italic; color: #5a564e; border-left: 4px solid #1f5d47; padding-left: 16px; font-size: 24px; }
+  .kicker { font-size: 16px; letter-spacing: 0.14em; text-transform: uppercase; color: #8a8478; margin-bottom: 18px; }
+  .foot { position: absolute; bottom: 24px; left: 72px; right: 72px; display: flex; justify-content: space-between; font-size: 14px; color: #8a8478; }
+  .cols { display: flex; gap: 40px; flex: 1; }
+  .col { flex: 1; min-width: 0; }
+  .col.narrow { flex: 0 0 420px; }
+  table { border-collapse: collapse; width: 100%; font-size: 19px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #d9d3c7; vertical-align: top; }
+  th { font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: #6f6a60; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .big { font-size: 64px; font-weight: 700; color: #1f5d47; line-height: 1; margin: 6px 0 4px; }
+  .card { background: #fffdf8; border: 1px solid #e3ddd0; border-radius: 12px; padding: 18px 22px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+  .shot { width: 100%; border: 1px solid #d9d3c7; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 999px; background: #e8efe9; color: #1f5d47; font-size: 16px; margin-right: 6px; }
+  .bad { color: #a1332a; }
+  .ok { color: #1f5d47; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.92em; background: #ede8de; padding: 1px 6px; border-radius: 4px; }
+  .flow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 19px; }
+  .flow .n { background: #fffdf8; border: 1.5px solid #1f5d47; border-radius: 8px; padding: 8px 12px; }
+  .flow .n.h { background: #1f5d47; color: #fff; border-color: #1f5d47; }
+  .flow .a { color: #8a8478; }
+  .loop { font-size: 17px; color: #6f6a60; margin-top: 8px; }
+  svg text { font-family: inherit; }
+</style>
+</head>
+<body>
+
+<!-- 1 -->
+<section class="slide" id="s1">
+  <div class="kicker">nFactorial · LLM-Engineer · финальный проект</div>
+  <h1>RemarkRound</h1>
+  <p class="lead">Слой приёмки веб-проекта: журнал замечаний как карточки с опорой на документы, а не Excel на почте.</p>
+  <p class="quote">Jira stores work. We decide whether it is work. The spec is evidence, not a verdict.</p>
+  <div style="flex:1"></div>
+  <div class="grid3">
+    <div class="card"><h3>Кто</h3><p>Руководитель приёмки в студии или интеграторе: спорит с заказчиком, что баг, а что желание.</p></div>
+    <div class="card"><h3>Что</h3><p>Строка журнала + скрин + пакет документов → цитата, класс, кнопка человека.</p></div>
+    <div class="card"><h3>Чем</h3><p>Angular · NestJS · pgvector · LangGraph.js · MCP · Langfuse · pixelmatch · Docker Compose.</p></div>
+  </div>
+  <div class="foot"><span>Алмас Донебетов · github.com/Dunenbetov/remark-round</span><span>1 / 15</span></div>
+</section>
+
+<!-- 2 -->
+<section class="slide" id="s2">
+  <div class="kicker">Проблема</div>
+  <h2>Excel летает, хотелки становятся «багами»</h2>
+  <div class="cols">
+    <div class="col">
+      <ul>
+        <li>Заказчик принимает кабинет и присылает журнал: DOCX / XLSX, 30–80 строк, часть со скринами.</li>
+        <li>Файл футболят: «не исправлено», «нашли ещё», «не понравилось». Прошлые версии в почте.</li>
+        <li>В одной колонке «дефект» лежат: поломка по ТЗ, новое желание, дыра в ТЗ, повтор, «кнопка не того цвета» без кадра.</li>
+        <li>PM решает по памяти. Разработчик получает всё как баги. Спор с заказчиком — без цитаты.</li>
+      </ul>
+    </div>
+    <div class="col narrow">
+      <div class="card">
+        <h3>Как решают сейчас</h3>
+        <p>Excel + почта + память PM. Трекеры хранят работу, виджеты (Marker.io, BugHerd) кладут скрин в трекер. Никто не отвечает на вопрос <b>«а это вообще работа?»</b> до того, как строка стала тикетом.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>RemarkRound</span><span>2 / 15</span></div>
+</section>
+
+<!-- 3 -->
+<section class="slide" id="s3">
+  <div class="kicker">Решение</div>
+  <h2>Опора в документах → кнопка человека → только потом работа</h2>
+  <div class="cols">
+    <div class="col">
+      <div class="flow">
+        <span class="n">строка журнала</span><span class="a">+</span><span class="n">скрин</span><span class="a">+</span><span class="n">ТЗ · протоколы</span><span class="a">→</span>
+        <span class="n">цитата · факты кадра · класс</span><span class="a">→</span><span class="n h">кнопка PM</span><span class="a">→</span><span class="n">работа разработчика</span>
+      </div>
+      <h3 style="margin-top:26px">Три правила, которые нельзя снять</h3>
+      <ul>
+        <li><b>Чужие документы не видны.</b> Фильтр проекта в SQL, не «модель, не смотри чужое».</li>
+        <li><b>Без кнопки человека текст не становится работой</b> и не закрывает замечание. Нет авто-accept, нет «confidence &gt; 0.9».</li>
+        <li><b>Скриншот меняет ответ.</b> Без кадра визуальный дефект не утверждается; ретест без нового кадра не говорит «исправлено».</li>
+      </ul>
+    </div>
+    <div class="col narrow">
+      <div class="card">
+        <h3>Пять кнопок PM</h3>
+        <p>В работу разработчикам · Новое желание, не в этом ТЗ · В документах нет ответа — решите вы · Не хватает скрина · Не та цитата из ТЗ</p>
+        <h3>Модель обязана уметь «не знаю»</h3>
+        <p><code>cannot_tell</code> и <code>unspecified</code> — исходы, не ошибки. Дыра в ТЗ ≠ change request.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>RemarkRound</span><span>3 / 15</span></div>
+</section>
+
+<!-- 4 -->
+<section class="slide" id="s4">
+  <div class="kicker">Демо</div>
+  <h2>Карточка: замечание | черновик разбора | решение</h2>
+  <div class="cols">
+    <div class="col"><img class="shot" style="max-height:540px;object-fit:cover;object-position:top" src="../screenshots/remark-card.png" alt="Карточка замечания"></div>
+    <div class="col narrow">
+      <ol style="padding-left:24px">
+        <li style="font-size:20px">Импорт журнала по шаблону, строки без описания — человеку.</li>
+        <li style="font-size:20px">Карточка: retrieve → цитата ТЗ §2.1 и протокол, факты кадра, черновик. Фазы по WebSocket.</li>
+        <li style="font-size:20px">PM: «В работу разработчикам». Вторую строку — «Новое желание»: разработчик её не увидит.</li>
+        <li style="font-size:20px">Ретест: новый кадр → дифф третьим кадром → «относится ли красное к претензии». Закрывает бизнес.</li>
+        <li style="font-size:20px">Чужой projectId в MCP → пусто. Langfuse → один trace прогона.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="foot"><span>Стенд: docker compose up · логины в README</span><span>4 / 15</span></div>
+</section>
+
+<!-- 5 -->
+<section class="slide" id="s5">
+  <div class="kicker">Архитектура</div>
+  <h2>Один процесс API, одна БД, MCP как фасад</h2>
+  <svg viewBox="0 0 1136 430" width="1136" height="430" xmlns="http://www.w3.org/2000/svg" font-size="18">
+    <defs><marker id="ar" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a8478"/></marker></defs>
+    <g stroke="#1f5d47" stroke-width="1.5" fill="#fffdf8">
+      <rect x="10" y="40" width="230" height="70" rx="10"/><rect x="10" y="300" width="230" height="70" rx="10"/>
+      <rect x="300" y="140" width="250" height="170" rx="10"/>
+      <rect x="640" y="40" width="220" height="70" rx="10"/><rect x="640" y="140" width="220" height="70" rx="10"/><rect x="640" y="240" width="220" height="70" rx="10"/><rect x="640" y="340" width="220" height="70" rx="10"/>
+      <rect x="910" y="140" width="220" height="70" rx="10"/><rect x="910" y="240" width="220" height="70" rx="10"/>
+      <rect x="300" y="360" width="250" height="60" rx="10"/>
+    </g>
+    <g fill="#1d1b17">
+      <text x="125" y="70" text-anchor="middle" font-weight="600">Angular</text><text x="125" y="94" text-anchor="middle" font-size="15">REST JWT · WS комната</text>
+      <text x="125" y="330" text-anchor="middle" font-weight="600" font-size="17">Cursor / Claude Desktop</text><text x="125" y="354" text-anchor="middle" font-size="15">stdio · http</text>
+      <text x="425" y="175" text-anchor="middle" font-weight="600">NestJS apps/api</text>
+      <text x="425" y="203" text-anchor="middle" font-size="15">RemarksService — один путь записи</text>
+      <text x="425" y="227" text-anchor="middle" font-size="15">LangGraph.js in-process, чекпоинт в БД</text>
+      <text x="425" y="251" text-anchor="middle" font-size="15">Guardrails · Observability</text>
+      <text x="425" y="275" text-anchor="middle" font-size="15">Auth · Tenancy · Imports · Media</text>
+      <text x="750" y="70" text-anchor="middle" font-weight="600">RagModule</text><text x="750" y="94" text-anchor="middle" font-size="15">retrieve WHERE projectId</text>
+      <text x="750" y="170" text-anchor="middle" font-weight="600">DiffModule</text><text x="750" y="194" text-anchor="middle" font-size="15">pixelmatch, cannot_compare</text>
+      <text x="750" y="270" text-anchor="middle" font-weight="600">LlmModule</text><text x="750" y="294" text-anchor="middle" font-size="15">OpenAI или правила · Skill</text>
+      <text x="750" y="370" text-anchor="middle" font-weight="600">Evals runner</text><text x="750" y="394" text-anchor="middle" font-size="15">golden через те же сервисы</text>
+      <text x="1020" y="170" text-anchor="middle" font-weight="600" font-size="17">PostgreSQL + pgvector</text><text x="1020" y="194" text-anchor="middle" font-size="14">чанки · статусы · чекпоинты</text>
+      <text x="1020" y="270" text-anchor="middle" font-weight="600">Langfuse</text><text x="1020" y="294" text-anchor="middle" font-size="15">OTel span'ы, 1 run = 1 trace</text>
+      <text x="425" y="385" text-anchor="middle" font-weight="600">apps/mcp</text><text x="425" y="407" text-anchor="middle" font-size="15">4 tool'а поверх тех же REST-маршрутов</text>
+    </g>
+    <g stroke="#8a8478" stroke-width="1.5" fill="none" marker-end="url(#ar)">
+      <path d="M240 75 L300 170"/><path d="M240 335 L300 390"/><path d="M425 360 L425 312"/>
+      <path d="M550 180 L640 75"/><path d="M550 200 L640 175"/><path d="M550 230 L640 275"/><path d="M640 375 L550 300"/>
+      <path d="M860 75 L910 160"/><path d="M745 140 C 745 95, 1020 95, 1020 140"/><path d="M745 700 C 745 445, 1020 445, 1020 312"/>
+    </g>
+  </svg>
+  <p style="font-size:18px;color:#6f6a60">Заменяемо за границей модуля: LLM-провайдер, embedding-модель, Langfuse ↔ LangSmith (span'ы — OpenTelemetry), pixelmatch ↔ odiff. Не заменять: pgvector как основное хранилище, HITL, SQL-тенанси.</p>
+  <div class="foot"><span>docs/ARCHITECTURE.md</span><span>5 / 15</span></div>
+</section>
+
+<!-- 6 -->
+<section class="slide" id="s6">
+  <div class="kicker">Оркестрация · LangGraph.js</div>
+  <h2>Граф с двумя циклами и interrupt, который живёт дольше HTTP</h2>
+  <div class="flow">
+    <span class="n">ingest</span><span class="a">→</span><span class="n">retrieve</span><span class="a">→</span><span class="n">vision facts</span><span class="a">→</span><span class="n">bind</span><span class="a">→</span><span class="n">classify</span><span class="a">→</span><span class="n">draft</span><span class="a">→</span><span class="n">faithfulness</span><span class="a">→</span><span class="n h">interrupt PM</span><span class="a">→</span><span class="n">persist</span>
+  </div>
+  <p class="loop">Цикл 1: bind без опоры → rewrite query → retrieve (≤ 2). Цикл 2: faithfulness провален → bind (≤ 2) → дальше <code>cannot_tell</code>, не бесконечный LLM. «Не та цитата из ТЗ» → тот же run продолжается из чекпоинта в Postgres с комментарием PM и исключёнными чанками.</p>
+  <div class="cols" style="margin-top:18px">
+    <div class="col">
+      <h3>Почему LangGraph, а не CrewAI / Parlant</h3>
+      <ul>
+        <li>Нужны именно циклы с лимитом и interrupt на часы или дни — чекпоинт в той же БД, thread = <code>AgentRun.id</code>.</li>
+        <li>Один язык и один процесс (TypeScript, Nest): ноды зовут доменные сервисы напрямую, без второго рантайма.</li>
+        <li>Мультиагентность не нужна: одна задача, одно замечание, решает один человек.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Ретест — второй граф</h3>
+      <div class="flow"><span class="n">load</span><span class="a">→</span><span class="n">pixel_diff</span><span class="a">→</span><span class="n">explain</span><span class="a">→</span><span class="n h">interrupt бизнеса</span></div>
+      <p class="loop">Несопоставимые или идентичные кадры решаются без модели. Ветка A/B <code>judge_frames</code> оставлена под флагом для сравнения.</p>
+      <h3>Что пишет в БД</h3>
+      <p>Только <code>RemarksService</code>: applyProposal, verdict, applyRetest, close. Граф, REST, WS и MCP зовут одни методы.</p>
+    </div>
+  </div>
+  <div class="foot"><span>docs/GRAPH.md · graph.same-run.spec</span><span>6 / 15</span></div>
+</section>
+
+<!-- 7 -->
+<section class="slide" id="s7">
+  <div class="kicker">RAG и документы</div>
+  <h2>Чанк = раздел ТЗ, цитата с номером, фильтр проекта в SQL</h2>
+  <div class="cols">
+    <div class="col">
+      <ul>
+        <li>PDF / DOCX / Markdown → разделы по заголовкам; подпись «§2.1 Primary» хранится и едет в цитату на карточке. Длинные разделы — окна 220 слов с перекрытием 40, остаются подписаны.</li>
+        <li>В эмбеддинг — путь заголовков + текст. <code>text-embedding-3-small</code>, 1536, HNSW по косинусу (ivfflat на пустом индексе даёт плохой recall).</li>
+        <li><code>WHERE "projectId" = $current</code> в самом SQL retrieve. Тест leakage: чужой проект → 0 чанков, 404.</li>
+        <li>Журнал — только официальный шаблон XLSX / CSV; чужая шапка → 422; картинки из ячеек становятся кадрами.</li>
+      </ul>
+    </div>
+    <div class="col narrow">
+      <table>
+        <tr><th>Стратегия чанкинга</th><th class="num">top-1</th><th class="num">top-3</th></tr>
+        <tr><td>По заголовкам + путь (прод)</td><td class="num">6/8</td><td class="num">8/8</td></tr>
+        <tr><td>По заголовкам без пути</td><td class="num">7/8</td><td class="num">8/8</td></tr>
+        <tr><td>Окна 120 слов / 20</td><td class="num">5/8</td><td class="num">8/8</td></tr>
+        <tr><td>Окна 60 слов / 10</td><td class="num">4/8</td><td class="num">8/8</td></tr>
+      </table>
+      <p style="font-size:17px;color:#6f6a60;margin-top:10px">Слепые окна проигрывают по смыслу: чанк не знает свой раздел, цитата «§2.1» из него не собирается. Reranker не брали: 11 чанков на проект, ранг решает bind по близости.</p>
+    </div>
+  </div>
+  <div class="foot"><span>docs/ARCHITECTURE.md «Чанкинг»</span><span>7 / 15</span></div>
+</section>
+
+<!-- 8 -->
+<section class="slide" id="s8">
+  <div class="kicker">Мультимодальность</div>
+  <h2>Скрин — источник фактов, пиксели считает алгоритм</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>Триаж: факты кадра до решения</h3>
+      <p>Vision-нода описывает только видимое («кнопка серая, поля заполнены»). Кейс «текст врёт, скрин спасает»: «на оплате всё зелёное» с кадром профиля → <code>cannot_tell</code>, а не дефект по §4.1.</p>
+      <h3>Ретест: тройка было / стало / дифф</h3>
+      <p>pixelmatch, порог 0.1, без масштабирования. Другой размер, другой экран (&gt; 35 % пикселей или рамка &gt; 40 % кадра) → <code>cannot_compare</code>. Модель отвечает только: относится ли красное к претензии.</p>
+      <p class="quote" style="font-size:20px">ADR 002: нельзя закрывать ретест вызовом «вот два png, исправили?». Цвет / hex — низкая уверенность, человек.</p>
+    </div>
+    <div class="col"><img class="shot" style="height:300px;object-fit:cover;object-position:top" src="../screenshots/retest.png" alt="Ретест: было, стало, дифф"></div>
+  </div>
+  <div class="foot"><span>apps/api/src/diff · docs/adr/002-pixel-diff.md</span><span>8 / 15</span></div>
+</section>
+
+<!-- 9 -->
+<section class="slide" id="s9">
+  <div class="kicker">MCP и Skill</div>
+  <h2>Тот же домен из Cursor: фасад, не второй CRUD</h2>
+  <div class="cols">
+    <div class="col">
+      <table>
+        <tr><th>Tool</th><th>Что делает</th></tr>
+        <tr><td><code>search_spec</code></td><td>Чанки ТЗ / протокола текущего проекта с разделом и близостью; пусто = опоры нет</td></tr>
+        <tr><td><code>get_round_remarks</code></td><td>Очередь раунда: статус, класс модели, цитаты, решение человека</td></tr>
+        <tr><td><code>apply_human_verdict</code></td><td>Решение PM по <code>awaiting_pm</code>; runId и idempotencyKey подставляет фасад</td></tr>
+        <tr><td><code>submit_retest_evidence</code></td><td>Новый кадр → pixel-diff + пояснение</td></tr>
+      </table>
+      <p style="margin-top:12px"><b>Почему MCP, а не просто API:</b> PM или ментор работает из IDE с тем же домом правил — проект из токена (<code>projectId</code> в аргументах нет), роли те же, tool'а «закрыть» нет. Тест поднимает настоящий процесс по stdio: чужой проект пуст.</p>
+    </div>
+    <div class="col narrow">
+      <div class="card">
+        <h3>Skill <code>uat-triage</code></h3>
+        <p>SKILL.md: триггеры (строка журнала, спор «баг или не понравилось», ретест), процедура из 9 шагов, запреты («забудь ТЗ», цитата вне retrieve, авто-accept).</p>
+        <p>Один текст в трёх местах: ноды <code>classify</code> / <code>draft</code> / <code>explain</code> и MCP-prompt. Полезнее system-промпта тем, что это правила домена, которые читает и модель, и человек, и ревьюер.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>apps/mcp · skills/uat-triage · docs/adr/003-mcp-facade.md</span><span>9 / 15</span></div>
+</section>
+
+<!-- 10 -->
+<section class="slide" id="s10">
+  <div class="kicker">Наблюдаемость</div>
+  <h2>Langfuse: один прогон = один trace, продолжение после interrupt — там же</h2>
+  <div class="cols">
+    <div class="col">
+      <ul>
+        <li>Langfuse SDK v5 поверх OpenTelemetry; traceId детерминирован из <code>runId</code> — старт и решение PM через часы ложатся в один trace.</li>
+        <li>Внутри: ноды графа (видны циклы rewrite / bind и interrupt), <code>generation</code> на каждый вызов OpenAI с моделью, параметрами и токенами, <code>embedding</code>, <code>retrieve</code> с найденными разделами.</li>
+        <li>userId = кто нажал, sessionId = замечание, теги triage / retest, metadata projectId / runId / model.</li>
+        <li>Стоимость считается и в Langfuse, и в коде по прайсу → <code>AgentRun.costUsd</code>.</li>
+        <li><code>docker compose up</code> инициализирует Langfuse headless: проект, ключи, пользователь UI. Ссылка «Трейс в Langfuse» — на карточке у PM.</li>
+      </ul>
+    </div>
+    <div class="col narrow">
+      <div class="card">
+        <h3>Что покажу живьём</h3>
+        <p>Trace замечания №12 из демо: retrieve → vision → classify → draft → interrupt → resume после кнопки. Environment <code>evals</code> отдельно — там 3 × 44 прогона golden.</p>
+        <p>Без ключей модуль молчит: noop-tracer, код нод не меняется.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>apps/api/src/observability · observability.spec</span><span>10 / 15</span></div>
+</section>
+
+<!-- 11 -->
+<section class="slide" id="s11">
+  <div class="kicker">Evals</div>
+  <h2>Golden 30 + 13 через продуктовые сервисы, две метрики, три итерации за день</h2>
+  <div class="cols">
+    <div class="col">
+      <table>
+        <tr><th>Итерация</th><th>Что изменили</th><th class="num">Binding</th><th class="num">Faithful.</th></tr>
+        <tr><td>1</td><td>исходный classify</td><td class="num">22/30</td><td class="num">29/30</td></tr>
+        <tr><td>2</td><td>classify по шагам: повтор → кадр → класс; ворота faithfulness — только процитированные разделы</td><td class="num">23/30</td><td class="num">30/30</td></tr>
+        <tr><td>3</td><td>шаг «сверка»: что требует документ vs что на проде; кадр о другом экране → cannot_tell</td><td class="num"><b>25/30</b></td><td class="num"><b>30/30</b></td></tr>
+      </table>
+      <p style="margin-top:12px;font-size:19px">12 типов возражений комиссии: дефект с опорой, CR, дыра, конфликт, дубль, «текст врёт — скрин спасает», ретест не про претензию, несопоставимые кадры, leakage, injection, визуальная претензия без кадра, ложная цитата. Каждая правка промпта — от провала в evals.</p>
+    </div>
+    <div class="col narrow">
+      <div class="card">
+        <h3>Binding quality</h3>
+        <p style="font-size:19px">Класс совпал <i>или</i> законный abstain на дыре / шуме; нужный раздел среди цитат; повтор указывает на оригинал.</p>
+        <h3>Faithfulness</h3>
+        <p style="font-size:19px">Ни ссылки на раздел без цитаты, ни «на кадре» без кадра, ни дефекта без цитаты, ни «закрыто» от модели, ни ложной цитаты.</p>
+        <p style="font-size:17px;color:#6f6a60">Не измеряют: «PM в жизни решил бы так же». <code>pnpm evals</code>, CI на каждый PR.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>docs/EVALS.md · evals/golden.json</span><span>11 / 15</span></div>
+</section>
+
+<!-- 12 -->
+<section class="slide" id="s12">
+  <div class="kicker">A/B</div>
+  <h2>Гипотеза: LLM по двум кадрам достаточно. Не подтвердилась</h2>
+  <table>
+    <tr><th>Вариант</th><th class="num">N</th><th class="num">Quality</th><th class="num">Ложных «исправлено»</th><th class="num">$ / ретест</th><th class="num">с / ретест</th><th>В коде</th></tr>
+    <tr><td>H0 — два кадра в LLM (<code>llm_only</code>)</td><td class="num">13</td><td class="num">12/13</td><td class="num bad"><b>1</b></td><td class="num">0.0047</td><td class="num">1.8</td><td>нет</td></tr>
+    <tr><td>H1 — pixel-diff + explain (<code>diff_explain</code>)</td><td class="num">13</td><td class="num">12/13</td><td class="num ok"><b>0</b></td><td class="num">0.0040</td><td class="num">1.3</td><td><b>дефолт</b></td></tr>
+  </table>
+  <div class="cols" style="margin-top:22px">
+    <div class="col">
+      <ul>
+        <li>Тот же код и те же 13 кейсов: дифф не про претензию, зум, другой размер, <b>2× DPR</b>, «почти тот» hex, secondary вместо primary, пиксель в пиксель, три настоящих исправления.</li>
+        <li>H0 сказал «исправлено» про кадр 1600×800 против 800×400 — ровно та уверенная ложь, о которой ADR 002. H1 на несопоставимых и идентичных кадрах не зовёт модель вообще.</li>
+        <li>Промах H1 — консервативный: <code>likely_unchanged</code> вместо <code>likely_addressed</code>. Бизнес всё равно смотрит дифф глазами.</li>
+      </ul>
+    </div>
+    <div class="col narrow">
+      <div class="card"><h3>Решение</h3><p><code>DEFAULT_RETEST_STRATEGY = 'diff_explain'</code>. H0 остался под флагом <code>RETEST_STRATEGY=llm_only</code> только для сравнения.</p><p style="font-size:18px;color:#6f6a60">Дешевле на 15 %, быстрее на 30 %, ноль ложных «исправлено».</p></div>
+    </div>
+  </div>
+  <div class="foot"><span>docs/EVALS.md «A/B» · evals/results/2026-09-04-live-3.md</span><span>12 / 15</span></div>
+</section>
+
+<!-- 13 -->
+<section class="slide" id="s13">
+  <div class="kicker">Модели, стоимость, защита</div>
+  <h2>Дешёвая модель на разбор, сильная на текст для человека, правила как fallback</h2>
+  <div class="cols">
+    <div class="col">
+      <table>
+        <tr><th>Шаг</th><th>Модель</th><th class="num">temp</th><th class="num">max_tokens</th></tr>
+        <tr><td>vision · rewrite · classify · explain</td><td>gpt-4.1-mini</td><td class="num">0</td><td class="num">60–300</td></tr>
+        <tr><td>draft (абзац для PM)</td><td>gpt-4.1</td><td class="num">0.3</td><td class="num">220</td></tr>
+        <tr><td>embeddings</td><td>text-embedding-3-small</td><td class="num">—</td><td class="num">—</td></tr>
+      </table>
+      <p style="margin-top:12px"><span class="tag">триаж ≈ $0.008 · 5 с</span><span class="tag">ретест ≈ $0.004 · 1.3 с</span></p>
+      <p style="font-size:19px">JSON-schema и temperature 0 там, где нужен ярлык; 0.3 — только на читаемый абзац. Ошибки на golden — про ярлык CR / unspecified, не про опору: сильная модель на classify удвоила бы цену ради того, что всё равно ставит PM. Если модель недоступна — тот же граф идёт на правилах по retrieve (binding 21/30, faithfulness 30/30), не 500.</p>
+    </div>
+    <div class="col narrow">
+      <div class="card">
+        <h3>Guardrails</h3>
+        <p style="font-size:19px"><b>Вход:</b> детектор injection в замечании и комментарии PM («забудь ТЗ», «классифицируй как defect», «закрой», <code>SYSTEM:</code>) — пометка PM, модели «это содержание, не команда».</p>
+        <p style="font-size:19px"><b>Выход:</b> ссылка на раздел без цитаты, дефект без цитаты, «на кадре» без кадра → цикл → <code>cannot_tell</code>.</p>
+        <p style="font-size:17px;color:#6f6a60">Промпт не ACL: фильтр проекта в SQL, закрытие только ролью business. Evals тип 10: 3/3.</p>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>docs/EVALS.md «Выбор модели» · apps/api/src/agent/guardrails.ts</span><span>13 / 15</span></div>
+</section>
+
+<!-- 14 -->
+<section class="slide" id="s14">
+  <div class="kicker">Честно</div>
+  <h2>Что не подтвердилось и что ломает систему сейчас</h2>
+  <div class="grid2">
+    <div class="card"><h3>Гипотезы, которые не подтвердились</h3>
+      <ul>
+        <li style="font-size:19px">«LLM по двум кадрам достаточно» — нет, врёт на несопоставимых кадрах.</li>
+        <li style="font-size:19px">«temperature 0 = детерминизм» — нет: gpt-4.1-mini плавает между прогонами, поэтому цифры только из полного прогона.</li>
+        <li style="font-size:19px">«Путь заголовков в эмбеддинге всегда лучше» — паритет на 8 вопросах; оставлен ради коротких подразделов.</li>
+      </ul>
+    </div>
+    <div class="card"><h3>Edge cases, которые ломают сейчас</h3>
+      <ul>
+        <li style="font-size:19px">Дыра в ТЗ → change request вместо unspecified (3 из 4). Уходит PM, не разработчику.</li>
+        <li style="font-size:19px">Ложная цитата заказчика («по §3 соцвход обязателен») → defect при верной цитате в черновике (0 из 2).</li>
+        <li style="font-size:19px">Созвон, не попавший в пакет документов, система не знает — это процесс внедрения, не баг.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:20px"><h3>Что дальше</h3>
+    <p style="font-size:19px">Пилот в одной компании на одном типе продукта: утверждённый шаблон журнала, пакет документов с датами, человек всегда закрывает. Не делать: виджет на контуре заказчика, Playwright, синк с Jira, автозакрытие. Публичный URL — к Demo Days.</p>
+  </div>
+  <div class="foot"><span>README «Ограничения, честно»</span><span>14 / 15</span></div>
+</section>
+
+<!-- 15 -->
+<section class="slide" id="s15">
+  <div class="kicker">Итог</div>
+  <h2>Что сделано и как проверить</h2>
+  <div class="grid3">
+    <div class="card"><h3>Обязательное</h3><p style="font-size:19px">LangGraph с циклами и HITL · свой MCP (4 tool'а) · Skill · RAG на pgvector с обоснованием · PDF / DOCX / XLSX · vision как источник фактов · Langfuse на каждый вызов · golden 30 + 13, 2 метрики, автопрогон · A/B с победителем в коде · выбор моделей с цифрами · Angular</p></div>
+    <div class="card"><h3>Сверху</h3><p style="font-size:19px">Guardrails вход / выход · Docker Compose одной командой · auth и роли · CI с evals на PR · fallback на правила без модели · свой eval-раннер через продуктовые сервисы · 15 спеков-ворот (leakage, injection, «модель не закрывает», идемпотентность)</p></div>
+    <div class="card"><h3>Проверить за 5 минут</h3><p style="font-size:19px"><code>docker compose up</code> → :4200, Дана / remarkround → карточка №12 → кнопка → :3000 trace. <code>pnpm evals -- --offline</code> → отчёт. <code>.cursor/mcp.json</code> → <code>search_spec</code> из Cursor.</p></div>
+  </div>
+  <div style="flex:1"></div>
+  <p class="quote">Jira stores work. We decide whether it is work.</p>
+  <p class="lead">github.com/Dunenbetov/remark-round · README · ARCHITECTURE.md · EVALS.md</p>
+  <div class="foot"><span>Алмас Донебетов · nFactorial LLM-Engineer · сентябрь 2026</span><span>15 / 15</span></div>
+</section>
+
+</body>
+</html>

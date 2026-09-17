@@ -1,0 +1,105 @@
+name: ci
+
+on:
+  pull_request:
+  # Любая ветка: фаза не должна копиться неделями без прогона тестов (аудит: uncommitted-phase)
+  push:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: remarkround
+          POSTGRES_PASSWORD: remarkround
+          POSTGRES_DB: remarkround
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U remarkround"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://remarkround:remarkround@localhost:5432/remarkround
+      JWT_SECRET: ci-secret
+      LANGFUSE_TRACING_ENABLED: 'false'
+      STORAGE_DIR: ${{ github.workspace }}/apps/api/storage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm db:migrate:deploy
+      - name: Уязвимости prod-зависимостей (high и выше — красный)
+        run: pnpm audit --prod --audit-level=high
+      - name: Типы API (спеки и evals тоже)
+        run: pnpm --filter @remarkround/api exec tsc --noEmit -p tsconfig.json
+      - name: Сборка MCP-фасада (его же спавнит mcp.facade.spec, но tsc ловит ошибки типов раньше)
+        run: pnpm --filter @remarkround/mcp build
+      - name: Тесты API (включая evals.spec офлайн)
+        run: pnpm --filter @remarkround/api test
+      - name: Evals офлайн — golden через продуктовые сервисы, отчёт в артефакт
+        run: pnpm evals -- --offline --out evals/results/ci-offline
+        env:
+          EVALS_MIN_BINDING: '0.6'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evals-report
+          path: evals/results/ci-offline.*
+      - name: Сборка фронта (web-тестов нет: сборка ловит ошибки шаблонов и типов)
+        run: pnpm --filter @remarkround/web build
+      - name: Прод-override compose валиден
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
+        env:
+          JWT_SECRET: 0123456789abcdef0123456789abcdef
+          POSTGRES_PASSWORD: ci-only
+          PUBLIC_HOST: rr.example.com
+          ADMIN_EMAILS: admin@rr.example.com
+
+  # Релизные образы (аудит: no-release-artifacts): на push в main и на тег v* собираем api/web/mcp с GIT_SHA
+  # и публикуем в GHCR. Прод делает `docker compose pull` по RR_TAG вместо сборки на боевом сервере (docs/PROD.md).
+  images:
+    needs: api
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        app: [api, web, mcp]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/remark-round-${{ matrix.app }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: GIT_SHA=sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

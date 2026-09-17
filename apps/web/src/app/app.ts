@@ -1,17 +1,22 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
+import { AccountService } from './core/account.service';
+import { OnboardingTour } from './ui/onboarding-tour';
+import { UndoBar } from './ui/undo-bar';
 
 @Component({
   selector: 'app-root',
-  standalone: true,
-  template: `
-    <div class="shell">
-      <header class="shell__header">
-        <h1 class="shell__logo">RemarkRound</h1>
-      </header>
-      <main class="shell__main">
-        <p class="shell__status">сервис поднят</p>
-      </main>
-    </div>
-  `,
+  imports: [RouterOutlet, UndoBar, OnboardingTour],
+  template: `<router-outlet /><rr-undo-bar /><rr-onboarding-tour />`,
 })
-export class App {}
+export class App {
+  constructor() {
+    const account = inject(AccountService);
+    // Вернулись на вкладку — membership могли измениться (добавили в проект, сменили роль)
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') void account.refresh();
+      });
+    }
+  }
+}

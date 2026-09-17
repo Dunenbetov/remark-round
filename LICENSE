@@ -1,0 +1,10 @@
+Copyright (c) 2026 Almas Donenbetov. All rights reserved.
+
+RemarkRound is proprietary software. No part of this repository may be used,
+copied, modified, distributed or deployed without a written agreement with the
+copyright holder.
+
+Права на код принадлежат автору. Использование в компании — по письменному
+соглашению (лицензия на использование или передача прав по договору): см.
+docs/adr/008-release-and-ownership.md. Сторонние зависимости — по их лицензиям
+(pnpm licenses list).

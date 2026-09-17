@@ -74,6 +74,30 @@ enum ImportRowStatus {
   failed
 }
 
+enum JobStatus {
+  queued
+  running
+  done
+  failed
+  cancelled
+}
+
+/// Предложение модели до решения человека (docs/WS.md ProposedClass)
+enum ProposedClass {
+  defect_candidate
+  change_request_candidate
+  unspecified
+  duplicate
+  cannot_tell
+}
+
+/// Итог ретеста от модели (docs/GRAPH.md). Не closed: закрывает только бизнес.
+enum RetestOutcome {
+  likely_addressed
+  likely_unchanged
+  cannot_tell
+}
+
 enum VerdictCode {
   defect
   change_request
@@ -86,19 +110,55 @@ enum VerdictCode {
 model User {
   id           String       @id @default(uuid())
   email        String       @unique
-  passwordHash String
+  /// null — пользователь без пароля (задел под вход через Google): verifyPassword(null) всегда false
+  passwordHash String?
   name         String
+  /// Сторона при регистрации (ADR 005): подсказка для приглашений и экранов. Права не даёт (ADR 006).
+  /// Роль в конкретном проекте — всегда Membership.role.
+  preferredRole Role?
+  /// Смена пароля: токены с iat раньше этого момента недействительны (выход везде, включая MCP-токены)
+  passwordChangedAt DateTime?
+  /// Право создавать проекты (ADR 006): выдаёт администратор инстанса, не сторона при регистрации
+  canCreateProjects Boolean   @default(false)
+  /// Отключён администратором инстанса (ADR 006): вход, токены и сокеты недействительны, membership сохраняется
+  disabledAt   DateTime?
+  /// Версия сессий: токены с другой `tv` недействительны — «завершить все сессии» без смены пароля (ADR 006)
+  tokenVersion Int          @default(0)
+  /// Письма «вас ждёт кнопка» (ADR 009): человек выключает в профиле; приглашения и служебные письма это не трогает
+  notifyByEmail Boolean     @default(true)
   memberships  Membership[]
   verdicts     HumanVerdict[]
+  advices      DeveloperAdvice[]
+  notifications Notification[]
+  statusChanges RemarkStatusChange[]
+  roundEvents   RoundEvent[]
+  authoredRemarks Remark[]     @relation("RemarkAuthor")
+  fixedRemarks    Remark[]     @relation("RemarkFixedBy")
+  closedRemarks   Remark[]     @relation("RemarkClosedBy")
+  closedRounds    Round[]      @relation("RoundClosedBy")
+  invitedMemberships Membership[] @relation("MembershipInvitedBy")
+  sentInvitations Invitation[] @relation("InvitationInvitedBy")
+  acceptedInvitations Invitation[] @relation("InvitationAcceptedBy")
   createdAt    DateTime     @default(now())
 }
 
 model Project {
   id          String         @id @default(uuid())
   name        String
+  /// Имя в адресе: /klientskiy-kabinet/round-2/12. Транслит названия при создании (ProjectsService, projects/slug.ts);
+  /// при переименовании не меняется — ссылки не ломаются. Мимо сервиса (тесты, evals) — uuid, чтобы unique держался.
+  slug        String         @unique @default(uuid())
   memberships Membership[]
+  invitations Invitation[]
   documents   Document[]
   rounds      Round[]
+  notifications Notification[]
+  /// Прямые FK тенантных колонок (аудит: tenancy-not-enforced): Postgres не даст записать замечание, прогон или чанк в несуществующий проект
+  remarks     Remark[]
+  runs        AgentRun[]
+  chunks      DocumentChunk[]
+  importJobs  ImportJob[]
+  roundEvents RoundEvent[]
   createdAt   DateTime       @default(now())
 }
 
@@ -107,11 +167,40 @@ model Membership {
   userId    String
   projectId String
   role      Role
+  /// Кто добавил; null — создатель проекта, seed или удалённый пользователь (SetNull)
+  invitedById String?
+  invitedBy User?    @relation("MembershipInvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
   user      User     @relation(fields: [userId], references: [id])
   project   Project  @relation(fields: [projectId], references: [id])
+  createdAt DateTime @default(now())
 
   @@unique([userId, projectId])
   @@index([projectId])
+}
+
+/// Приглашение в проект (ADR 005, ADR 006). Писем нет: ссылку /join/<token> PM отправляет сам.
+/// Принимается только по ссылке: регистрацией с inviteToken или вошедшим пользователем. Совпадение e-mail
+/// без ссылки ничего не даёт — иначе место в проекте забирал бы тот, кто первым зарегистрировал этот адрес.
+model Invitation {
+  id               String    @id @default(uuid())
+  projectId        String
+  /// Нормализованный lower-case e-mail
+  email            String
+  role             Role
+  /// sha256(token) в hex (ADR 006): сырой токен randomBytes(24).base64url отдаётся один раз при создании
+  /// и по кнопке «Новая ссылка»; у кого ссылка, тот и входит с этой ролью — поэтому в БД хранится только хэш
+  tokenHash        String    @unique
+  invitedById      String
+  createdAt        DateTime  @default(now())
+  expiresAt        DateTime?
+  acceptedAt       DateTime?
+  acceptedByUserId String?
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedBy        User      @relation("InvitationInvitedBy", fields: [invitedById], references: [id])
+  acceptedBy       User?     @relation("InvitationAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, email])
+  @@index([email])
 }
 
 model Document {
@@ -138,10 +227,13 @@ model DocumentChunk {
   page       Int?
   content    String
   /// vector(N) — N = размерность выбранной embedding-модели, одна на индекс
-  embedding  Unsupported("vector")?
+  embedding  Unsupported("vector(1536)")?
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  project    Project  @relation(fields: [projectId], references: [id])
+  citations  EvidenceCitation[]
 
   @@index([projectId])
+  @@index([documentId])
 }
 
 model Round {
@@ -149,11 +241,21 @@ model Round {
   projectId String
   number    Int
   status    RoundStatus @default(open)
+  /// Закрыт заказчиком или руководителем приёмки, когда всё решено (RoundsService.close); reopen обнуляет
+  closedAt       DateTime?
+  closedByUserId String?
   project   Project     @relation(fields: [projectId], references: [id])
+  closedBy  User?       @relation("RoundClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
   remarks   Remark[]
   imports   ImportJob[]
+  /// Когда раунд открыт (ADR 011); у раундов до миграции — по первому замечанию
+  createdAt DateTime    @default(now())
+  /// Открыт / закрыт / открыт снова — кто и когда (ADR 011): closedAt у раунда перезаписывается, история — нет
+  events    RoundEvent[]
 
   @@unique([projectId, number])
+  /// Составной ключ для FK (roundId, projectId) у Remark и ImportJob: замечание не попадёт в раунд чужого проекта даже ручным SQL
+  @@unique([id, projectId])
 }
 
 model Remark {
@@ -167,15 +269,47 @@ model Remark {
   severity       String?
   status         RemarkStatus  @default(imported)
   duplicateOfId  String?
-  round          Round         @relation(fields: [roundId], references: [id])
+  /// Повтор претензии (docs/STATUS.md closed → reopened): новое замечание в новом раунде помнит закрытый оригинал
+  originRemarkId String?
+  /// Порядковый номер в раунде — «№ 12» на карточке
+  number         Int
+  authorId       String?
+  /// Черновик разбора: предложение модели и обоснование (абзацы через пустую строку)
+  proposedClass  ProposedClass?
+  rationale      String?
+  visionFacts    String?
+  retestOutcome  RetestOutcome?
+  retestExplanation String?
+  fixedByUserId  String?
+  closedByUserId String?
+  closedAt       DateTime?
+  project        Project       @relation(fields: [projectId], references: [id])
+  /// Составной FK: раунд обязан принадлежать тому же проекту, что и замечание (аудит: tenancy-not-enforced)
+  round          Round         @relation(fields: [roundId, projectId], references: [id, projectId])
+  author         User?         @relation("RemarkAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  fixedBy        User?         @relation("RemarkFixedBy", fields: [fixedByUserId], references: [id], onDelete: SetNull)
+  closedBy       User?         @relation("RemarkClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  duplicateOf    Remark?       @relation("RemarkDuplicate", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates     Remark[]      @relation("RemarkDuplicate")
+  importRows     ImportRow[]
+  origin         Remark?       @relation("RemarkReopen", fields: [originRemarkId], references: [id], onDelete: SetNull)
+  reopenedBy     Remark[]      @relation("RemarkReopen")
   screenshots    RemarkScreenshot[]
   citations      EvidenceCitation[]
   runs           AgentRun[]
+  notifications  Notification[]
+  /// История переходов (аудит: remark-history): строка на каждый переход, кто и когда
+  history        RemarkStatusChange[]
   verdicts       HumanVerdict[]
+  advices        DeveloperAdvice[]
   createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([projectId, status])
   @@index([roundId])
+  @@index([originRemarkId])
+  @@index([duplicateOfId])
+  @@unique([roundId, number])
 }
 
 model RemarkScreenshot {
@@ -187,13 +321,31 @@ model RemarkScreenshot {
   height    Int?
   remark    Remark         @relation(fields: [remarkId], references: [id], onDelete: Cascade)
   createdAt DateTime       @default(now())
+  /// Заменён новым кадром того же вида (ADR 011): «не исправлено», новый ретест, отмена. Строка остаётся уликой и
+  /// ссылкой из истории; текущие кадры карточки — supersededAt IS NULL. Удалить кадр нельзя (триггер rr_append_only).
+  supersededAt DateTime?
+
+  @@index([remarkId])
 }
 
+/// Улика-цитата (аудит: evidence-citation-dangling). Текст цитаты и подпись документа — снимок на момент
+/// предложения модели: переиндексация ТЗ (новые id чанков) не отнимает обоснование у принятых и закрытых
+/// замечаний. chunkId — живая ссылка на чанк, пока он есть (SetNull после reindex); по ней граф исключает
+/// уже отвергнутые цитаты («Не та цитата из ТЗ»).
 model EvidenceCitation {
-  id        String @id @default(uuid())
-  remarkId  String
-  chunkId   String
-  remark    Remark @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+  id            String        @id @default(uuid())
+  remarkId      String
+  chunkId       String?
+  quoteText     String?
+  section       String?
+  documentTitle String?
+  documentKind  DocumentKind?
+  effectiveAt   DateTime?
+  remark        Remark        @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+  chunk         DocumentChunk? @relation(fields: [chunkId], references: [id], onDelete: SetNull)
+
+  @@index([remarkId])
+  @@index([chunkId])
 }
 
 model AgentRun {
@@ -203,43 +355,92 @@ model AgentRun {
   mode      String         @default("triage")
   status    AgentRunStatus @default(running)
   model     String?
+  /// Снимок предложения модели этого прогона (аудит: remark-history): новый прогон не затирает прежний разбор
+  proposedClass ProposedClass?
+  rationale     String?
+  visionFacts   String?
   inputTokens  Int?
   outputTokens Int?
   costUsd   Decimal?       @db.Decimal(10, 6)
+  /// Почему прогон failed: код (llm_timeout, llm_rate_limit, llm_auth, llm_bad_request, storage, unknown) и текст для карточки
+  failureCode    String?
+  failureMessage String?
   remark    Remark         @relation(fields: [remarkId], references: [id])
+  project   Project        @relation(fields: [projectId], references: [id])
   checkpoints GraphCheckpoint[]
+  verdicts  HumanVerdict[]
   createdAt DateTime       @default(now())
+
+  @@index([remarkId])
+  @@index([status, createdAt])
 }
 
+/// Чекпоинт LangGraph (фаза 6): thread_id = AgentRun.id, поэтому interrupt живёт дольше HTTP и рестарта API.
+/// blob/metadata/writes — сериализация JsonPlusSerializer (base64), как в MemorySaver, только в Postgres.
 model GraphCheckpoint {
-  id     String   @id @default(uuid())
-  runId  String
-  blob   Json
-  run    AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  id           String   @id @default(uuid())
+  runId        String
+  ns           String   @default("")
+  checkpointId String
+  parentId     String?
+  blob         Json
+  metadata     Json     @default("{}")
+  /// Ожидающие записи нод по ключу «taskId,idx»: [taskId, channel, value]
+  writes       Json     @default("{}")
+  run          AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([runId, ns, checkpointId])
 }
 
 model HumanVerdict {
   id        String      @id @default(uuid())
   remarkId  String
-  runId     String?
+  /// Прогон, к которому относится решение: обязателен, иначе @@unique([runId, idempotencyKey]) с NULL ничего не гарантирует
+  runId     String
   userId    String
   code      VerdictCode
   comment   String?
   idempotencyKey String
   remark    Remark      @relation(fields: [remarkId], references: [id])
+  run       AgentRun    @relation(fields: [runId], references: [id])
   user      User        @relation(fields: [userId], references: [id])
   createdAt DateTime    @default(now())
 
   @@unique([runId, idempotencyKey])
+  @@index([remarkId])
 }
 
+/// Совет разработчика по замечанию в awaiting_pm: не вердикт — статус не меняет, граф не трогает.
+/// Один на человека и замечание; можно изменить или снять. PM видит его рядом с вариантом решения.
+model DeveloperAdvice {
+  id        String      @id @default(uuid())
+  remarkId  String
+  userId    String
+  code      VerdictCode
+  comment   String?
+  remark    Remark      @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id])
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([remarkId, userId])
+}
+
+/// Загрузка журнала по официальному шаблону (REMARKROUND.md §14). projectId дублирует round.projectId
+/// ради прямого SQL-фильтра тенанси; storageKey — исходный файл, чтобы ничего не терять.
 model ImportJob {
   id        String      @id @default(uuid())
+  projectId String
   roundId   String
+  fileName  String
   storageKey String
-  round     Round       @relation(fields: [roundId], references: [id])
+  project   Project     @relation(fields: [projectId], references: [id])
+  round     Round       @relation(fields: [roundId, projectId], references: [id, projectId])
   rows      ImportRow[]
   createdAt DateTime    @default(now())
+
+  @@index([projectId])
 }
 
 model ImportRow {
@@ -247,7 +448,130 @@ model ImportRow {
   jobId      String
   rowNumber  Int
   status     ImportRowStatus
+  /// Ячейки строки как есть — человек дописывает, парсер не выдумывает
   rawJson    Json
+  /// Почему строка ушла человеку: «пустое описание», «больше ячеек, чем колонок»
+  reason     String?
   remarkId   String?
   job        ImportJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  remark     Remark?         @relation(fields: [remarkId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([remarkId])
+}
+
+/// Фоновая задача (аудит: no-job-queue): прогон графа, индексация документа. Очередь живёт в той же Postgres —
+/// SELECT … FOR UPDATE SKIP LOCKED вместо брокера (REMARKROUND §5: без Kafka/микросервисов). Рестарт API
+/// не теряет работу: running с протухшим lockedAt возвращается в queued, временные ошибки модели — повтор с паузой.
+model Job {
+  id          String    @id @default(uuid())
+  /// graph | index_document
+  kind        String
+  projectId   String?
+  /// Для graph — runId прогона: cancel помечает очередь этого прогона cancelled
+  runId       String?
+  payload     Json
+  status      JobStatus @default(queued)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  /// Не раньше этого момента (backoff повторов)
+  runAfter    DateTime  @default(now())
+  /// Кто и когда взял: инстанс API (heartbeat раз в 15 с); lockedAt старше минуты — задача осиротела
+  lockedAt    DateTime?
+  lockedBy    String?
+  /// Инстанс, поставивший задачу: в тестах воркер берёт только свои
+  owner       String
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  finishedAt  DateTime?
+
+  @@index([status, runAfter])
+  @@index([runId])
+}
+
+/// Кому и о чём написать (ADR 009): статус замечания, который ждёт роль этого человека
+enum NotificationKind {
+  awaiting_pm
+  defect
+  ready_for_retest
+  awaiting_business_close
+  cannot_tell
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  skipped
+  failed
+}
+
+/// Уведомление одному человеку об одном замечании (ADR 009). Копятся `pending`, задача `notify_digest` собирает
+/// всё ожидающее для человека в одно письмо; `skipped` — письма выключены (профиль, SMTP не настроен, человек отключён).
+model Notification {
+  id        String             @id @default(uuid())
+  userId    String
+  projectId String
+  remarkId  String
+  kind      NotificationKind
+  status    NotificationStatus @default(pending)
+  createdAt DateTime           @default(now())
+  sentAt    DateTime?
+  error     String?
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  remark    Remark             @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([projectId])
+}
+
+/// Строка на каждый переход замечания (аудит: remark-history): откуда, куда, кто (и в какой роли), каким прогоном,
+/// короткая человеческая пометка (что предложила модель, почему упал прогон). Пишется в той же транзакции, что и статус.
+/// Только дописывается (ADR 011): UPDATE и DELETE запрещает триггер rr_append_only — кроме каскада FK при удалении
+/// самого замечания или человека. Всё, что строке нужно, известно в момент вставки.
+model RemarkStatusChange {
+  id         String        @id @default(uuid())
+  remarkId   String
+  fromStatus RemarkStatus?
+  toStatus   RemarkStatus
+  /// create | import | reopen | fix_row | attach_screenshot | triage | proposal | rejected_binding | verdict | ready_for_retest | retest | retest_result | close | not_fixed | cancel | run_failed
+  action     String
+  userId     String?
+  role       Role?
+  runId      String?
+  detail     String?
+  /// Слова человека при действии (ADR 010): комментарий к закрытию. Как закрыли — по fromStatus строки `close`:
+  /// ready_for_retest — заказчик проверил сам, без нового кадра; awaiting_business_close — после ретеста с кадром
+  comment    String?
+  /// Имя человека на момент действия (ADR 011): переименование и удаление аккаунта историю не меняют
+  actorName  String?
+  /// Кадр, приложенный действием (attach_screenshot, retest) или построенный им (retest_result — дифф); без FK, как runId
+  screenshotId String?
+  createdAt  DateTime      @default(now())
+  remark     Remark        @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+  user       User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([remarkId, createdAt])
+}
+
+/// События раунда (ADR 011): открыт, закрыт, открыт снова — кто, в какой роли, когда. Только дописывается (триггер
+/// rr_append_only), удаляется лишь вместе с раундом. Лист «Раунды» выгрузки и страница «Раунды» читают отсюда.
+model RoundEvent {
+  id        String   @id @default(uuid())
+  roundId   String
+  projectId String
+  /// open | close | reopen
+  action    String
+  userId    String?
+  /// Имя на момент действия — как в истории замечания
+  actorName String?
+  role      Role?
+  createdAt DateTime @default(now())
+  round     Round    @relation(fields: [roundId, projectId], references: [id, projectId], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([roundId, createdAt])
+  @@index([projectId])
 }

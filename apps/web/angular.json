@@ -21,6 +21,16 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "*-{cyrillic,cyrillic-ext,latin}-wght-normal.woff2",
+                "input": "node_modules/@fontsource-variable/onest/files",
+                "output": "fonts"
+              },
+              {
+                "glob": "*-{cyrillic,cyrillic-ext,latin}-wght-normal.woff2",
+                "input": "node_modules/@fontsource-variable/unbounded/files",
+                "output": "fonts"
               }
             ],
             "styles": [
@@ -32,11 +42,19 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
+                  "maximumWarning": "800kB",
                   "maximumError": "1MB"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": true
+              }
             },
             "development": {
               "optimization": false,
@@ -56,7 +74,10 @@
               "buildTarget": "web:build:development"
             }
           },
-          "defaultConfiguration": "development"
+          "defaultConfiguration": "development",
+          "options": {
+            "proxyConfig": "proxy.conf.json"
+          }
         }
       }
     }
