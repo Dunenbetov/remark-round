@@ -4,9 +4,9 @@ import type { JoinAck, Phase, Presence, Remark, ServerEvent } from './models';
 import { SessionService } from './session.service';
 
 /** Тот же путь, что у REST: nginx и dev-прокси проксируют одно место (apps/api/src/gateway). */
-export const WS_PATH = '/api/v1/ws';
+const WS_PATH = '/api/v1/ws';
 
-export type CommandAck = { ok: true; remark: Remark } | { ok: false; status: number; message: string };
+type CommandAck = { ok: true; remark: Remark } | { ok: false; status: number; message: string };
 
 const SERVER_EVENTS = new Set(['run.phase', 'run.token', 'run.citations', 'run.proposal', 'run.persisted', 'run.cancelled', 'run.failed', 'presence', 'remark.advice']);
 

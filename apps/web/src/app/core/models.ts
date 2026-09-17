@@ -58,8 +58,6 @@ export type DocumentKind = 'spec' | 'protocol' | 'addendum' | 'journal_source';
 export type DocumentStatus = 'uploaded' | 'parsed' | 'indexed' | 'failed';
 export type ImportRowStatus = 'parsed' | 'needs_human_parse' | 'failed';
 
-export type Tone = 'accent' | 'wait' | 'work';
-
 export interface Membership {
   projectId: string;
   projectName: string;

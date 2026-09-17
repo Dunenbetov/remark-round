@@ -3,7 +3,7 @@ import type { Role } from './models';
 import { UiStateService } from './ui-state.service';
 
 /** Тур есть только у нетехнических ролей: разработчику всё видно по одной кнопке. */
-export type TourRole = 'business' | 'pm';
+type TourRole = 'business' | 'pm';
 
 export interface TourState {
   role: TourRole;

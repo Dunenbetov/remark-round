@@ -115,10 +115,6 @@ select {
   box-shadow: var(--rr-glass-shadow);
   border-radius: var(--rr-r-xl);
 }
-.glass--pill {
-  border-radius: var(--rr-r-pill);
-}
-
 /* чернильная карточка: отсчёт «Решение: … · Отменить» */
 .ink-card {
   background: var(--rr-ink-surface);
@@ -154,13 +150,6 @@ select {
   font-weight: var(--fw-semibold);
 }
 
-.h-role {
-  font-size: var(--rr-fs-32);
-  line-height: var(--rr-lh-32);
-  font-weight: var(--fw-bold);
-  letter-spacing: -0.02em;
-}
-
 .serif {
   font-family: var(--rr-serif);
   font-weight: var(--fw-semibold);
@@ -185,9 +174,6 @@ select {
 }
 
 [data-theme='dark'] h1,
-[data-theme='dark'] .h-role {
-  font-variation-settings: 'wght' 640;
-}
 /* ночью бумага держится на кромке: блик сверху сильнее */
 [data-theme='dark'] .paper {
   border-color: rgba(255, 255, 255, 0.06);
@@ -429,10 +415,6 @@ select {
   font-weight: var(--fw-medium);
   white-space: nowrap;
 }
-.pill--md {
-  height: 28px;
-  padding: 0 12px;
-}
 .pill--wait {
   background: var(--rr-wait-bg);
   color: var(--rr-wait-ink);
@@ -494,18 +476,6 @@ select {
 }
 .chip--on .chip__n {
   color: var(--rr-accent-text);
-}
-
-.tag {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: var(--rr-r-pill);
-  border: 1px solid var(--rr-line);
-  font-size: var(--fs-13);
-  white-space: nowrap;
-  width: max-content;
 }
 
 /* ---------- цитата из документа: редакторская врезка — линия слева, без плашки ----------
@@ -734,10 +704,6 @@ select {
   width: 112px;
   height: 70px;
 }
-.dash {
-  color: var(--rr-ink-3);
-}
-
 /* ---------- таблица: настоящая <table>, строка-ссылка без вложенных интерактивов ---------- */
 .tbl-wrap {
   overflow-x: auto;
@@ -816,16 +782,8 @@ select {
     margin-top: var(--sp-4);
     padding-bottom: calc(var(--rr-tabbar-h) + env(safe-area-inset-bottom) + var(--sp-4));
   }
-  .h-role {
-    font-size: var(--fs-22);
-    line-height: var(--lh-22);
-  }
 }
 @media (min-width: 901px) and (max-width: 1279px) {
-  .h-role {
-    font-size: var(--fs-28);
-    line-height: var(--lh-28);
-  }
 }
 
 /* ---------- печать: карточка как лист дела ---------- */

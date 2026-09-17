@@ -5,7 +5,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
  * size 'lg' — фраза роли (Журнал, Очередь) или имя раздела (Документы, Импорт), 32/700;
  * size 'md' — имя раздела на страницах-«листах» (Новое замечание, Нет доступа), 22/600.
  * eyebrow — роль · проект · раунд над h1 на разделах; subtitle — строка-объяснение 15 ink-2.
- * Слоты: [actions] справа, [hint] под заголовком (rr-hint-line).
+ * Слоты: [actions] справа, [hint] под заголовком.
  */
 @Component({
   selector: 'rr-page-header',

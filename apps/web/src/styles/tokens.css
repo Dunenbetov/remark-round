@@ -24,7 +24,6 @@
   --rr-ink: #141a33;
   --rr-ink-2: #5c6280;
   --rr-ink-3: #656b89;   /* ≥4.5:1 на всех трёх светлых слоях: bg, surface-2, surface */
-  --rr-ink-inverse: #ffffff;
   --rr-line: #e1e4ef;
   --rr-line-strong: #c9cee0;
   --rr-accent: #1d2d80;             /* индиго */
@@ -78,7 +77,6 @@
   --fs-28: 28px; --lh-28: 34px;   /* заголовок замечания в шапке карточки; h1 на 900–1280 */
   --rr-fs-32: 32px; --rr-lh-32: 38px; /* h1 Журнала, Очереди, Документов, Импорта */
   --rr-fs-40: 40px; --rr-lh-40: 44px; /* число тайла, wordmark входа */
-  --rr-fs-64: 64px; --rr-lh-64: 64px; /* «12» в бейдже шапки карточки (display) */
   --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
 
   /* ---------- форма: мягкий 3D ----------
@@ -145,7 +143,6 @@
   --rr-ink: #eceef8;
   --rr-ink-2: #a3a9c8;
   --rr-ink-3: #8d93b3;
-  --rr-ink-inverse: #0d0f1c;
   --rr-line: #2f3559;
   --rr-line-strong: #454d7d;
   --rr-accent: #5b6fe6;

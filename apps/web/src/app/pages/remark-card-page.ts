@@ -745,7 +745,6 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
       rr-queue-rail,
       rr-decision-panel,
       rr-phase-line,
-      rr-hint-line,
       .card__foot,
       .dev-ready,
       .keys {

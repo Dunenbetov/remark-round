@@ -1,8 +1,8 @@
 import { signal } from '@angular/core';
 import type { ActivatedRouteSnapshot, ViewTransitionInfo } from '@angular/router';
 
-export type VtKind = 'nav' | 'theme';
-export type NavDirection = 'forward' | 'back';
+type VtKind = 'nav' | 'theme';
+type NavDirection = 'forward' | 'back';
 export interface VtOrigin {
   x: number;
   y: number;

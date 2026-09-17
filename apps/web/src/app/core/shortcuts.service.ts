@@ -1,7 +1,7 @@
 import { DestroyRef, Injectable, Signal, inject, signal } from '@angular/core';
 
 /** Физические коды клавиш (KeyboardEvent.code), которые умеет сервис. NumPad не поддерживаем. */
-export type KeyCode =
+type KeyCode =
   | 'Digit1'
   | 'Digit2'
   | 'Digit3'
@@ -20,7 +20,7 @@ export type KeyCode =
   | 'Enter';
 
 /** Карта «код → обработчик». Обработчик получает исходное событие (preventDefault уже вызван). */
-export type ShortcutMap = Partial<Record<KeyCode, (e: KeyboardEvent) => void>>;
+type ShortcutMap = Partial<Record<KeyCode, (e: KeyboardEvent) => void>>;
 
 /** Поля ввода и виджеты со своими клавишами — глобальные шорткаты там не работают. */
 const EDITABLE_SELECTOR =
@@ -33,7 +33,7 @@ const OVERLAY_SELECTOR = 'rr-shot-viewer, .menu[role="menu"], [role="dialog"]';
 const PRESSED_MS = 120;
 
 /** Элемент (или его предок) — поле ввода / виджет со своими клавишами. */
-export function isEditableTarget(el: Element | null): boolean {
+function isEditableTarget(el: Element | null): boolean {
   return !!el && typeof el.closest === 'function' && el.closest(EDITABLE_SELECTOR) !== null;
 }
 

@@ -5,7 +5,7 @@ import { Observable, firstValueFrom } from 'rxjs';
 import type { AddMemberResult, AdminInviteResult, AdminProject, AdminUser, AuthOptions, DocumentKind, ImportJob, InvitationLink, InvitationPeek, InvitationSummary, MeResult, MemberSummary, MembersView, ProjectSummary, Remark, RemarkHistoryEntry, Role, Round, SearchHit, Session, Side, User, VerdictCode } from './models';
 import { SessionService } from './session.service';
 
-export const API_BASE = '/api/v1';
+const API_BASE = '/api/v1';
 
 /** Ответ GET /projects/:id/documents. */
 export interface ApiDocument {
@@ -19,7 +19,7 @@ export interface ApiDocument {
   chunks?: number;
 }
 
-export interface MediaUpload {
+interface MediaUpload {
   storageKey: string;
   url: string;
 }

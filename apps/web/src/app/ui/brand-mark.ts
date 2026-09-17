@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
-export type BrandMarkSize = 16 | 24 | 40 | 64;
-export type BrandMarkTone = 'default' | 'danger';
+type BrandMarkSize = 16 | 24 | 40 | 64;
+type BrandMarkTone = 'default' | 'danger';
 
 /**
  * Бренд-знак: незамкнутое кольцо currentColor (r 9, stroke 2.25) с разрывом справа сверху (36°–94° от 12 часов),

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { Icon } from './icons';
 
-export type GroupTone = 'accent-2' | 'work' | 'wait' | 'ok' | 'muted' | null;
+type GroupTone = 'accent-2' | 'work' | 'wait' | 'ok' | 'muted' | null;
 
 /**
  * Заголовок группы внутри списка: «ЖДУТ ВАС · 4». Липкий под шапкой, слева полоса тона

@@ -1,7 +1,7 @@
 import { Injectable, computed, effect, signal } from '@angular/core';
 import { VtOrigin, canViewTransition, runViewTransition, vtActive } from './view-transitions';
 
-export type ThemeMode = 'auto' | 'light' | 'dark';
+type ThemeMode = 'auto' | 'light' | 'dark';
 
 const STORAGE_KEY = 'rr.theme';
 /** Фолбэки, если токены --rr-dur-theme / --rr-ease-in-out не прочитались. */

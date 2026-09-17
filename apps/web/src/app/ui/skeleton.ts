@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { COMMON } from '../core/copy';
 
-export type SkeletonKind = 'table' | 'cards' | 'block' | 'tiles' | 'rows72' | 'rail' | 'card' | 'doc-cards' | 'cards104';
+type SkeletonKind = 'table' | 'cards' | 'block' | 'tiles' | 'rows72' | 'rail' | 'card' | 'doc-cards' | 'cards104';
 
 /**
  * Скелетон загрузки: спокойный пульс прозрачности, без градиентной волны (VISUAL.md).

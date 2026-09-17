@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import type { RemarkStatus, Role } from '../core/models';
 import { PROCESS } from '../core/copy';
 
-export type StripMode = 'loop' | 'static';
+type StripMode = 'loop' | 'static';
 
 /** Узел схемы по статусу замечания (docs/STATUS.md): 0 Замечание · 1 Разбор · 2 Решение · 3 В работе · 4 Проверка · 5 Закрыто. */
 const NODE_BY_STATUS: Record<RemarkStatus, number> = {

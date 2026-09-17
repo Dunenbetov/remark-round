@@ -15,7 +15,7 @@ export function errorStatus(err: unknown): number {
 }
 
 /** Сообщение сервера из тела ошибки (строка или список валидации), если оно есть. */
-export function serverMessage(err: unknown): string | null {
+function serverMessage(err: unknown): string | null {
   const e = err as ApiErrorLike | null;
   const m = e?.error?.message;
   if (Array.isArray(m)) return m.join(', ');

@@ -1,6 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
 
-export interface QueueSnapshot {
+interface QueueSnapshot {
   /** id замечаний в порядке показа списка. */
   ids: string[];
   /** Подпись очереди: «Ждут вас», «В работе», «Все». */
@@ -9,7 +9,7 @@ export interface QueueSnapshot {
   backLink: (string | number)[];
 }
 
-export interface QueuePosition {
+interface QueuePosition {
   index: number;
   total: number;
   prevId: string | null;

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import type { JournalChip } from '../core/copy';
 
-export type TileTone = 'accent-2' | 'work' | 'wait' | 'ok' | 'muted';
+type TileTone = 'accent-2' | 'work' | 'wait' | 'ok' | 'muted';
 
 export interface Tile {
   /** Значение фильтра журнала, которое включает тайл. */

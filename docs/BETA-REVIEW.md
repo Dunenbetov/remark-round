@@ -22,6 +22,7 @@
 | 17.09 | I-6 | Переключатель писем «вас ждёт кнопка» возвращён в профиль (карточка «Данные», только при `mail: true`), оптимистичное сохранение через `PATCH /auth/profile`; ADR 009 дополнен |
 | 17.09 | A-1 | `Invitation.projectId` nullable (миграция `20260917130000`), `POST/GET/DELETE /admin/invitations` + `…/link`; принятие без проекта выдаёт `canCreateProjects`; `peek.kind: project \| instance`; письмо «приглашение руководителя приёмки»; **баг**: ответ `register` по приглашению строился по строке до accept — теперь перечитывается; фронт: форма и список на `/admin`, тексты на `/join` и `/register`; тест в `admin.spec`; ADR 006 дополнение, PROD bootstrap, API.md; порог предупреждения начального бандла 800 → 900 кБ (ошибка по-прежнему 1 МБ) |
 | 17.09 | A-2 | DTO участников принимают только `business \| pm \| developer` (422 на `admin`); enum, seed и харнесс не тронуты — удаление из enum миграцией после беты; тест в `members.spec`, ADR 006, API.md |
+| 17.09 | 3.1 | Мёртвый код удалён: `rr-hint-line`, `HINT`/`TAGLINE`/`RETEST_EXPLANATION`, тип `Tone` (`RegistrationMode` используется — оставлен), 5 CSS-классов (8 блоков), 3 токена, `@angular/forms`, `public/.gitkeep`, `ANTHROPIC_API_KEY`/`LANGFUSE_DATABASE_URL` из `.env.example`, `fixtures/spec/TZ.print.html`; сняты лишние `export` (кроме `RoundRef` — у него есть импортёр) |
 
 ---
 

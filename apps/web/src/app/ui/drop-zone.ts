@@ -3,7 +3,7 @@ import { COMMON, IMPORT } from '../core/copy';
 import { Icon, type IconName } from './icons';
 
 /** band — строка 64px, горизонтально; tall — min-height 220; wide — 16:10, вертикально. */
-export type DropSize = 'band' | 'tall' | 'wide';
+type DropSize = 'band' | 'tall' | 'wide';
 
 const EDITABLE = 'input, textarea, [contenteditable=""], [contenteditable="true"]';
 

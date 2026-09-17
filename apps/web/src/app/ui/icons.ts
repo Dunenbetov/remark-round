@@ -34,7 +34,7 @@ const PAGE = 'M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h10a1.5 1.5 0 0
  * Иконки — один <path d> на имя для viewBox 0 0 24 24 (stroke currentColor 1.75, round caps/joins, fill none).
  * Круги нарисованы двумя дугами, точки — отрезком h.01: так не нужен innerHTML и санитайзер.
  */
-export const ICONS: Record<IconName, string> = {
+const ICONS: Record<IconName, string> = {
   plus: 'M12 5v14M5 12h14',
   'chevron-down': 'm6 9 6 6 6-6',
   'chevron-right': 'm9 6 6 6-6 6',

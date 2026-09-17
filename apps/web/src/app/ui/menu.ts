@@ -14,7 +14,7 @@ export interface MenuItem {
   disabled?: boolean;
 }
 
-export interface MenuHead {
+interface MenuHead {
   title: string;
   meta?: string;
 }
