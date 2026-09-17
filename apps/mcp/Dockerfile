@@ -1,4 +1,4 @@
-FROM node:24-alpine
+FROM node:26-alpine
 ENV COREPACK_HOME=/usr/local/share/corepack
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate && mkdir -p /app && chown node:node /app
 USER node
