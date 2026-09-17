@@ -1,11 +1,11 @@
 /**
  * Генерирует файлы шаблона журнала из одного источника (journal-template.ts):
- *   fixtures/journal/template.xlsx + template.csv     — пустой шаблон с русской шапкой (xlsx — с подсказками в ячейках)
- *   apps/web/public/template.xlsx + template.csv      — те же файлы для ссылок «Скачать шаблон журнала»
+ *   fixtures/journal/template.xlsx + template.csv     — пустой шаблон с русской шапкой (xlsx — с подсказками в ячейках);
+ *                                                       фронт шаблон не хранит, а качает с GET /imports/template.{xlsx,csv} (3.2)
  *   fixtures/journal/sample-round.ru.csv              — sample-round.csv с русской шапкой и «;» (как сохраняет Excel)
  *   fixtures/journal/sample-round.xlsx                — тот же журнал, кадры вставлены в ячейки
  * sample-round.csv с прежней английской шапкой остаётся: парсер принимает обе (тест алиаса).
- * Запуск: pnpm --filter @remarkround/api exec tsx src/imports/make-journal-fixtures.ts
+ * Запуск: pnpm --filter @remarkround/api make:fixtures
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -22,9 +22,7 @@ function csvCell(value: string): string {
 async function main(): Promise<void> {
   const template = await buildTemplateXlsx();
   await writeFile(resolve(ROOT, 'fixtures/journal/template.xlsx'), template);
-  await writeFile(resolve(ROOT, 'apps/web/public/template.xlsx'), template);
   await writeFile(resolve(ROOT, 'fixtures/journal/template.csv'), TEMPLATE_CSV, 'utf8');
-  await writeFile(resolve(ROOT, 'apps/web/public/template.csv'), TEMPLATE_CSV, 'utf8');
 
   const csv = await readFile(resolve(ROOT, 'fixtures/journal/sample-round.csv'));
   const rows = parseCsv(csv);

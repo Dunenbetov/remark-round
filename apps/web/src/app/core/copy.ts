@@ -13,6 +13,7 @@ export const ROLE_TITLE: Record<Role, string> = {
   admin: 'Настройка проекта',
 };
 
+/** Ключи совпадают с STATUS_LABEL_RU сервера (apps/api/src/remarks/labels.ts, проверяет labels.contract.spec); тексты — «вы» только на экране. */
 export const STATUS_LABEL: Record<RemarkStatus, string> = {
   imported: 'Получено',
   needs_human_parse: 'Допишите строку журнала',

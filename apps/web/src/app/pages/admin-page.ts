@@ -4,6 +4,7 @@ import { ApiService } from '../core/api.service';
 import { ADMIN, ERROR, ROLE_SHORT } from '../core/copy';
 import type { AdminProject, AdminUser, InvitationLink, InvitationSummary } from '../core/models';
 import { errorMessage } from '../core/errors';
+import { dateRu } from '../core/format';
 import { SessionService } from '../core/session.service';
 import { AppBar } from '../ui/app-bar';
 import { ErrorBanner } from '../ui/error-banner';
@@ -438,7 +439,7 @@ export class AdminPage {
   }
 
   protected date(iso: string): string {
-    return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+    return dateRu(iso);
   }
 
   private message(err: unknown): string {

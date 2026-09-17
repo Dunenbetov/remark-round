@@ -50,11 +50,6 @@ export class DocumentsController {
     });
   }
 
-  @Get(':documentId')
-  get(@Ctx() ctx: ProjectContext, @Param('documentId') documentId: string): Promise<DocumentSummary> {
-    return this.documents.get(ctx, documentId);
-  }
-
   @Post(':documentId/reindex')
   @Roles('admin', 'pm')
   @HttpCode(202)

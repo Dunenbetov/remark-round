@@ -175,6 +175,11 @@ export class ApiService {
     return this.run(this.http.get(`${API_BASE}/projects/${projectId}/rounds/${roundId}/export.xlsx`, { responseType: 'blob' }));
   }
 
+  /** Шаблон журнала для импорта — один источник с сервером (journal-template.ts); файл приходит с Bearer, поэтому blob. */
+  importTemplate(projectId: string, kind: 'xlsx' | 'csv'): Promise<Blob> {
+    return this.run(this.http.get(`${API_BASE}/projects/${projectId}/imports/template.${kind}`, { responseType: 'blob' }));
+  }
+
   /** Журнал всего проекта xlsx: «Раунды», «Замечания», «История». */
   exportJournal(projectId: string): Promise<Blob> {
     return this.run(this.http.get(`${API_BASE}/projects/${projectId}/rounds/export.xlsx`, { responseType: 'blob' }));

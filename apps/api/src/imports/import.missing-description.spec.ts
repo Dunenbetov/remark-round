@@ -174,7 +174,6 @@ describe('import: официальный шаблон журнала', () => {
     expect(csv.text).toBe(TEMPLATE_CSV);
     expect(csv.text).toBe(`\uFEFF${JOURNAL_HEADER_LINE}\n`);
     expect(JOURNAL_HEADER_LINE).toBe('№;Где;Что не так;Как должно быть;Важность;Скрин');
-    // публичный файл фронта — тот же шаблон
-    expect(readFileSync(resolve(__dirname, '../../../../apps/web/public/template.csv'), 'utf8')).toBe(TEMPLATE_CSV);
+    // Статической копии шаблона у фронта больше нет (3.2): страница импорта качает эти же эндпоинты
   });
 });

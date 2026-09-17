@@ -14,6 +14,15 @@ export function dateRu(iso: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? '' : dropYearSuffix(DATE.format(d));
 }
 
+/** «10 сентября» — срок ссылки приглашения: год лишний, ссылка живёт неделю. */
+const DAY_MONTH = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' });
+
+export function dayMonthRu(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : DAY_MONTH.format(d);
+}
+
 export function dateTimeRu(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);

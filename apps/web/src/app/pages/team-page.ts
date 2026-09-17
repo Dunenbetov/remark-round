@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ApiService } from '../core/api.service';
+import { dayMonthRu } from '../core/format';
 import { COMMON, ERROR, ROLE_SIDE, ROLE_SHORT, SIDES, TEAM } from '../core/copy';
 import type { InvitationLink, InvitationSummary, MemberSummary, Role, Side } from '../core/models';
 import { PendingActionService } from '../core/pending-action.service';
@@ -446,7 +447,7 @@ export class TeamPage {
   }
 
   protected date(iso: string): string {
-    return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    return dayMonthRu(iso);
   }
 
   private message(err: unknown): string {

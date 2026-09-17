@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import type { ImportJob, ImportRow } from '../core/models';
+import { ApiService } from '../core/api.service';
 import { IMPORT, NEW_REMARK, ROLE_TITLE, ROUND, STATUS_LABEL, STATUS_TONE } from '../core/copy';
+import { saveBlob } from '../core/download';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { links } from '../core/links';
@@ -166,8 +168,8 @@ const POLL_MS = 2000;
               <div class="tpl__foot">
                 <span class="meta">{{ copy.templateEmptyNote }}</span>
                 <span class="tpl__links">
-                  <a class="btn btn--text" href="template.xlsx" download="journal-template.xlsx"><rr-icon name="upload" [size]="14" />{{ copy.template }} · xlsx</a>
-                  <a class="btn btn--text" href="template.csv" download="journal-template.csv">csv</a>
+                  <button type="button" class="btn btn--text" [disabled]="templateBusy()" (click)="downloadTemplate('xlsx')"><rr-icon name="upload" [size]="14" />{{ copy.template }} · xlsx</button>
+                  <button type="button" class="btn btn--text" [disabled]="templateBusy()" (click)="downloadTemplate('csv')">csv</button>
                 </span>
               </div>
             </section>
@@ -421,7 +423,10 @@ export class ImportPage {
   readonly round = input.required<string>();
 
   protected readonly store = inject(RemarksStore);
+  private readonly api = inject(ApiService);
   private readonly session = inject(SessionService);
+  /** Шаблон журнала качается с API (один источник с сервером, 3.2): кнопка ждёт blob. */
+  protected readonly templateBusy = signal(false);
   private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
 
@@ -467,6 +472,18 @@ export class ImportPage {
       );
     }
     this.destroyRef.onDestroy(() => this.pollWhileTriaging(false));
+  }
+
+  protected async downloadTemplate(kind: 'xlsx' | 'csv'): Promise<void> {
+    if (this.templateBusy()) return;
+    this.templateBusy.set(true);
+    try {
+      saveBlob(await this.api.importTemplate(this.projectId(), kind), `journal-template.${kind}`);
+    } catch {
+      // шаблон не критичен: ошибку покажет общий баннер при следующем действии
+    } finally {
+      this.templateBusy.set(false);
+    }
   }
 
   protected async upload(file: File): Promise<void> {

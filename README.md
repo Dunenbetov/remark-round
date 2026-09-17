@@ -101,7 +101,7 @@ pnpm --filter @remarkround/api seed          # демо-данные с хост
 pnpm api:dev && pnpm web:dev                 # :3001 и :4200 без Docker
 ```
 
-Полезное с хоста: `GET /api/v1/projects/:id/search?q=какого цвета primary-кнопка` (retrieve с цитатой), `pnpm --filter @remarkround/api exec tsx src/rag/chunking-eval.ts` (стратегии чанкинга), `src/imports/make-journal-fixtures.ts` (xlsx-фикстуры), `src/evals/make-frames.ts` (кадры из SVG), `src/evals/make-screenshots.ts` (скриншоты для README).
+Полезное с хоста: `GET /api/v1/projects/:id/search?q=какого цвета primary-кнопка` (retrieve с цитатой); скрипты `pnpm --filter @remarkround/api rag:eval` (стратегии чанкинга), `make:fixtures` (xlsx-фикстуры и шаблон журнала), `make:frames` (кадры из SVG), `make:screenshots` (скриншоты для README).
 
 ```
 apps/web          Angular: журнал, карточка, импорт, документы, очередь разработчика
