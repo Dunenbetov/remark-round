@@ -28,14 +28,26 @@ updates:
     directory: /apps/api
     schedule:
       interval: weekly
+    ignore:
+      # Мажор Node — вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 — конец октября 2026)
+      - dependency-name: node
+        update-types: [version-update:semver-major]
   - package-ecosystem: docker
     directory: /apps/web
     schedule:
       interval: weekly
+    ignore:
+      # Мажор Node — вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 — конец октября 2026)
+      - dependency-name: node
+        update-types: [version-update:semver-major]
   - package-ecosystem: docker
     directory: /apps/mcp
     schedule:
       interval: weekly
+    ignore:
+      # Мажор Node — вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 — конец октября 2026)
+      - dependency-name: node
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /
     schedule:
