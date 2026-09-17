@@ -64,10 +64,15 @@ export class MediaController {
     return { storageKey, url: mediaUrl(ctx.projectId, storageKey) };
   }
 
-  /** Кадр отдаётся как картинка, не как документ: скрипту внутри старого SVG негде выполниться. */
+  /**
+   * Кадр отдаётся как картинка, не как документ: скрипту внутри старого SVG негде выполниться.
+   * Ключ — UUID, файл неизменяем: браузер держит его год и не ходит за ним при каждом открытии карточки (R-M7);
+   * `private` — кэш только у самого человека, не у прокси.
+   */
   @Get(':fileName')
   @Header('Content-Security-Policy', "default-src 'none'; sandbox")
   @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Cache-Control', 'private, max-age=31536000, immutable')
   async get(@Ctx() ctx: ProjectContext, @Param('fileName') fileName: string): Promise<StreamableFile> {
     if (!FILE_NAME.test(fileName)) throw new NotFoundException();
     const path = join(this.storage.root, ctx.projectId, fileName);

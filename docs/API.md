@@ -5,7 +5,7 @@
 
 Ошибки: `401` нет токена или он отозван (смена пароля, отключение, «завершить сессии»), `403` нет членства / роли / права, `404` чужой id выглядит как 404 (не светить чужое), `409` нелегальный переход статуса или карточка изменилась параллельно (перечитать), `422` шаблон журнала / валидация / файл не того типа.
 
-Тело любой ошибки одно: `{ statusCode, code, message, requestId }` — `code` для программ (`unauthorized`, `forbidden`, `not_found`, `conflict`, `unprocessable`, `too_many_requests`, `unavailable` — база занята или недоступна, повторить через минуту, `internal`…), `message` для людей (строка или список от валидации), `requestId` — тот же, что в заголовке `X-Request-Id` ответа и в строке лога API. Прокси может прислать свой `X-Request-Id` (8–64 символов `[\w.-]`), иначе сервер сгенерирует. Внутренняя ошибка — `500 internal` без подробностей наружу, стек — в логе по `requestId`.
+Тело любой ошибки одно: `{ statusCode, code, message, requestId }` — `code` для программ (`unauthorized`, `forbidden`, `not_found`, `conflict`, `unprocessable`, `too_many_requests`, `unavailable` — база занята или недоступна, повторить через минуту, `storage_full` — 507: место на сервере или квота проекта на файлы, `internal`…), `message` для людей (строка или список от валидации), `requestId` — тот же, что в заголовке `X-Request-Id` ответа и в строке лога API. Прокси может прислать свой `X-Request-Id` (8–64 символов `[\w.-]`), иначе сервер сгенерирует. Внутренняя ошибка — `500 internal` без подробностей наружу, стек — в логе по `requestId`.
 
 `cannot_tell` — **200** с обычным телом ответа, не 500.
 
@@ -57,7 +57,7 @@
 | GET | `/projects/:projectId/advisory-queue` | developer | Что сейчас на приёмке у PM (`awaiting_pm`) — можно посоветовать; не очередь работы |
 | PUT | `/projects/:projectId/remarks/:id/advice` | developer | `{ code, comment? }` — совет PM (`code` — те же пять кнопок, без `duplicate`; ≤ 500 символов). Один на человека: повтор меняет. Только для `awaiting_pm`, иначе 409. Статус не меняет; в комнату уходит `remark.advice` |
 | DELETE | `/projects/:projectId/remarks/:id/advice` | developer | Снять свой совет; тоже `remark.advice` |
-| POST | `/projects/:projectId/imports` | business, pm | Журнал по шаблону: multipart `file` (.xlsx или .csv) + `roundId`. Чужая шапка → 422 |
+| POST | `/projects/:projectId/imports` | business, pm | Журнал по шаблону: multipart `file` (.xlsx или .csv) + `roundId`. Чужая шапка → 422; длиннее `IMPORT_MAX_ROWS` строк (500, на бете 100) → 422 «разбейте файл»; тяжелее `IMPORT_MAX_BYTES` (20 МБ, на бете 5) → 413 |
 | GET | `/projects/:projectId/imports/:jobId` | member | Строки: `parsed` vs `needs_human_parse`, номер и статус замечания по каждой |
 | GET | `/projects/:projectId/imports/template.xlsx` | member | «Скачать шаблон журнала» (есть и `template.csv`) |
 | POST | `/projects/:projectId/remarks/:id/fix-row` | business, pm | «Допишите строку журнала»: `{ description, pageOrScreen?, expected? }`, `needs_human_parse` → разбор |

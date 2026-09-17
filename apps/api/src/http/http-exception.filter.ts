@@ -22,6 +22,7 @@ const CODE_BY_STATUS: Record<number, string> = {
   429: 'too_many_requests',
   500: 'internal',
   503: 'unavailable',
+  507: 'storage_full',
 };
 
 /**
