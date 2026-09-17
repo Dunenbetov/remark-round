@@ -1,5 +1,5 @@
 // Тема до первого кадра (без вспышки светлого фона): читаем rr.theme и системную настройку.
-// Отдельный файл, а не inline в index.html, чтобы CSP в nginx.conf держала script-src 'self'.
+// Отдельный файл, а не inline в index.html, чтобы CSP в nginx.conf.template держала script-src 'self'.
 (function () {
   try {
     var t = localStorage.getItem('rr.theme');

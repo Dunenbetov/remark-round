@@ -1,0 +1,28 @@
+#!/bin/sh
+# Переменные окружения web-контейнера → конфиг nginx. Файл сорсится entrypoint'ом nginx:alpine (*.envsh) между
+# 15-local-resolvers.envsh (даёт NGINX_LOCAL_RESOLVERS из /etc/resolv.conf) и 20-envsubst-on-templates.sh
+# (рендерит apps/web/nginx.conf.template), поэтому export отсюда виден шаблону. Дефолты значений — в apps/web/Dockerfile,
+# переопределение на Railway — docs/PROD-RAILWAY.md.
+set -eu
+
+# DNS_RESOLVER: явное значение либо nameserver'ы контейнера (IPv6 уже в скобках): Docker — 127.0.0.11, Railway — [fd12::10]
+if [ -z "${DNS_RESOLVER:-}" ]; then
+  export DNS_RESOLVER="${NGINX_LOCAL_RESOLVERS:-127.0.0.11}"
+fi
+
+# listen [::]:80 — только при IPv6 в контейнере (та же проверка, что у 10-listen-on-ipv6-by-default.sh образа)
+if [ -f /proc/net/if_inet6 ]; then
+  export LISTEN_IPV6='listen [::]:80;'
+else
+  export LISTEN_IPV6=''
+fi
+
+# REAL_IP_FROM → по строке set_real_ip_from на адрес (envsubst цикла не умеет). Опечатка в списке — красный nginx -t
+# при старте, а не тихо пропущенный диапазон. Пустой список — realip выключен, $remote_addr остаётся адресом прокси.
+{
+  echo "# сгенерировано 16-rr-proxy-env.envsh из REAL_IP_FROM=\"${REAL_IP_FROM:-}\""
+  for cidr in ${REAL_IP_FROM:-}; do
+    echo "set_real_ip_from ${cidr};"
+  done
+} > /etc/nginx/rr-real-ip.conf
+echo "16-rr-proxy-env.envsh: API_UPSTREAM=${API_UPSTREAM:-}, DNS_RESOLVER=${DNS_RESOLVER}, REAL_IP_FROM=${REAL_IP_FROM:-}"

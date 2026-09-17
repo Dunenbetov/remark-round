@@ -18,7 +18,11 @@ const Schema = z
     WEB_ORIGIN: z.string().url().default('http://localhost:4200'),
     /** Карточки демо-персон на входе. Без значения: включены везде, кроме production. */
     DEMO_LOGINS: z.enum(['true', 'false']).optional(),
-    /** Сколько прокси перед API (nginx в демо — 1, Caddy → nginx в проде — 2): от этого зависит req.ip для лимитов. */
+    /**
+     * Сколько прокси перед API: от этого зависит req.ip для лимитов (R-H5). nginx контейнера web сам берёт адрес клиента
+     * из X-Forwarded-For (realip, apps/web/nginx.conf.template) и шлёт в API ровно один адрес — поэтому за web везде 1:
+     * демо, compose-прод за Caddy, Railway за edge-прокси (docs/PROD-RAILWAY.md). 0 — API без прокси (pnpm api:dev).
+     */
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
     /** Запросов в минуту: общий лимит — на вошедшего пользователя (аноним — на IP), строгий для входа/регистрации — на IP (R-H5). */
     THROTTLE_LIMIT: z.coerce.number().int().positive().default(1200),

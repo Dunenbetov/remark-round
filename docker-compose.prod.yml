@@ -71,7 +71,8 @@ services:
       ADMIN_EMAILS: ${ADMIN_EMAILS:?задайте ADMIN_EMAILS в .env — e-mail администраторов инстанса через запятую}
       REGISTRATION_MODE: ${REGISTRATION_MODE:-invite_only}
       REGISTRATION_DOMAINS: ${REGISTRATION_DOMAINS:-}
-      TRUST_PROXY_HOPS: '2'
+      # nginx (web) берёт адрес клиента из X-Forwarded-For от Caddy и шлёт в API один адрес — один hop, как в демо и на Railway
+      TRUST_PROXY_HOPS: '1'
       WEB_ORIGIN: https://${PUBLIC_HOST:?задайте PUBLIC_HOST в .env — домен без https://}
       # Пул соединений (R-H1): каждый запрос — минимум 2 обращения к БД в guard'ах, интерактивные транзакции воркера держат
       # соединение целиком; 25 при max_connections=100 у Postgres (плюс backup и psql). Ждать соединение — до 20 с, потом P2024 → 503

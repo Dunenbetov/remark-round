@@ -20,15 +20,16 @@ async function bootstrap(): Promise<void> {
   // bufferLogs: строки до useLogger не теряются, а уходят в pino вместе с остальными
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
-  // За nginx/Caddy настоящий IP клиента — в X-Forwarded-For; без trust proxy лимиты считали бы всех одним адресом.
+  // За nginx настоящий IP клиента — в X-Forwarded-For (один адрес, realip в web); без trust proxy лимиты считали бы всех одним адресом.
   app.set('trust proxy', cfg.TRUST_PROXY_HOPS);
-  // API отдаёт JSON; CSP для SPA живёт в apps/web/nginx.conf.
+  // API отдаёт JSON; CSP для SPA живёт в apps/web/nginx.conf.template.
   app.use(helmet({ contentSecurityPolicy: false }));
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(validationPipe());
   app.enableCors({ origin: cfg.WEB_ORIGIN });
   // SIGTERM в compose: дослать батч span'ов в Langfuse (ObservabilityService.onApplicationShutdown).
   app.enableShutdownHooks();
+  // Хост не задан: Node слушает `::` (IPv4 и IPv6 разом) — в приватной сети Railway старых окружений web идёт к api по IPv6.
   await app.listen(cfg.PORT);
 }
 
