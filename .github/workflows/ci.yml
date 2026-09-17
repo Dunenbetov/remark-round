@@ -2,8 +2,12 @@ name: ci
 
 on:
   pull_request:
-  # Любая ветка: фаза не должна копиться неделями без прогона тестов (аудит: uncommitted-phase)
+  # Любая ветка: фаза не должна копиться неделями без прогона тестов (аудит: uncommitted-phase).
+  # Фильтр branches явный: Railway «Wait for CI» ждёт только workflow, у которого ветка деплоя видна в триггере
+  # (docs.railway.com/guides/github-autodeploys); tags — для релизных образов в job images
   push:
+    branches: ['**']
+    tags: ['v*']
 
 jobs:
   api:

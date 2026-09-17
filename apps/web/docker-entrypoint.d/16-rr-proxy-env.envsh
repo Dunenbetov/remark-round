@@ -26,3 +26,8 @@ fi
   done
 } > /etc/nginx/rr-real-ip.conf
 echo "16-rr-proxy-env.envsh: API_UPSTREAM=${API_UPSTREAM:-}, DNS_RESOLVER=${DNS_RESOLVER}, REAL_IP_FROM=${REAL_IP_FROM:-}"
+
+# /version.txt на Railway: build-arg GIT_SHA туда не передаётся, хеш коммита есть только в переменной окружения
+if [ "$(cat /usr/share/nginx/html/version.txt 2>/dev/null)" = "dev" ] && [ -n "${RAILWAY_GIT_COMMIT_SHA:-}" ]; then
+  printf 'sha-%s\n' "$(printf %s "$RAILWAY_GIT_COMMIT_SHA" | cut -c1-7)" > /usr/share/nginx/html/version.txt
+fi

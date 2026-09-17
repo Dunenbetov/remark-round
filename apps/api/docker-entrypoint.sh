@@ -47,5 +47,9 @@ if [ "${SEED_ON_START:-false}" = "true" ]; then
     pnpm --filter @remarkround/api seed || echo "api: seed не удался, сервер всё равно стартует"
   fi
 fi
+# Railway собирает образ без build-arg GIT_SHA: версию для /health берём из RAILWAY_GIT_COMMIT_SHA на старте
+if [ "${APP_VERSION:-dev}" = "dev" ] && [ -n "${RAILWAY_GIT_COMMIT_SHA:-}" ]; then
+  export APP_VERSION="sha-$(printf %s "$RAILWAY_GIT_COMMIT_SHA" | cut -c1-7)"
+fi
 cd /app/apps/api
 exec node dist/main.js
