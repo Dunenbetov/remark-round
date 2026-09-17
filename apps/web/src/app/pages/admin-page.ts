@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { HttpErrorResponse } from '@angular/common/http';
 import { ApiService } from '../core/api.service';
 import { ADMIN, ERROR, ROLE_SHORT } from '../core/copy';
-import type { AdminProject, AdminUser } from '../core/models';
+import type { AdminProject, AdminUser, InvitationLink, InvitationSummary } from '../core/models';
 import { errorMessage } from '../core/errors';
 import { SessionService } from '../core/session.service';
 import { AppBar } from '../ui/app-bar';
@@ -12,7 +12,8 @@ import { Skeleton } from '../ui/skeleton';
 
 /**
  * Администрирование инстанса (ADR 006): люди и проекты поперёк тенантов для e-mail из ADMIN_EMAILS.
- * Три действия — выдать/снять право создавать проекты, отключить/включить человека, завершить его сессии.
+ * Три действия — выдать/снять право создавать проекты, отключить/включить человека, завершить его сессии —
+ * и приглашение руководителя приёмки без проекта (ссылка /join, как у участников; токен показывается один раз).
  * Роли внутри проектов здесь не меняются: это дело руководителя приёмки на «Участниках».
  */
 @Component({
@@ -103,6 +104,53 @@ import { Skeleton } from '../ui/skeleton';
             }
           </section>
 
+          <section class="adm__section" [attr.aria-label]="copy.inviteTitle">
+            <div class="eyebrow">{{ copy.inviteTitle }}</div>
+            <form class="paper adm__invite" (submit)="invite($event)" novalidate>
+              <p class="meta adm__invite-hint">{{ copy.inviteHint }}</p>
+              <div class="adm__invite-row">
+                <label class="field adm__invite-field">
+                  <span class="field__label field__label--soft">{{ copy.inviteEmail }}</span>
+                  <input class="input" type="email" name="email" autocomplete="off" inputmode="email" [value]="inviteEmail()" (input)="inviteEmail.set(value($event))" />
+                </label>
+                <button type="submit" class="btn btn--primary" [class.btn--busy]="inviting()" [disabled]="inviting() || !inviteEmail().trim()">{{ copy.invite }}</button>
+              </div>
+              @if (inviteNote(); as n) {
+                <p class="meta" role="status">{{ n }}</p>
+              }
+              @if (inviteError(); as err) {
+                <div class="adm__error" role="alert">{{ err }}</div>
+              }
+              @if (invitations().length) {
+                <div class="eyebrow adm__pending">{{ copy.pendingTitle }}</div>
+                <ul class="adm__inv-list">
+                  @for (inv of invitations(); track inv.id) {
+                    <li class="adm__inv-row">
+                      <span class="adm__inv-who">
+                        <span>{{ inv.email }}</span>
+                        @if (inv.expiresAt) {
+                          <span class="meta">{{ copy.expires(date(inv.expiresAt)) }}</span>
+                        }
+                      </span>
+                      <span class="adm__inv-actions">
+                        @if (links()[inv.id]; as fresh) {
+                          <button type="button" class="btn btn--secondary btn--sm" (click)="copyLink(inv.id, fresh)">{{ copiedId() === inv.id ? copy.copied : copy.copyLink }}</button>
+                        } @else {
+                          <button type="button" class="btn btn--secondary btn--sm" [disabled]="busy() === inv.id" (click)="newLink(inv)">{{ copy.newLink }}</button>
+                        }
+                        <button type="button" class="btn btn--danger-text btn--sm" [disabled]="busy() === inv.id" (click)="revokeInvitation(inv)">{{ copy.revoke }}</button>
+                      </span>
+                      @if (links()[inv.id]; as fresh) {
+                        <span class="meta adm__inv-ready" role="status">{{ fresh.emailed ? copy.linkReadyMailed : copy.linkReady }}</span>
+                        <input class="input adm__inv-url" type="text" readonly [value]="link(fresh)" (focus)="selectAll($event)" />
+                      }
+                    </li>
+                  }
+                </ul>
+              }
+            </form>
+          </section>
+
           <section class="adm__section" [attr.aria-label]="copy.projectsTitle">
             <div class="eyebrow">{{ copy.projectsTitle }} · {{ projects().length }}</div>
             <div class="paper tbl-wrap">
@@ -166,6 +214,63 @@ import { Skeleton } from '../ui/skeleton';
     .adm__empty {
       margin: 0;
     }
+    .adm__invite {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-3);
+      padding: var(--sp-5) var(--sp-6);
+    }
+    .adm__invite-hint {
+      margin: 0;
+      max-width: 72ch;
+    }
+    .adm__invite-row {
+      display: flex;
+      gap: var(--sp-3);
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .adm__invite-field {
+      flex: 1 1 280px;
+      max-width: 420px;
+    }
+    .adm__error {
+      font-size: var(--fs-13);
+      line-height: var(--lh-13);
+      color: var(--rr-danger);
+    }
+    .adm__pending {
+      margin-top: var(--sp-2);
+    }
+    .adm__inv-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-3);
+    }
+    .adm__inv-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: var(--sp-2) var(--sp-4);
+      align-items: center;
+    }
+    .adm__inv-who {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .adm__inv-actions {
+      display: flex;
+      gap: var(--sp-2);
+      white-space: nowrap;
+    }
+    .adm__inv-ready,
+    .adm__inv-url {
+      grid-column: 1 / -1;
+    }
     @media (max-width: 900px) {
       .adm__email {
         display: none;
@@ -186,6 +291,14 @@ export class AdminPage {
   protected readonly note = signal<string | null>(null);
   protected readonly busy = signal<string | null>(null);
   protected readonly meId = computed(() => this.session.user()?.id ?? '');
+  /** Приглашения руководителей без проекта (ADR 006, 17.09): токен приходит один раз — держим его в памяти страницы. */
+  protected readonly invitations = signal<InvitationSummary[]>([]);
+  protected readonly links = signal<Record<string, InvitationLink>>({});
+  protected readonly inviteEmail = signal('');
+  protected readonly inviting = signal(false);
+  protected readonly inviteNote = signal<string | null>(null);
+  protected readonly inviteError = signal<string | null>(null);
+  protected readonly copiedId = signal<string | null>(null);
 
   constructor() {
     void this.load();
@@ -195,14 +308,95 @@ export class AdminPage {
     this.loading.set(true);
     this.error.set(null);
     try {
-      const [users, projects] = await Promise.all([this.api.adminUsers(), this.api.adminProjects()]);
+      const [users, projects, invitations] = await Promise.all([this.api.adminUsers(), this.api.adminProjects(), this.api.adminInvitations()]);
       this.users.set(users);
       this.projects.set(projects);
+      this.invitations.set(invitations);
     } catch {
       this.error.set(ERROR.load);
     } finally {
       this.loading.set(false);
     }
+  }
+
+  protected value(e: Event): string {
+    return (e.target as HTMLInputElement).value;
+  }
+
+  protected async invite(e: Event): Promise<void> {
+    e.preventDefault();
+    const email = this.inviteEmail().trim();
+    if (this.inviting() || !email) return;
+    this.inviting.set(true);
+    this.inviteError.set(null);
+    this.inviteNote.set(null);
+    try {
+      const result = await this.api.adminInvite(email);
+      if (result.kind === 'user') {
+        this.inviteNote.set(this.copy.granted(result.user.name));
+        this.users.update((list) => list.map((x) => (x.id === result.user.id ? { ...result.user, memberships: x.memberships } : x)));
+      } else {
+        this.inviteNote.set(result.invitation.emailed ? this.copy.invitedMailed(result.invitation.email) : this.copy.invited(result.invitation.email));
+        this.remember(result.invitation.id, result.invitation);
+        this.invitations.update((list) => [...list.filter((x) => x.id !== result.invitation.id), result.invitation]);
+      }
+      this.inviteEmail.set('');
+    } catch (err) {
+      this.inviteError.set(errorMessage(err));
+    } finally {
+      this.inviting.set(false);
+    }
+  }
+
+  protected link(fresh: InvitationLink): string {
+    return `${location.origin}/join/${fresh.token}`;
+  }
+
+  private remember(id: string, fresh: InvitationLink): void {
+    this.links.update((all) => ({ ...all, [id]: { token: fresh.token, expiresAt: fresh.expiresAt, emailed: fresh.emailed } }));
+  }
+
+  protected async newLink(inv: InvitationSummary): Promise<void> {
+    if (this.busy()) return;
+    this.busy.set(inv.id);
+    this.inviteError.set(null);
+    try {
+      const fresh = await this.api.adminInvitationLink(inv.id);
+      this.remember(inv.id, fresh);
+      this.invitations.update((list) => list.map((x) => (x.id === inv.id ? { ...x, expiresAt: fresh.expiresAt } : x)));
+    } catch (err) {
+      this.inviteError.set(errorMessage(err));
+    } finally {
+      this.busy.set(null);
+    }
+  }
+
+  protected async revokeInvitation(inv: InvitationSummary): Promise<void> {
+    if (this.busy()) return;
+    this.busy.set(inv.id);
+    this.inviteError.set(null);
+    try {
+      await this.api.adminRevokeInvitation(inv.id);
+      this.invitations.update((list) => list.filter((x) => x.id !== inv.id));
+    } catch (err) {
+      this.inviteError.set(errorMessage(err));
+    } finally {
+      this.busy.set(null);
+    }
+  }
+
+  protected async copyLink(id: string, fresh: InvitationLink): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(this.link(fresh));
+      this.copiedId.set(id);
+      setTimeout(() => this.copiedId.update((current) => (current === id ? null : current)), 2000);
+    } catch {
+      // буфер обмена недоступен (http, iframe): ссылка видна текстом в поле ниже
+    }
+  }
+
+  protected selectAll(e: Event): void {
+    (e.target as HTMLInputElement).select();
   }
 
   protected toggleCreate(u: AdminUser): Promise<void> {

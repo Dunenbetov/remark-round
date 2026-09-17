@@ -3,7 +3,7 @@ import type { Invitation, Role } from '@remarkround/db';
 import { createHash, randomBytes } from 'node:crypto';
 import { config } from '../config';
 import { MailService } from '../mail/mail.service';
-import { invitationMail, memberAddedMail } from '../mail/templates';
+import { instanceInvitationMail, invitationMail, memberAddedMail } from '../mail/templates';
 import { securityEvent } from '../observability/security-log';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectContext } from './project-context';
@@ -38,7 +38,9 @@ export type InvitationCreated = InvitationSummary & InvitationLink & {
 
 /** Что видно по ссылке до входа: ровно столько, чтобы человек понял, куда его зовут. E-mail приглашённого не показываем. */
 export interface InvitationPeek {
-  projectName: string;
+  /** `project` — в проект с ролью; `instance` — руководителем приёмки от администратора (право создавать проекты). */
+  kind: 'project' | 'instance';
+  projectName: string | null;
   role: Role;
   inviterName: string;
   expiresAt: string | null;
@@ -73,30 +75,79 @@ export class InvitationsService {
           data: { projectId: ctx.projectId, email: normalized, role, tokenHash: hashToken(token), invitedById: ctx.userId, expiresAt },
         });
     securityEvent('invitation.create', { projectId: ctx.projectId, by: ctx.userId, email: normalized, role, invitationId: row.id });
-    const emailed = await this.sendLink(ctx, normalized, role, token, expiresAt);
+    const emailed = await this.sendLink(row, ctx.userId, token, expiresAt);
     return { ...summary(row), token, expiresAt: expiresAt.toISOString(), emailed };
   }
 
-  /** Письмо со ссылкой (ADR 009): текст — без e-mail других участников, только проект, роль и кто зовёт. */
-  private async sendLink(ctx: ProjectContext, to: string, role: Role, token: string, expiresAt: Date): Promise<boolean> {
+  /**
+   * Приглашение руководителя приёмки без проекта (ADR 006, дополнение 17.09): только администратор инстанса.
+   * Принятие выдаёт canCreateProjects; одна строка на e-mail — повтор выпускает новую ссылку.
+   */
+  async createInstance(actorUserId: string, email: string): Promise<InvitationCreated> {
+    const normalized = normalizeEmail(email);
+    const token = newToken();
+    const expiresAt = expiry();
+    const existing = await this.prisma.invitation.findFirst({ where: { projectId: null, email: normalized } });
+    const data = { role: 'pm' as Role, expiresAt, tokenHash: hashToken(token), acceptedAt: null, acceptedByUserId: null, invitedById: actorUserId };
+    const row = existing
+      ? await this.prisma.invitation.update({ where: { id: existing.id }, data })
+      : await this.prisma.invitation.create({ data: { ...data, projectId: null, email: normalized } });
+    securityEvent('invitation.create', { projectId: null, by: actorUserId, email: normalized, role: 'pm', invitationId: row.id });
+    const emailed = await this.sendLink(row, actorUserId, token, expiresAt);
+    return { ...summary(row), token, expiresAt: expiresAt.toISOString(), emailed };
+  }
+
+  /** Ожидающие приглашения руководителей (без проекта) — для страницы администрирования. */
+  async listInstance(): Promise<InvitationSummary[]> {
+    const rows = await this.prisma.invitation.findMany({ where: { projectId: null, acceptedAt: null }, orderBy: { createdAt: 'asc' } });
+    return rows.map(summary);
+  }
+
+  async revokeInstance(actorUserId: string, invitationId: string): Promise<void> {
+    const row = await this.prisma.invitation.findFirst({ where: { id: invitationId, projectId: null } });
+    if (!row) throw new NotFoundException();
+    await this.prisma.invitation.delete({ where: { id: row.id } });
+    securityEvent('invitation.revoke', { projectId: null, by: actorUserId, invitationId: row.id, email: row.email });
+  }
+
+  /** «Новая ссылка» для приглашения руководителя: то же, что regenerateLink, но без проекта. */
+  async regenerateInstanceLink(actorUserId: string, invitationId: string): Promise<InvitationRelink> {
+    const row = await this.prisma.invitation.findFirst({ where: { id: invitationId, projectId: null, acceptedAt: null } });
+    if (!row) throw new NotFoundException();
+    return this.reissue(row, actorUserId);
+  }
+
+  /**
+   * Письмо со ссылкой (ADR 009): текст — без e-mail других участников, только проект, роль и кто зовёт;
+   * без проекта — письмо «вас приглашают руководителем приёмки».
+   */
+  private async sendLink(row: Pick<Invitation, 'projectId' | 'email' | 'role'>, byUserId: string, token: string, expiresAt: Date): Promise<boolean> {
     if (!this.mail.enabled) return false;
     const [project, inviter] = await Promise.all([
-      this.prisma.project.findUnique({ where: { id: ctx.projectId }, select: { name: true } }),
-      this.prisma.user.findUnique({ where: { id: ctx.userId }, select: { name: true } }),
+      row.projectId ? this.prisma.project.findUnique({ where: { id: row.projectId }, select: { name: true } }) : Promise.resolve(null),
+      this.prisma.user.findUnique({ where: { id: byUserId }, select: { name: true } }),
     ]);
     const url = `${config().WEB_ORIGIN}/join/${token}`;
-    return this.mail.enqueue(invitationMail({ to, projectName: project?.name ?? '', role, inviterName: inviter?.name ?? '', url, expiresAt }), ctx.projectId);
+    const inviterName = inviter?.name ?? '';
+    const message = row.projectId
+      ? invitationMail({ to: row.email, projectName: project?.name ?? '', role: row.role, inviterName, url, expiresAt })
+      : instanceInvitationMail({ to: row.email, inviterName, url, expiresAt });
+    return this.mail.enqueue(message, row.projectId ?? undefined);
   }
 
   /** Новая ссылка для ожидающего приглашения: прежняя перестаёт работать, срок продлевается, письмо уходит снова (I-2). */
   async regenerateLink(ctx: ProjectContext, invitationId: string): Promise<InvitationRelink> {
     const row = await this.prisma.invitation.findFirst({ where: { id: invitationId, projectId: ctx.projectId, acceptedAt: null } });
     if (!row) throw new NotFoundException();
+    return this.reissue(row, ctx.userId);
+  }
+
+  private async reissue(row: Invitation, byUserId: string): Promise<InvitationRelink> {
     const token = newToken();
     const expiresAt = expiry();
-    await this.prisma.invitation.update({ where: { id: row.id }, data: { tokenHash: hashToken(token), expiresAt, invitedById: ctx.userId } });
-    securityEvent('invitation.link', { projectId: ctx.projectId, by: ctx.userId, invitationId: row.id });
-    const emailed = await this.sendLink(ctx, row.email, row.role, token, expiresAt);
+    await this.prisma.invitation.update({ where: { id: row.id }, data: { tokenHash: hashToken(token), expiresAt, invitedById: byUserId } });
+    securityEvent('invitation.link', { projectId: row.projectId, by: byUserId, invitationId: row.id });
+    const emailed = await this.sendLink(row, byUserId, token, expiresAt);
     return { token, expiresAt: expiresAt.toISOString(), emailed };
   }
 
@@ -129,11 +180,12 @@ export class InvitationsService {
   async peek(token: string): Promise<InvitationPeek> {
     const row = await this.usable(token);
     const [project, inviter] = await Promise.all([
-      this.prisma.project.findUnique({ where: { id: row.projectId } }),
+      row.projectId ? this.prisma.project.findUnique({ where: { id: row.projectId } }) : Promise.resolve(null),
       this.prisma.user.findUnique({ where: { id: row.invitedById } }),
     ]);
     return {
-      projectName: project?.name ?? '',
+      kind: row.projectId ? 'project' : 'instance',
+      projectName: project?.name ?? null,
       role: row.role,
       inviterName: inviter?.name ?? '',
       expiresAt: row.expiresAt?.toISOString() ?? null,
@@ -146,7 +198,7 @@ export class InvitationsService {
   }
 
   /** Принятие по ссылке вошедшим пользователем: e-mail может отличаться — ссылку PM отправил адресно. */
-  async acceptByToken(userId: string, token: string): Promise<{ projectId: string; role: Role }> {
+  async acceptByToken(userId: string, token: string): Promise<{ projectId: string | null; role: Role }> {
     const row = await this.usable(token);
     await this.accept(row, userId);
     securityEvent('invitation.accept', { projectId: row.projectId, userId, role: row.role, invitationId: row.id, invitedEmail: row.email });
@@ -167,6 +219,11 @@ export class InvitationsService {
       // Две вкладки принимают одну ссылку разом (I-4): acceptedAt ставится условно, второй получает 410, а не второе место
       const { count } = await tx.invitation.updateMany({ where: { id: row.id, acceptedAt: null }, data: { acceptedAt: new Date(), acceptedByUserId: userId } });
       if (count !== 1) throw new GoneException('Приглашение уже принято');
+      if (!row.projectId) {
+        // Приглашение руководителя от администратора: право создавать проекты, membership появится с первым проектом
+        await tx.user.update({ where: { id: userId }, data: { canCreateProjects: true } });
+        return;
+      }
       await tx.membership.upsert({
         where: { userId_projectId: { userId, projectId: row.projectId } },
         create: { userId, projectId: row.projectId, role: row.role, invitedById: row.invitedById },

@@ -2,29 +2,7 @@ import { HttpClient, HttpErrorResponse, HttpInterceptorFn, HttpParams } from '@a
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, firstValueFrom } from 'rxjs';
-import type {
-  AddMemberResult,
-  AdminProject,
-  AdminUser,
-  AuthOptions,
-  DocumentKind,
-  ImportJob,
-  InvitationLink,
-  InvitationPeek,
-  MeResult,
-  MemberSummary,
-  MembersView,
-  ProjectSummary,
-  Remark,
-  Role,
-  Round,
-  SearchHit,
-  Session,
-  Side,
-  User,
-  VerdictCode,
-  RemarkHistoryEntry,
-} from './models';
+import type { AddMemberResult, AdminInviteResult, AdminProject, AdminUser, AuthOptions, DocumentKind, ImportJob, InvitationLink, InvitationPeek, InvitationSummary, MeResult, MemberSummary, MembersView, ProjectSummary, Remark, RemarkHistoryEntry, Role, Round, SearchHit, Session, Side, User, VerdictCode } from './models';
 import { SessionService } from './session.service';
 
 export const API_BASE = '/api/v1';
@@ -151,6 +129,24 @@ export class ApiService {
 
   adminRevokeSessions(userId: string): Promise<void> {
     return this.run(this.http.post<void>(`${API_BASE}/admin/users/${userId}/revoke-sessions`, {}));
+  }
+
+  // Приглашение руководителя приёмки без проекта (ADR 006, 17.09)
+
+  adminInvitations(): Promise<InvitationSummary[]> {
+    return this.run(this.http.get<InvitationSummary[]>(`${API_BASE}/admin/invitations`));
+  }
+
+  adminInvite(email: string): Promise<AdminInviteResult> {
+    return this.run(this.http.post<AdminInviteResult>(`${API_BASE}/admin/invitations`, { email }));
+  }
+
+  adminRevokeInvitation(invitationId: string): Promise<void> {
+    return this.run(this.http.delete<void>(`${API_BASE}/admin/invitations/${invitationId}`));
+  }
+
+  adminInvitationLink(invitationId: string): Promise<InvitationLink> {
+    return this.run(this.http.post<InvitationLink>(`${API_BASE}/admin/invitations/${invitationId}/link`, {}));
   }
 
   invitation(token: string): Promise<InvitationPeek> {

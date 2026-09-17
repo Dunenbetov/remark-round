@@ -128,7 +128,11 @@ export class AuthService {
       if ((e as { code?: string }).code === 'P2002') throw new ConflictException('Этот e-mail уже зарегистрирован');
       throw e;
     }
-    if (dto.inviteToken) await this.invitations.acceptByToken(user.id, dto.inviteToken);
+    if (dto.inviteToken) {
+      await this.invitations.acceptByToken(user.id, dto.inviteToken);
+      // Приглашение руководителя (ADR 006, 17.09) меняет самого пользователя: сессия — по свежей строке, не по созданной
+      user = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    }
     securityEvent('register', { userId: user.id, email, preferredRole: dto.preferredRole, viaInvite: Boolean(dto.inviteToken), mode: config().registrationMode });
     return this.session(user);
   }

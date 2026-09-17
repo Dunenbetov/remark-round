@@ -147,7 +147,9 @@ export type InvitationCreated = InvitationSummary & InvitationLink & {
 };
 
 export interface InvitationPeek {
-  projectName: string;
+  /** `project` — в проект с ролью; `instance` — руководителем приёмки от администратора (право создавать проекты). */
+  kind: 'project' | 'instance';
+  projectName: string | null;
   role: Role;
   inviterName: string;
   expiresAt: string | null;
@@ -179,6 +181,9 @@ export interface AdminProject {
   createdAt: string;
   members: number;
 }
+
+/** Приглашение руководителя администратором: известный e-mail получает право сразу, незнакомый — ссылку. */
+export type AdminInviteResult = { kind: 'user'; user: AdminUser } | { kind: 'invitation'; invitation: InvitationCreated };
 
 export interface Round {
   id: string;

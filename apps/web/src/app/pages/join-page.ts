@@ -26,7 +26,7 @@ import { Sheet } from '../ui/sheet';
           <rr-brand-mark [size]="40" [tone]="gone() ? 'danger' : 'default'" />
           <h1 class="jn__title">{{ copy.title }}</h1>
           @if (peek(); as inv) {
-            <p class="jn__lead">{{ copy.lead(inv.projectName, roleSide[sideOf(inv.role)]) }}</p>
+            <p class="jn__lead">{{ inv.kind === 'instance' ? copy.leadInstance : copy.lead(inv.projectName ?? '', roleSide[sideOf(inv.role)]) }}</p>
             <p class="meta">{{ copy.by(inv.inviterName) }}</p>
             @if (loggedIn()) {
               <p class="meta">{{ copy.signedAs(email()) }}</p>
@@ -120,6 +120,11 @@ export class JoinPage {
     try {
       const me = await this.api.acceptInvitation(this.token());
       this.session.patch({ user: me.user, memberships: me.memberships });
+      // Приглашение руководителя (без проекта): право создавать проекты уже в сессии — на страницу проектов
+      if (this.peek()?.kind === 'instance') {
+        await this.router.navigateByUrl('/projects');
+        return;
+      }
       const joined = me.memberships.find((m) => m.projectName === this.peek()?.projectName) ?? me.memberships[me.memberships.length - 1];
       if (joined) {
         this.session.selectProject(joined.projectId);

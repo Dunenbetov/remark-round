@@ -30,13 +30,17 @@
 | DELETE | `/projects/:projectId/members/:userId` | pm, admin | 204; единственный pm — 409; сокеты удалённого выкидываются из комнат проекта |
 | DELETE | `/projects/:projectId/invitations/:invitationId` | pm, admin | Отозвать ссылку |
 | POST | `/projects/:projectId/invitations/:invitationId/link` | pm, admin | «Новая ссылка»: `{ token, expiresAt, emailed }` один раз; прежняя перестаёт работать, срок продлевается (7 дней), письмо с новой ссылкой уходит снова (`emailed`) |
-| GET | `/invitations/:token` | — | Что за приглашение: `{ projectName, role, inviterName, expiresAt }` (e-mail приглашённого не показывается); принятое — 410, неизвестное или истёкшее (7 дней) — 404 |
+| GET | `/invitations/:token` | — | Что за приглашение: `{ kind: project \| instance, projectName, role, inviterName, expiresAt }` (e-mail приглашённого не показывается; `instance` — приглашение руководителя от администратора, `projectName: null`); принятое — 410, неизвестное или истёкшее (7 дней) — 404 |
 | POST | `/invitations/:token/accept` | any | Принять по ссылке вошедшим пользователем (e-mail может отличаться) → `{ user, memberships }`; два параллельных принятия одной ссылки — одно 200, второе 410 |
 | POST | `/projects/:projectId/mcp-token` | member | Токен для MCP-фасада (`apps/mcp`): JWT с `projectId` из membership, срок `MCP_TOKEN_EXPIRES_SECONDS` (30 дней). С ним существует только `/projects/:projectId/*` этого проекта: другой проект, `/projects`, `/auth/*`, `/invitations/*`, `/admin/*` — 404, даже при membership. Смена пароля, отключение и «завершить сессии» отзывают и его |
 | GET | `/admin/users` | администратор инстанса | Люди поперёк проектов: `{ id, email, name, preferredRole, canCreateProjects, isInstanceAdmin, disabledAt, createdAt, memberships[] }`. Остальным — 403 (проектная роль `admin` — тоже) |
 | GET | `/admin/projects` | администратор инстанса | `{ id, name, createdAt, members }` по всем проектам |
 | PATCH | `/admin/users/:userId` | администратор инстанса | `{ canCreateProjects?, disabled? }`; отключение — вход 403, все токены и сокеты недействительны сразу; себя — 409 |
 | POST | `/admin/users/:userId/revoke-sessions` | администратор инстанса | 204: все токены человека (и MCP) — 401, он входит заново |
+| GET | `/admin/invitations` | администратор инстанса | Ожидающие приглашения руководителей приёмки без проекта (ADR 006, 17.09): `{ id, email, role: 'pm', createdAt, expiresAt }` без токена |
+| POST | `/admin/invitations` | администратор инстанса | `{ email }`: зарегистрированный → `{ kind: 'user', user }` — право создавать проекты выдано сразу; незнакомый → `{ kind: 'invitation', invitation }` с сырым `token` один раз и `emailed`; повтор на тот же e-mail выпускает новую ссылку. Принятие по ссылке ставит `canCreateProjects`, membership не создаёт |
+| DELETE | `/admin/invitations/:invitationId` | администратор инстанса | Отозвать; 204 |
+| POST | `/admin/invitations/:invitationId/link` | администратор инстанса | «Новая ссылка»: `{ token, expiresAt, emailed }`; прежняя перестаёт работать |
 | GET/POST | `/projects/:projectId/documents` | admin, pm | Пакет документов |
 | GET | `/projects/:projectId/documents/:id` | member | Мета + статус индекса |
 | POST | `/projects/:projectId/documents/:id/reindex` | admin, pm | |

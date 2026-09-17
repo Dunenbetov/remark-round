@@ -196,9 +196,11 @@ model Membership {
 /// Приглашение в проект (ADR 005, ADR 006). Со SMTP письмо со ссылкой уходит само (ADR 009), без него ссылку /join/<token> PM отправляет сам.
 /// Принимается только по ссылке: регистрацией с inviteToken или вошедшим пользователем. Совпадение e-mail
 /// без ссылки ничего не даёт — иначе место в проекте забирал бы тот, кто первым зарегистрировал этот адрес.
+/// projectId = null — приглашение руководителя приёмки от администратора инстанса (ADR 006, дополнение 17.09):
+/// принятие выдаёт canCreateProjects, membership не создаёт; уникальность таких строк по e-mail держит сервис.
 model Invitation {
   id               String    @id @default(uuid())
-  projectId        String
+  projectId        String?
   /// Нормализованный lower-case e-mail
   email            String
   role             Role
@@ -210,7 +212,7 @@ model Invitation {
   expiresAt        DateTime?
   acceptedAt       DateTime?
   acceptedByUserId String?
-  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project          Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   invitedBy        User      @relation("InvitationInvitedBy", fields: [invitedById], references: [id])
   acceptedBy       User?     @relation("InvitationAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
 
@@ -584,7 +586,7 @@ model RoundEvent {
   role      Role?
   createdAt DateTime @default(now())
   round     Round    @relation(fields: [roundId, projectId], references: [id, projectId], onDelete: Cascade)
-  project   Project  @relation(fields: [projectId], references: [id])
+  project   Project?  @relation(fields: [projectId], references: [id])
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([roundId, createdAt])

@@ -1,7 +1,9 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/auth.service';
-import { AdminProjectView, AdminService, AdminUserView } from './admin.service';
+import type { InvitationRelink, InvitationSummary } from '../tenancy/invitations.service';
+import { AdminInviteResult, AdminProjectView, AdminService, AdminUserView } from './admin.service';
+import { AdminInviteDto } from './dto/invite.dto';
 import { AdminUpdateUserDto } from './dto/update-user.dto';
 import { InstanceAdminGuard } from './instance-admin.guard';
 
@@ -30,5 +32,29 @@ export class AdminController {
   @HttpCode(204)
   revokeSessions(@CurrentUser() actor: AuthUser, @Param('userId') userId: string): Promise<void> {
     return this.admin.revokeSessions(actor.id, userId);
+  }
+
+  // Приглашение руководителя приёмки без проекта (ADR 006, 17.09): по ссылке — право создавать проекты
+
+  @Get('invitations')
+  invitations(): Promise<InvitationSummary[]> {
+    return this.admin.listInvitations();
+  }
+
+  @Post('invitations')
+  invite(@CurrentUser() actor: AuthUser, @Body() dto: AdminInviteDto): Promise<AdminInviteResult> {
+    return this.admin.invite(actor.id, dto.email);
+  }
+
+  @Delete('invitations/:invitationId')
+  @HttpCode(204)
+  revokeInvitation(@CurrentUser() actor: AuthUser, @Param('invitationId') invitationId: string): Promise<void> {
+    return this.admin.revokeInvitation(actor.id, invitationId);
+  }
+
+  @Post('invitations/:invitationId/link')
+  @HttpCode(200)
+  invitationLink(@CurrentUser() actor: AuthUser, @Param('invitationId') invitationId: string): Promise<InvitationRelink> {
+    return this.admin.invitationLink(actor.id, invitationId);
   }
 }

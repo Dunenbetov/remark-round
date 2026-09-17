@@ -3,6 +3,7 @@ import type { Role, User } from '@remarkround/db';
 import { isInstanceAdmin } from '../auth/auth.service';
 import { securityEvent } from '../observability/security-log';
 import { PrismaService } from '../prisma/prisma.service';
+import { InvitationsService, normalizeEmail, type InvitationCreated, type InvitationRelink, type InvitationSummary } from '../tenancy/invitations.service';
 import { TenancyService } from '../tenancy/tenancy.service';
 import type { AdminUpdateUserDto } from './dto/update-user.dto';
 
@@ -25,6 +26,9 @@ export interface AdminProjectView {
   members: number;
 }
 
+/** Известный e-mail получает право сразу; незнакомый — приглашение со ссылкой (токен один раз, как у проектных). */
+export type AdminInviteResult = { kind: 'user'; user: AdminUserView } | { kind: 'invitation'; invitation: InvitationCreated };
+
 export const CANNOT_DISABLE_SELF = 'Нельзя отключить себя';
 
 /**
@@ -37,7 +41,33 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenancy: TenancyService,
+    private readonly invitations: InvitationsService,
   ) {}
+
+  /**
+   * Пригласить руководителя приёмки без проекта (ADR 006, дополнение 17.09; A-1): в invite_only это единственный путь
+   * для человека не с домена компании. Зарегистрированный получает право сразу, остальным — ссылка /join/<token>.
+   */
+  async invite(actorId: string, email: string): Promise<AdminInviteResult> {
+    const normalized = normalizeEmail(email);
+    const user = await this.prisma.user.findUnique({ where: { email: normalized } });
+    if (!user) return { kind: 'invitation', invitation: await this.invitations.createInstance(actorId, normalized) };
+    const updated = await this.prisma.user.update({ where: { id: user.id }, data: { canCreateProjects: true } });
+    securityEvent('admin.user.update', { by: actorId, userId: user.id, canCreateProjects: true, viaInvite: true });
+    return { kind: 'user', user: { ...toView(updated), memberships: [] } };
+  }
+
+  listInvitations(): Promise<InvitationSummary[]> {
+    return this.invitations.listInstance();
+  }
+
+  revokeInvitation(actorId: string, invitationId: string): Promise<void> {
+    return this.invitations.revokeInstance(actorId, invitationId);
+  }
+
+  invitationLink(actorId: string, invitationId: string): Promise<InvitationRelink> {
+    return this.invitations.regenerateInstanceLink(actorId, invitationId);
+  }
 
   async users(): Promise<AdminUserView[]> {
     const rows = await this.prisma.user.findMany({

@@ -62,7 +62,7 @@ const TONE_BY_SIDE: Record<Side, 'accent' | 'wait' | 'work'> = { pm: 'accent', b
           <h1 class="reg__title">{{ copy.pageTitle }}</h1>
           @if (invite(); as inv) {
             <p class="reg__invite" role="status">
-              {{ copy.invited(inv.projectName, roleSide[sideOf(inv.role)]) }}
+              {{ inv.kind === 'instance' ? copy.invitedInstance : copy.invited(inv.projectName ?? '', roleSide[sideOf(inv.role)]) }}
               <span class="meta">{{ copy.invitedBy(inv.inviterName) }}</span>
             </p>
           } @else if (inviteGone()) {

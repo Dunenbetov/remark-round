@@ -67,6 +67,24 @@ export function invitationMail(i: InvitationMailInput): MailMessage {
   };
 }
 
+export interface InstanceInvitationMailInput {
+  to: string;
+  inviterName: string;
+  url: string;
+  expiresAt: Date;
+}
+
+/** Администратор зовёт руководителя приёмки без проекта (ADR 006, 17.09): по ссылке появляется право создавать проекты. */
+export function instanceInvitationMail(i: InstanceInvitationMailInput): MailMessage {
+  const until = i.expiresAt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  return {
+    to: i.to,
+    subject: 'RemarkRound: приглашение руководителя приёмки',
+    text: [`${i.inviterName} приглашает вас в RemarkRound руководителем приёмки: вы сможете создавать проекты и звать участников.`, '', `Войти по ссылке: ${i.url}`, '', `Ссылка действует до ${until}. Если приглашение не для вас — просто не открывайте её.`].join('\n'),
+    html: [`<p>${esc(i.inviterName)} приглашает вас в RemarkRound руководителем приёмки: вы сможете создавать проекты и звать участников.</p>`, `<p><a href="${esc(i.url)}">Войти по ссылке</a></p>`, `<p style="color:#666;font-size:13px">Ссылка действует до ${until}. Если приглашение не для вас — просто не открывайте её.</p>`].join('\n'),
+  };
+}
+
 export interface MemberAddedMailInput {
   to: string;
   name: string;
