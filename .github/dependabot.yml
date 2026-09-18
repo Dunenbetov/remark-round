@@ -1,17 +1,21 @@
-# Обновления зависимостей (аудит: supply-chain). Раз в неделю, группами, чтобы не тонуть в PR:
-# npm — по workspace целиком; базовые образы Dockerfile; actions в CI. Secret scanning и Dependabot alerts
-# включаются в Settings → Code security репозитория (не файлом).
+# Обновления зависимостей (аудит: supply-chain): npm — по workspace целиком; базовые образы Dockerfile; actions в CI.
+# Secret scanning и Dependabot alerts включаются в Settings → Code security репозитория (не файлом).
+#
+# ПАУЗА до защиты курса (решение владельца 18.09.2026): open-pull-requests-limit: 0 выключает PR с обновлениями
+# версий — каждое обновление было отдельной веткой, а PR шли прямо в main, то есть на прод в обход dev.
+# Оповещения об уязвимостях (Dependabot alerts) продолжают приходить. Вернуть после Demo Days: limit 0 → 1.
+# Когда вернём: PR идут в dev (target-branch), раз в месяц, одним PR на экосистему (groups.all).
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    target-branch: dev
+    open-pull-requests-limit: 0
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      all:
+        patterns: ['*']
     ignore:
       # Мажоры фреймворков — руками и по одному: Angular, Nest, Prisma, LangGraph
       - dependency-name: '@angular/*'
@@ -27,7 +31,12 @@ updates:
   - package-ecosystem: docker
     directory: /apps/api
     schedule:
-      interval: weekly
+      interval: monthly
+    target-branch: dev
+    open-pull-requests-limit: 0
+    groups:
+      all:
+        patterns: ['*']
     ignore:
       # Мажор Node — вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 — конец октября 2026)
       - dependency-name: node
@@ -35,7 +44,12 @@ updates:
   - package-ecosystem: docker
     directory: /apps/web
     schedule:
-      interval: weekly
+      interval: monthly
+    target-branch: dev
+    open-pull-requests-limit: 0
+    groups:
+      all:
+        patterns: ['*']
     ignore:
       # Мажор Node — вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 — конец октября 2026)
       - dependency-name: node
@@ -43,7 +57,12 @@ updates:
   - package-ecosystem: docker
     directory: /apps/mcp
     schedule:
-      interval: weekly
+      interval: monthly
+    target-branch: dev
+    open-pull-requests-limit: 0
+    groups:
+      all:
+        patterns: ['*']
     ignore:
       # Мажор Node — вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 — конец октября 2026)
       - dependency-name: node
@@ -51,4 +70,9 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    target-branch: dev
+    open-pull-requests-limit: 0
+    groups:
+      all:
+        patterns: ['*']
