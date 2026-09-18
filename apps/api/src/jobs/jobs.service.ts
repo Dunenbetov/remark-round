@@ -88,7 +88,7 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
   readonly instanceId = randomUUID();
   private readonly handlers = new Map<string, JobHandler>();
   private readonly options = new Map<string, JobKindOptions>();
-  /** Слотов больше, чем прогонов графа (GRAPH_MAX_CONCURRENT): индексация и письма не ждут модель. */
+  /** Слотов больше, чем прогонов графа (GRAPH_MAX_CONCURRENT): индексация документов не ждёт модель. */
   private readonly concurrency = Number(process.env['JOBS_CONCURRENCY'] ?? 8);
   private readonly pollMs = Number(process.env['JOBS_POLL_MS'] ?? 500);
   private readonly active = new Map<string, ActiveJob>();

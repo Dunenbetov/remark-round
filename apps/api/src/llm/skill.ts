@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
- * Skill курса (skills/uat-triage/SKILL.md) подмешивается в ноды classify / draft / explain (docs/GRAPH.md).
+ * Skill курса (skills/uat-triage/SKILL.md) идёт в системный промпт всех вызовов модели, кроме переформулировки запроса
+ * (rewriteQuery) — docs/GRAPH.md, «Skill».
  * Ищем от корня репо и от папки приложения (в Docker skills копируются в /app/skills).
  */
 const CANDIDATES = [
