@@ -1,0 +1,10 @@
+{
+  "name": "remarkround",
+  "version": "0.1.0",
+  "description": "RemarkRound — приёмка веб-проекта. Skill uat-triage: разбор замечания заказчика (дефект, новое желание, дыра в ТЗ, повтор, мало данных) с опорой на пакет документов проекта, решение за человеком. MCP-сервер remarkround из .mcp.json: поиск по ТЗ проекта, очередь раунда, решение PM, кадр ретеста.",
+  "author": {
+    "name": "Almas Donenbetov"
+  },
+  "repository": "https://github.com/Dunenbetov/remark-round",
+  "keywords": ["uat", "acceptance", "triage", "mcp", "skill"]
+}
