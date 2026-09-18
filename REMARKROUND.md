@@ -140,7 +140,7 @@
 
 ### 4.6 «LangGraph = if-else»
 
-- **Решение:** один граф с ветвлениями, **циклом** (max 2 переписывания query / reject binding) и **interrupt** на дни.
+- **Решение:** два графа — триаж и ретест — с ветвлениями, **циклами** (не больше 2 переписываний запроса и 2 возвратов проверки faithfulness; «Не та цитата из ТЗ» — цикл от человека, без лимита) и **interrupt** на дни ([`docs/GRAPH.md`](docs/GRAPH.md), [ADR 014](docs/adr/014-orchestration-langgraph.md)).
 - Checkpoint в Postgres. Комментарий PM продолжает **тот же** `AgentRun`.
 - Почему не голый Nest: состояние живёт дольше HTTP-запроса.
 - Стек: **LangGraph.js** (`@langchain/langgraph`) внутри Nest. Не Python LangGraph Platform, не CrewAI, не Parlant.
@@ -197,7 +197,7 @@
 | MCP | Официальный **TypeScript SDK**, отдельный процесс `apps/mcp` в compose, фасад домена |
 | Skill | `skills/uat-triage/SKILL.md` по стандарту Claude Skill |
 | Observability | **Langfuse** в compose (аналог LangSmith по ТЗ курса). LangSmith — запас, если ментор потребует именно его |
-| Evals | Vitest + JSON/YAML golden set. Без Python-ядра |
+| Evals | Свой раннер `pnpm evals` (tsc + node) по JSON golden set; инварианты — Jest в CI. Без Python-ядра |
 | Парсинг | Node: PDF ТЗ, DOCX, XLSX (шаблон + картинки из файла) |
 | Дифф скринов | Детерминированный (`pixelmatch` или аналог), не LLM |
 | Реалтайм | Nest WebSocket gateway (комната раунда/замечания) |
@@ -239,7 +239,7 @@ EVALS.md
 | Документы PDF/DOCX/HTML или скрап | PDF ТЗ + DOCX протокол + XLSX журнал (шаблон, в т.ч. картинки) | Свой JSON «как будто журнал» |
 | Мультимодальность осмысленно | Скрин как источник фактов; ретест: два кадра + дифф в vision; кейс eval «текст врёт, кадр спасает» | «Опиши картинку» в стороне |
 | Трейсы LLM | Каждый вызов в Langfuse. На защите живой дашборд одного сценария | Логи console.log |
-| Golden ≥30, автопрогон, ≥2 метрики | Vitest, bind/abstain + faithfulness | 10 угаданных FAQ |
+| Golden ≥30, автопрогон, ≥2 метрики | `pnpm evals` и Jest в CI, bind/abstain + faithfulness | 10 угаданных FAQ |
 | A/B, метрики, вывод | pixel-diff+LLM vs голый vision; победитель в коде | Две температуры «для отчёта» |
 | Выбор LLM и гиперпараметры | Документ: classify/bind дешевле, draft сильнее, vision только при кадре; temperature/top_p/max_tokens с экспериментом | «Взяли GPT потому что популярный» |
 | Веб-фронт | Angular, не CLI | — |
@@ -284,7 +284,7 @@ EVALS.md
 
 ```
 ingest
-  → retrieve_docs          (спека + протоколы + прошлые замечания)
+  → retrieve_docs          (пакет документов проекта: ТЗ, протоколы; соседей по раунду даёт ingest)
   → maybe_vision           (если есть скрин: извлечь видимые факты, не решение)
   → bind_to_clause
         low confidence → rewrite query → retrieve_docs   (цикл, max 2)
@@ -292,11 +292,12 @@ ingest
                            | unspecified | duplicate | cannot_tell
   → draft_rationale        + цитаты
   → faithfulness_gate      fail → цикл draft/bind (max 2)
+  → propose                (applyProposal → awaiting_pm; отдельная нода: resume перезапускает ноду с interrupt)
   → interrupt PM           (HITL, checkpoint)
         accept as defect | accept as CR | unspecified
-        | reject_binding + comment → bind_to_clause
+        | reject_binding + comment → retrieve_docs (новый поиск без отвергнутых цитат, тот же run)
         | request_screenshot → пауза, не выдумывать
-  → persist via RemarksService
+  → persist (решение уже записал RemarksService.verdict до resume)
 ```
 
 Ретест (отдельный подграф или те же ноды с типом `retest`):
@@ -335,7 +336,7 @@ load original remark + old screenshot + new screenshot
 - без скрина не утверждать визуальный дефект;
 - на ретесте без диффа не утверждать «исправлено».
 
-В продукте Skill подмешивается в ноды `classify` / `draft` / `retest`. На защите: чем процедура лучше сырого промпта.
+В продукте Skill подмешивается во все вызовы модели, кроме переформулировки запроса: `vision`, `classify`, `draft`, `explain` и `judge` на ретесте (`docs/GRAPH.md`, «Skill»). На защите: чем процедура лучше сырого промпта.
 
 ---
 
