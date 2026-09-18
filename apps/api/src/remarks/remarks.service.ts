@@ -370,35 +370,47 @@ export class RemarksService {
       // Снимок предложения в самом прогоне: новый прогон (после cannot_tell, reopen) не затирает прежний разбор
       await tx.agentRun.update({
         where: { id: runId },
-        data: { status: 'awaiting_human', proposedClass: proposal.proposedClass, rationale: proposal.rationale.join('\n\n'), visionFacts: proposal.visionFacts ?? null, ...usageData(proposal.usage) },
+        data: { status: 'awaiting_human', proposedClass: proposal.proposedClass, rationale: proposal.rationale.join('\n\n'), visionFacts: proposal.visionFacts ?? null },
       });
+      // Второй проход того же run («Не та цитата») дописывает свой расход к первому, а не затирает его (P3)
+      await addUsage(tx, runId, proposal.usage);
     });
     return this.get(ctx, remarkId);
   }
 
-  /** Прогон упал: run = failed с причиной, замечание возвращается туда, откуда можно «Запустить снова». */
-  async failRun(runId: string, failure?: { code: string; message: string }): Promise<RemarkStatus | null> {
+  /**
+   * Прогон упал: run = failed с причиной, замечание возвращается туда, откуда можно «Запустить снова».
+   * `usage` — уже оплаченные вызовы сбойного прогона: прибавляются к run, как и у дошедшего до черновика (P3).
+   */
+  async failRun(runId: string, failure?: { code: string; message: string }, usage?: LlmUsage): Promise<RemarkStatus | null> {
     const run = await this.prisma.agentRun.findUnique({ where: { id: runId }, include: { remark: { select: { id: true, status: true } } } });
     if (!run || run.status !== 'running') return run?.remark.status ?? null;
     const next: RemarkStatus = run.mode === 'triage' && run.remark.status === 'triaging' ? 'imported' : run.remark.status;
-    await this.prisma.$transaction([
-      this.prisma.agentRun.update({ where: { id: runId }, data: { status: 'failed', failureCode: failure?.code ?? null, failureMessage: failure?.message ?? null } }),
-      ...(next !== run.remark.status ? [this.prisma.remark.update({ where: { id: run.remark.id }, data: { status: next } })] : []),
-      this.prisma.remarkStatusChange.create({ data: { remarkId: run.remark.id, fromStatus: run.remark.status, toStatus: next, action: 'run_failed', runId, detail: failure?.message ?? null } }),
-    ]);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.agentRun.update({ where: { id: runId }, data: { status: 'failed', failureCode: failure?.code ?? null, failureMessage: failure?.message ?? null } });
+      await addUsage(tx, runId, usage);
+      if (next !== run.remark.status) await tx.remark.update({ where: { id: run.remark.id }, data: { status: next } });
+      await tx.remarkStatusChange.create({ data: { remarkId: run.remark.id, fromStatus: run.remark.status, toStatus: next, action: 'run_failed', runId, detail: failure?.message ?? null } });
+    });
     return next;
   }
 
   /**
    * Прогоны, которые остались `running` без исполнителя: чекпоинт есть, задачи в очереди нет (упал процесс до
    * появления очереди, задача исчерпала попытки и была снята вручную). Прогон с живой задачей — ждёт свой повтор.
+   * С 18.09 (P2) зовётся по таймеру раз в минуту, поэтому «давно» считается от последнего действия с прогоном, а не
+   * от его создания: «Не та цитата» через час после старта снова делает run `running` и ставит задачу resume
+   * отдельным шагом после транзакции — в этот миг задачи ещё нет, но прогон не сирота.
    */
   async failStaleRuns(olderThanMs: number): Promise<number> {
-    const stale = await this.prisma.agentRun.findMany({ where: { status: 'running', createdAt: { lt: new Date(Date.now() - olderThanMs) } }, select: { id: true } });
+    const cutoff = new Date(Date.now() - olderThanMs);
+    const stale = await this.prisma.agentRun.findMany({ where: { status: 'running', createdAt: { lt: cutoff } }, select: { id: true, remarkId: true } });
     let n = 0;
     for (const run of stale) {
       const pending = await this.prisma.job.count({ where: { runId: run.id, status: { in: ['queued', 'running'] } } });
       if (pending) continue;
+      const recent = await this.prisma.remarkStatusChange.count({ where: { remarkId: run.remarkId, runId: run.id, createdAt: { gte: cutoff } } });
+      if (recent) continue;
       await this.failRun(run.id, { code: 'process_restart', message: 'Прогон прервался при перезапуске сервера — запустите снова' });
       n++;
     }
@@ -595,7 +607,8 @@ export class RemarksService {
       // Дифф — результат этого сравнения: строка истории ссылается на него, поэтому кадр пишется первым
       const diff = result.diffShot ? await tx.remarkScreenshot.create({ data: { remarkId, kind: 'diff', ...result.diffShot } }) : null;
       await this.transition(tx, remarkId, ['ready_for_retest'], 'retest_result', { status: 'awaiting_business_close', retestOutcome: result.outcome, retestExplanation: result.explanation }, { userId: null, role: null, fromStatus: row.status, runId, detail: [RETEST_OUTCOME_RU[result.outcome], result.explanation].filter(Boolean).join(' — ').slice(0, 300), screenshotId: diff?.id ?? null });
-      await tx.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human', ...usageData(result.usage) } });
+      await tx.agentRun.update({ where: { id: runId }, data: { status: 'awaiting_human' } });
+      await addUsage(tx, runId, result.usage);
     });
     return this.get(ctx, remarkId);
   }
@@ -709,9 +722,19 @@ export class RemarksService {
   }
 }
 
-function usageData(usage?: LlmUsage): { inputTokens?: number; outputTokens?: number; costUsd?: number } {
-  if (!usage || (usage.inputTokens === 0 && usage.outputTokens === 0)) return {};
-  return { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: usage.costUsd };
+/**
+ * Токены и стоимость прогона прибавляются, а не перезаписываются (P3, аудит 18.09 §3.4): после «Не та цитата» тот же run
+ * проходит classify и draft второй раз, а takeUsage отдаёт только расход этого прохода. Сырой SQL, потому что
+ * Prisma `increment` на NULL даёт NULL (`NULL + x`), а у нового прогона счётчики пустые.
+ */
+async function addUsage(tx: Prisma.TransactionClient, runId: string, usage?: LlmUsage): Promise<void> {
+  if (!usage || (usage.inputTokens === 0 && usage.outputTokens === 0)) return;
+  await tx.$executeRaw`
+    UPDATE "AgentRun" SET
+      "inputTokens" = COALESCE("inputTokens", 0) + ${usage.inputTokens}::int,
+      "outputTokens" = COALESCE("outputTokens", 0) + ${usage.outputTokens}::int,
+      "costUsd" = COALESCE("costUsd", 0) + ${usage.costUsd}::numeric
+    WHERE "id" = ${runId}`;
 }
 
 

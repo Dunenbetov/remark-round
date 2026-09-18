@@ -29,8 +29,15 @@ export interface RunOptions {
   wait?: boolean;
 }
 
-/** Прогоны, зависшие в `running` дольше этого без задачи в очереди, помечаются failed на старте. */
+/** Прогоны, зависшие в `running` дольше этого без задачи в очереди, помечаются failed — на старте и раз в STALE_RUN_SWEEP_MS. */
 const STALE_RUN_MS = 10 * 60 * 1000;
+/** Сметание зависших прогонов по таймеру (P2): api на Railway живёт от деплоя до деплоя, одного прохода на старте мало. */
+const STALE_RUN_SWEEP_MS = 60_000;
+/**
+ * Попыток у задачи графа: 1 + 3 повтора, паузы 30 с / 2 мин / 8 мин (JobsService.BACKOFF_MS). При 3 попытках
+ * пауза 8 мин не наступала никогда, и сбой OpenAI дольше ~2,5 мин ронял все прогоны в работе (аудит 18.09 §3.4).
+ */
+const GRAPH_MAX_ATTEMPTS = 4;
 /** Чекпоинты завершённых прогонов старше недели удаляются (R-M2): продолжать их некому, а полное состояние графа в каждом — мегабайты. */
 const CHECKPOINT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const PRUNE_EVERY_MS = 24 * 60 * 60 * 1000;
@@ -97,15 +104,29 @@ export class AgentService implements OnModuleInit {
     this.triage = buildTriageGraph(deps, this.checkpointer);
     this.retestGraph = buildRetestGraph(deps, this.checkpointer);
     this.jobs.register('graph', (payload, ctx) => this.executeJob(payload as GraphJob, ctx), { maxConcurrent: this.maxConcurrent, maxPerProject: this.perProject });
-    void this.remarks
-      .failStaleRuns(STALE_RUN_MS)
-      .then((n) => n && this.log.warn(`stale runs marked failed: ${n}`))
-      .catch((e: Error) => this.log.warn(`stale runs sweep: ${e.message}`));
+    void this.sweepStaleRuns();
     // Ретеншн чекпоинтов: на старте и раз в сутки; в тестах много стендов на одной БД — не трогаем чужие прогоны
     if (config().NODE_ENV !== 'test') {
       const sweep = () => void this.pruneCheckpoints().then((n) => n && this.log.log(`checkpoints: удалено ${n} строк завершённых прогонов старше недели`)).catch((e: Error) => this.log.warn(`checkpoints prune: ${e.message}`));
       sweep();
       setInterval(sweep, PRUNE_EVERY_MS).unref();
+      // Зависшие прогоны — и по таймеру, не только на старте (P2); в тестах сметание глобально и задело бы соседние спеки
+      setInterval(() => void this.sweepStaleRuns(), STALE_RUN_SWEEP_MS).unref();
+    }
+  }
+
+  /** Прогоны `running` без исполнителя → failed `process_restart` (RemarksService.failStaleRuns); пересекающиеся тики пропускаются. */
+  private sweepingRuns = false;
+  private async sweepStaleRuns(): Promise<void> {
+    if (this.sweepingRuns) return;
+    this.sweepingRuns = true;
+    try {
+      const n = await this.remarks.failStaleRuns(STALE_RUN_MS);
+      if (n) this.log.warn(`stale runs marked failed: ${n}`);
+    } catch (e) {
+      this.log.warn(`stale runs sweep: ${(e as Error).message}`);
+    } finally {
+      this.sweepingRuns = false;
     }
   }
 
@@ -204,8 +225,8 @@ export class AgentService implements OnModuleInit {
 
   /**
    * Потолок стоимости модели на проект за скользящие сутки (R-H2): SUM(costUsd) по AgentRun проекта; 409 `llm_budget`,
-   * пока окно не сдвинется или администратор не поднимет GRAPH_DAILY_USD_PER_PROJECT. Сбойные прогоны стоимость не пишут
-   * (failRun) — считаются только дошедшие до черновика. Продолжение после решения PM лимит не проверяет: прогон уже начат.
+   * пока окно не сдвинется или администратор не поднимет GRAPH_DAILY_USD_PER_PROJECT. Сбойный прогон тоже пишет
+   * оплаченные вызовы (failRun, P3). Продолжение после решения PM лимит не проверяет: прогон уже начат.
    */
   private async assertBudget(projectId: string): Promise<void> {
     const limit = config().GRAPH_DAILY_USD_PER_PROJECT;
@@ -233,7 +254,7 @@ export class AgentService implements OnModuleInit {
       return;
     }
     const job: GraphJob = { action: 'start', graph, remarkId, runId, input, trace };
-    await this.jobs.enqueue('graph', job, { projectId: trace.projectId, runId });
+    await this.jobs.enqueue('graph', job, { projectId: trace.projectId, runId, maxAttempts: GRAPH_MAX_ATTEMPTS });
   }
 
   private async dispatchResume(
@@ -252,7 +273,7 @@ export class AgentService implements OnModuleInit {
       return;
     }
     const job: GraphJob = { action: 'resume', graph, remarkId, runId, decision, trace, fallback, persisted };
-    await this.jobs.enqueue('graph', job, { projectId: trace.projectId, runId });
+    await this.jobs.enqueue('graph', job, { projectId: trace.projectId, runId, maxAttempts: GRAPH_MAX_ATTEMPTS });
   }
 
   /** Обработчик задачи `graph`: то же исполнение, что и `wait: true`, но с повторами и прерыванием по SIGTERM. */
@@ -331,13 +352,14 @@ export class AgentService implements OnModuleInit {
         this.log.warn({ msg: `run ${runId}: ${failure.code}, будет повтор`, runId, remarkId, projectId: trace.projectId, err: { name: err?.name, message: err?.message } });
         return { retry: failure };
       }
-      // Окончательный сбой: прогон не дойдёт до persist, где учёт токенов забирают, — забираем сами, иначе запись течёт
-      this.llm.takeUsage(runId);
+      // Окончательный сбой: прогон не дойдёт до propose, где учёт токенов забирают, — забираем сами и пишем в run:
+      // оплаченные vision / classify сбойного прогона тоже расход, их видят Langfuse и суточный лимит (P3)
+      const usage = this.llm.takeUsage(runId);
       // Причина сбоя — со стеком в лог и человеческим текстом на карточку (аудит: no-error-tracking)
       this.log.error({ msg: `run ${runId} failed: ${failure.code}`, runId, remarkId, projectId: trace.projectId, failure: failure.code, err: { name: err?.name, message: err?.message, stack: err?.stack } });
       // `unknown` — не модель и не файл, а ошибка в коде графа: в Sentry (R-L5); остальные коды — операционные, они в логе
       if (failure.code === 'unknown') Sentry.captureException(e, { tags: { source: 'graph', mode: trace.mode }, extra: { runId, remarkId, projectId: trace.projectId } });
-      await this.remarks.failRun(runId, failure).catch(() => null);
+      await this.remarks.failRun(runId, failure, usage).catch(() => null);
       this.events.emit(remarkId, { type: 'run.failed', runId, message: failure.message });
       return {};
     } finally {

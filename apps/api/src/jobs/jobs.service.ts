@@ -60,9 +60,15 @@ export interface JobStats {
   running: number;
 }
 
-/** Такой lockedAt — задача осиротела (процесс упал, не дописав): вернуть в очередь. */
+/** Такой lockedAt — задача осиротела (процесс упал, не дописав): вернуть в очередь. Живой воркер обновляет lockedAt каждые HEARTBEAT_MS. */
 const STALE_LOCK_MS = 60_000;
 const HEARTBEAT_MS = 15_000;
+/**
+ * Сметание сирот по таймеру, а не только на старте (P2, аудит 18.09 §3.1). На Railway новый контейнер стартует
+ * раньше, чем гасится старый: на его старте задачи старого ещё свежие (heartbeat), а через минуту старого убили.
+ * Раньше такие задачи висели `running` до следующего деплоя; теперь их вернёт ближайший тик — через 60–120 с.
+ */
+const STALE_SWEEP_MS = 60_000;
 /** Чистка завершённых задач — раз в сутки (и на старте). */
 const PRUNE_EVERY_MS = 24 * 60 * 60 * 1000;
 /** Пауза перед повтором: 30 с, 2 мин, 8 мин — модель «перегружена» редко проходит за секунды. Тесты укорачивают через JOBS_BACKOFF_MS. */
@@ -89,6 +95,8 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private prune: ReturnType<typeof setInterval> | null = null;
+  private staleSweep: ReturnType<typeof setInterval> | null = null;
+  private sweeping = false;
   private stopped = false;
   private polling = false;
   /** Пока шёл опрос, освободился слот: следующий опрос — сразу, а не через pollMs. */
@@ -115,8 +123,42 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
     if (config().NODE_ENV !== 'test') {
       this.prune = setInterval(() => void this.pruneFinished().then((n) => n && this.log.log(`jobs: удалено ${n} завершённых задач старше срока хранения`)).catch(() => null), PRUNE_EVERY_MS);
       this.prune.unref();
+      // В тестах таймер не заводится сам: спеки на общей БД вызывают requeueStale / startStaleSweep явно
+      this.startStaleSweep();
     }
     this.schedule(0);
+  }
+
+  /**
+   * Раз в `everyMs` вернуть осиротевшие задачи в очередь (requeueStale). Один UPDATE по индексу status — дёшево;
+   * идемпотентно: вторая сметка ту же задачу уже не найдёт (она queued), пересекающиеся тики пропускаются.
+   * Возвращает остановку таймера (спеки).
+   */
+  startStaleSweep(everyMs = STALE_SWEEP_MS): () => void {
+    if (this.staleSweep) clearInterval(this.staleSweep);
+    const timer = setInterval(() => void this.sweepStale(), everyMs);
+    timer.unref();
+    this.staleSweep = timer;
+    return () => {
+      clearInterval(timer);
+      if (this.staleSweep === timer) this.staleSweep = null;
+    };
+  }
+
+  private async sweepStale(): Promise<void> {
+    if (this.sweeping || this.stopped) return;
+    this.sweeping = true;
+    try {
+      const n = await this.requeueStale();
+      if (n) {
+        this.log.warn(`jobs: ${n} осиротевших задач возвращены в очередь`);
+        this.schedule(0);
+      }
+    } catch (e) {
+      this.log.warn(`jobs: stale sweep failed: ${(e as Error).message}`);
+    } finally {
+      this.sweeping = false;
+    }
   }
 
   /** SIGTERM: не брать новое, дать активным дописать до 25 с (stop_grace_period 90 с), остальное — назад в очередь. */
@@ -125,6 +167,7 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
     if (this.timer) clearTimeout(this.timer);
     if (this.heartbeat) clearInterval(this.heartbeat);
     if (this.prune) clearInterval(this.prune);
+    if (this.staleSweep) clearInterval(this.staleSweep);
     const started = Date.now();
     while (this.active.size && Date.now() - started < 25_000) await new Promise((r) => setTimeout(r, 200));
     if (!this.active.size) return;
@@ -163,10 +206,15 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
     return { queued, running };
   }
 
-  /** Осиротевшие running (процесс упал, heartbeat стих) → queued; попытка не сгорает. */
+  /**
+   * Осиротевшие running (процесс упал, heartbeat стих) → queued. Задачу с живым воркером не трогает: heartbeat
+   * держит её lockedAt моложе 15 с (порог — 60 с), а задачи своего процесса исключены явно — даже если heartbeat
+   * пропустил тики (база недоступна минуту), своя бегущая задача не уйдёт второму исполнителю.
+   */
   async requeueStale(): Promise<number> {
+    const own = [...this.active.keys()];
     const { count } = await this.prisma.job.updateMany({
-      where: { status: 'running', lockedAt: { lt: new Date(Date.now() - STALE_LOCK_MS) } },
+      where: { status: 'running', lockedAt: { lt: new Date(Date.now() - STALE_LOCK_MS) }, ...(own.length ? { id: { notIn: own } } : {}) },
       data: { status: 'queued', lockedAt: null, lockedBy: null },
     });
     return count;

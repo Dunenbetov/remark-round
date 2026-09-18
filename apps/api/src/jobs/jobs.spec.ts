@@ -1,13 +1,15 @@
 /**
- * jobs.spec — аудит: no-job-queue, deploy-kills-inflight-and-stale-sweep, llm-outage-retry.
+ * jobs.spec — аудит: no-job-queue, deploy-kills-inflight-and-stale-sweep, llm-outage-retry; P2 плана защиты 18.09.
  * Прогоны графа и индексация идут через очередь в Postgres: REST отвечает сразу, временная ошибка модели
- * повторяется с паузой (человек видит «не получилось» только после последней попытки), задача, осиротевшая
- * после падения процесса, возвращается в очередь и исполняется заново, run.cancel снимает задачу.
+ * повторяется с паузой (человек видит «не получилось» только после последней, четвёртой попытки), задача,
+ * осиротевшая после падения процесса, возвращается в очередь — и на старте, и таймером, — run.cancel снимает задачу,
+ * кончившийся баланс OpenAI (`insufficient_quota`) не повторяется.
  */
 import { randomUUID } from 'node:crypto';
 import { createHarness, type Harness } from '../../test/harness';
 import type { GraphJob } from '../agent/agent.service';
 import { DocumentsService } from '../documents/documents.service';
+import { classifyRunError, isRetryable } from '../llm/llm-errors';
 import { RemarksService } from '../remarks/remarks.service';
 import { JobsService } from './jobs.service';
 
@@ -116,8 +118,8 @@ describe('jobs queue', () => {
     expect(failed).toBe(0);
   });
 
-  it('попытки исчерпаны: прогон failed с кодом причины, карточка вернулась в imported с текстом для человека', async () => {
-    h.llm.failNext.push(llmError('RateLimitError', 429, 'x'), llmError('RateLimitError', 429, 'y'), llmError('RateLimitError', 429, 'z'));
+  it('попытки исчерпаны: 4 попытки (паузы 30 с / 2 мин / 8 мин), прогон failed с кодом причины, карточка вернулась в imported', async () => {
+    h.llm.failNext.push(llmError('RateLimitError', 429, 'x'), llmError('RateLimitError', 429, 'y'), llmError('RateLimitError', 429, 'z'), llmError('RateLimitError', 429, 'w'));
     const remarkId = await createRemark('Кнопка «Сохранить» не нажимается');
     const res = await h.http.post(url(`/remarks/${remarkId}/triage`)).set(h.auth('pm')).expect(200);
     const back = await h.waitFor(remarkId, ['imported']);
@@ -126,8 +128,27 @@ describe('jobs queue', () => {
     const run = await h.prisma.agentRun.findUniqueOrThrow({ where: { id: res.body.runId } });
     expect(run.failureCode).toBe('llm_rate_limit');
     const job = await jobOfRun(res.body.runId);
-    expect(job.attempts).toBe(3);
+    // P2: при maxAttempts 3 пауза 8 мин не наступала никогда — окно переживало сбой OpenAI лишь ~2,5 мин
+    expect(job).toMatchObject({ maxAttempts: 4, attempts: 4 });
     expect(job.status).toBe('done'); // обработчик сам записал failed в run — задача не «упавшая», а завершённая
+  });
+
+  it('insufficient_quota (кончился баланс OpenAI): код llm_quota, без повторов, текст для администратора', async () => {
+    // Форма ошибки OpenAI SDK: RateLimitError 429, code/type из тела ответа
+    const quota = Object.assign(llmError('RateLimitError', 429, '429 You exceeded your current quota, please check your plan and billing details.'), { code: 'insufficient_quota', type: 'insufficient_quota' });
+    expect(classifyRunError(quota)).toMatchObject({ code: 'llm_quota' });
+    expect(isRetryable(classifyRunError(quota))).toBe(false);
+    // Обычный 429 без кода квоты — по-прежнему временная перегрузка
+    expect(classifyRunError(llmError('RateLimitError', 429, 'Rate limit reached for requests'))).toMatchObject({ code: 'llm_rate_limit' });
+
+    h.llm.failNext.push(quota);
+    const remarkId = await createRemark('Кнопка «Сохранить» пропала после оплаты');
+    const res = await h.http.post(url(`/remarks/${remarkId}/triage`)).set(h.auth('pm')).expect(200);
+    const back = await h.waitFor(remarkId, ['imported']);
+    expect(back.runFailure).toMatch(/баланс OpenAI/);
+    const run = await h.prisma.agentRun.findUniqueOrThrow({ where: { id: res.body.runId } });
+    expect(run.failureCode).toBe('llm_quota');
+    expect((await jobOfRun(res.body.runId)).attempts).toBe(1);
   });
 
   it('ошибка не временная (ключ не принят): без повторов, сразу failed', async () => {
@@ -176,6 +197,57 @@ describe('jobs queue', () => {
     expect(done.runId).toBe(run.id);
     const row = await jobOfRun(run.id);
     expect(row).toMatchObject({ id: job.id, status: 'done', attempts: 2 });
+  });
+
+  it('P2: сирота быстрого рестарта (lockedAt на старте ещё свежий) возвращается в очередь ближайшим тиком таймера', async () => {
+    jobs.register('spec_orphan', async () => undefined);
+    // Railway поднял новый контейнер раньше, чем погасил старый: на старте нового lockedAt задачи моложе 60 с
+    const job = await h.prisma.job.create({
+      data: { kind: 'spec_orphan', payload: {}, projectId: h.projectId, status: 'running', attempts: 1, lockedAt: new Date(Date.now() - 58_000), lockedBy: 'old-container', owner: jobs.instanceId },
+    });
+    await jobs.requeueStale(); // то, что делал только старт процесса: задачу он не видит
+    expect(await statusOf(job.id)).toBe('running');
+    // Таймер с тем же порогом 60 с (в бою — раз в минуту, здесь чаще): через ~2 с задача старше порога и уходит в очередь
+    const stop = jobs.startStaleSweep(250);
+    try {
+      expect(await until(job.id, 'done', 100)).toBe('done');
+    } finally {
+      stop();
+    }
+    expect(await h.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).toMatchObject({ status: 'done', attempts: 2, lockedAt: null });
+  });
+
+  it('P2: задачу с живым воркером сметание не забирает, даже если её heartbeat отстал', async () => {
+    jobs.register('spec_alive', gated);
+    const job = await jobs.enqueue('spec_alive', { n: 'alive' }, { projectId: h.projectId });
+    expect(await until(job.id, 'running')).toBe('running');
+    // База «пропала» на пару минут, heartbeat не дописал lockedAt — но задача исполняется в этом процессе
+    await h.prisma.job.update({ where: { id: job.id }, data: { lockedAt: new Date(Date.now() - 2 * 60_000) } });
+    await jobs.requeueStale();
+    expect(await h.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).toMatchObject({ status: 'running', lockedBy: jobs.instanceId });
+    release('alive');
+    expect(await until(job.id, 'done')).toBe('done');
+    expect((await h.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).attempts).toBe(1);
+  });
+
+  it('P2: сметание по таймеру не роняет старый прогон, который только что продолжили («Не та цитата»), пока его задача ещё не поставлена', async () => {
+    const remarks = h.app.get(RemarksService);
+    // Прогон начат час назад; решение PM «Не та цитата» записано `agoMs` назад (та же транзакция вернула run в running), задачи resume нет
+    const mk = async (number: number, agoMs: number) => {
+      const remark = await h.prisma.remark.create({ data: { projectId: h.projectId, roundId: h.roundId, number, description: `Продолжение через час ${number}`, status: 'triaging' } });
+      const run = await h.prisma.agentRun.create({ data: { remarkId: remark.id, projectId: h.projectId, status: 'running', mode: 'triage', createdAt: new Date(Date.now() - 60 * 60_000) } });
+      // История только дописывается (ADR 011): время решения задаём при вставке
+      await h.prisma.remarkStatusChange.create({ data: { remarkId: remark.id, fromStatus: 'awaiting_pm', toStatus: 'triaging', action: 'rejected_binding', runId: run.id, userId: h.users.pm.id, role: 'pm', createdAt: new Date(Date.now() - agoMs) } });
+      return run;
+    };
+    const justResumed = await mk(9105, 0);
+    const silent = await mk(9106, 11 * 60_000);
+    await remarks.failStaleRuns(10 * 60_000);
+    expect((await h.prisma.agentRun.findUniqueOrThrow({ where: { id: justResumed.id } })).status).toBe('running');
+    // 10 минут без действий и без задачи — это уже сирота
+    expect(await h.prisma.agentRun.findUniqueOrThrow({ where: { id: silent.id } })).toMatchObject({ status: 'failed', failureCode: 'process_restart' });
+    // Исполнителя у продолженного прогона в этой спеке нет: закрываем, чтобы cleanup не ждал его
+    await h.prisma.agentRun.update({ where: { id: justResumed.id }, data: { status: 'cancelled' } });
   });
 
   it('сметание зависших прогонов не трогает прогон, у которого есть живая задача в очереди', async () => {

@@ -374,7 +374,7 @@ model AgentRun {
   inputTokens  Int?
   outputTokens Int?
   costUsd   Decimal?       @db.Decimal(10, 6)
-  /// Почему прогон failed: код (llm_timeout, llm_rate_limit, llm_auth, llm_bad_request, storage, unknown) и текст для карточки
+  /// Почему прогон failed: код (llm_timeout, llm_rate_limit, llm_quota, llm_auth, llm_bad_request, llm_unavailable, timeout, process_restart, storage, unknown) и текст для карточки
   failureCode    String?
   failureMessage String?
   remark    Remark         @relation(fields: [remarkId], references: [id])
