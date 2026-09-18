@@ -3,7 +3,10 @@
  * «с той стороны» — это недоверенный ввод: PNG с расширением .jpg, exe как .pdf, zip-бомба как .docx.
  * Без зависимостей: сигнатур здесь ровно столько, сколько форматов принимает API.
  */
-export type SniffedKind = 'png' | 'jpeg' | 'webp' | 'gif' | 'pdf' | 'zip' | 'text' | 'unknown';
+export type SniffedKind = 'png' | 'jpeg' | 'webp' | 'gif' | 'pdf' | 'zip' | 'ole2' | 'text' | 'unknown';
+
+/** OLE2 / Compound File Binary: контейнер старого Office (.doc, .xls, .ppt) и зашифрованного OOXML. */
+const OLE2 = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
 
 export function sniff(data: Buffer): SniffedKind {
   if (data.length >= 8 && data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) return 'png';
@@ -12,8 +15,19 @@ export function sniff(data: Buffer): SniffedKind {
   if (data.length >= 6 && (data.toString('ascii', 0, 6) === 'GIF87a' || data.toString('ascii', 0, 6) === 'GIF89a')) return 'gif';
   if (data.length >= 5 && data.toString('ascii', 0, 5) === '%PDF-') return 'pdf';
   if (data.length >= 4 && data[0] === 0x50 && data[1] === 0x4b && (data[2] === 0x03 || data[2] === 0x05 || data[2] === 0x07)) return 'zip';
+  if (data.length >= 8 && data.subarray(0, 8).equals(OLE2)) return 'ole2';
   if (looksLikeText(data)) return 'text';
   return 'unknown';
+}
+
+/**
+ * Что внутри OLE2: документ Word (поток WordDocument), DOCX под паролем (EncryptedPackage) или другое (xls, ppt, msg).
+ * Имена потоков лежат в каталоге контейнера в UTF-16LE — полный разбор CFB для этой проверки не нужен.
+ */
+export function oleContent(data: Buffer): 'word' | 'encrypted' | 'other' {
+  if (data.includes(Buffer.from('EncryptedPackage', 'utf16le'))) return 'encrypted';
+  if (data.includes(Buffer.from('WordDocument', 'utf16le'))) return 'word';
+  return 'other';
 }
 
 /** Текст: в первых 8 КБ нет NUL и почти нет управляющих байтов; BOM UTF-8/UTF-16 допускаем. */

@@ -12,7 +12,7 @@ import { PageHeader } from '../ui/page-header';
 import { Skeleton } from '../ui/skeleton';
 
 const POLL_MS = 2000;
-const ACCEPT = '.pdf,.docx,.md,.txt';
+const ACCEPT = '.pdf,.docx,.doc,.md,.txt';
 
 type UploadKind = Exclude<DocumentKind, 'journal_source'>;
 

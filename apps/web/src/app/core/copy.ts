@@ -616,9 +616,9 @@ export const DOCUMENTS = {
   } satisfies Record<DocumentKind, string>,
   /** Пустые места полки: у каждого типа своя дропзона, выбирать тип отдельно не нужно. */
   slot: {
-    spec: { title: 'Добавьте ТЗ', hint: 'Без него замечания не разбираем · PDF, DOCX или MD' },
-    protocol: { title: 'Добавьте протокол', hint: 'Если был · PDF, DOCX или MD' },
-    addendum: { title: 'Добавьте доп. соглашение', hint: 'Если было · PDF, DOCX или MD' },
+    spec: { title: 'Добавьте ТЗ', hint: 'Без него замечания не разбираем · PDF, DOCX, DOC или MD' },
+    protocol: { title: 'Добавьте протокол', hint: 'Если был · PDF, DOCX, DOC или MD' },
+    addendum: { title: 'Добавьте доп. соглашение', hint: 'Если было · PDF, DOCX, DOC или MD' },
   },
   newVersion: 'Новая версия',
   moreTitle: 'Ещё в пакете',
