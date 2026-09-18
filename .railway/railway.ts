@@ -85,6 +85,8 @@ export default defineRailway(() => {
       // Контейнер достижим только через edge-прокси Railway, а он сам стирает X-Forwarded-For клиента:
       // верить любому адресу безопасно, и лимит входа считается по настоящему IP (R-H5)
       REAL_IP_FROM: '0.0.0.0/0 ::/0',
+      // Куда SPA шлёт ошибки: регион EU Sentry; без этого CSP connect-src 'self' блокирует отправку из браузера
+      CSP_CONNECT_SRC: 'https://*.ingest.de.sentry.io',
       GIT_SHA: '${{RAILWAY_GIT_COMMIT_SHA}}',
     },
   });

@@ -16,10 +16,11 @@ ARG GIT_SHA=dev
 # nginx остаются как есть. NGINX_ENTRYPOINT_LOCAL_RESOLVERS включает 15-local-resolvers.envsh (nameserver контейнера).
 # Дефолты — для docker compose: api по имени сервиса, X-Forwarded-For от Caddy из docker-подсетей;
 # Railway переопределяет API_UPSTREAM и REAL_IP_FROM в Variables (docs/PROD-RAILWAY.md)
-ENV NGINX_ENVSUBST_FILTER='^(API_UPSTREAM|DNS_RESOLVER|LISTEN_IPV6)$' \
+ENV NGINX_ENVSUBST_FILTER='^(API_UPSTREAM|DNS_RESOLVER|LISTEN_IPV6|CSP_CONNECT_SRC)$' \
     NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     API_UPSTREAM=api:3000 \
     DNS_RESOLVER= \
+    CSP_CONNECT_SRC= \
     REAL_IP_FROM='10.0.0.0/8 172.16.0.0/12 192.168.0.0/16'
 COPY apps/web/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY apps/web/docker-entrypoint.d/16-rr-proxy-env.envsh /docker-entrypoint.d/16-rr-proxy-env.envsh
