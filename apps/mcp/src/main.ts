@@ -1,6 +1,6 @@
 /**
  * Точка входа apps/mcp.
- *  - stdio (по умолчанию): Cursor / Claude Desktop запускают процесс сами; токен или логин — из env.
+ *  - stdio (по умолчанию): Cursor, Claude Code, Claude Desktop запускают процесс сами; токен или логин — из env.
  *  - http (docker compose): Streamable HTTP без сессий, токен MCP в заголовке Authorization каждого запроса.
  * Логи — только в stderr: stdout занят JSON-RPC.
  */
@@ -18,17 +18,21 @@ const log = (...args: unknown[]): void => console.error('[remarkround-mcp]', ...
 async function resolveToken(cfg: McpConfig, api: RemarkRoundApi): Promise<string> {
   if (cfg.token) return cfg.token;
   if (!cfg.email || !cfg.password) {
-    throw new Error('Нужен REMARKROUND_TOKEN (POST /projects/:id/mcp-token) или REMARKROUND_EMAIL + REMARKROUND_PASSWORD');
+    const missing = [cfg.email ? null : 'REMARKROUND_EMAIL', cfg.password ? null : 'REMARKROUND_PASSWORD'].filter(Boolean).join(', ');
+    throw new Error(
+      `Не задано: ${missing}. Нужен REMARKROUND_TOKEN (токен проекта: POST /api/v1/projects/:projectId/mcp-token) ` +
+        'или пара REMARKROUND_EMAIL + REMARKROUND_PASSWORD. Задайте переменные в терминале и запустите IDE из него — apps/mcp/README.md',
+    );
   }
   const login = await api.login(cfg.email, cfg.password);
   api.useToken(login.accessToken);
   const memberships = login.memberships;
+  const list = memberships.map((m) => `${m.projectId} — ${m.projectName} (${m.role})`).join('\n  ') || '— ни одного';
   const projectId = cfg.projectId ?? (memberships.length === 1 ? memberships[0]!.projectId : undefined);
-  if (!projectId) {
-    const list = memberships.map((m) => `${m.projectId} — ${m.projectName} (${m.role})`).join('\n  ');
-    throw new Error(`У пользователя несколько проектов, задайте REMARKROUND_PROJECT_ID:\n  ${list}`);
+  if (!projectId) throw new Error(`У пользователя несколько проектов, задайте REMARKROUND_PROJECT_ID:\n  ${list}`);
+  if (!memberships.some((m) => m.projectId === projectId)) {
+    throw new Error(`REMARKROUND_PROJECT_ID=${projectId}: у ${cfg.email} нет такого проекта. Проекты пользователя:\n  ${list}`);
   }
-  if (!memberships.some((m) => m.projectId === projectId)) throw new Error(`Проект ${projectId} не в membership пользователя`);
   return (await api.mcpToken(projectId)).token;
 }
 

@@ -1,5 +1,5 @@
 /**
- * MCP-сервер RemarkRound — фасад домена для Cursor / Claude Desktop (ADR 003).
+ * MCP-сервер RemarkRound — фасад домена для Cursor / Claude Code / Claude Desktop (ADR 003).
  * Tool'ы зовут те же REST-маршруты, что Angular; projectId берётся из токена и не является аргументом.
  * Ни одного tool'а, который закрывает замечание: закрывает бизнес в интерфейсе.
  */
@@ -14,7 +14,8 @@ import { skillText } from './skill';
 import type { TokenScope } from './token';
 
 export const SERVER_NAME = 'remarkround';
-export const SERVER_VERSION = '0.7.0';
+/** 0.8.0 — search_spec с порогом опоры графа (18.09.2026); совпадает с version в package.json. */
+export const SERVER_VERSION = '0.8.0';
 
 const STATUSES = [
   'imported',
@@ -42,8 +43,14 @@ export interface ServerOptions {
 }
 
 const INSTRUCTIONS = `RemarkRound — приёмка веб-проекта: к замечанию бизнеса система подбирает опору — цитаты пакета документов, скрин, pixel-diff.
-Проект уже выбран токеном; чужие проекты недоступны. ТЗ — опора, а не решение: не выдумывай номера разделов, цитируй только то, что вернул search_spec.
+Проект уже выбран токеном; чужие проекты недоступны. ТЗ — опора, а не решение: не выдумывай номера разделов, цитируй только фрагменты, которые search_spec отметил как опору; «Опоры нет» — тоже ответ.
 Класс замечания и закрытие — решение человека. apply_human_verdict вызывай только когда пользователь явно принял решение; закрыть замечание через MCP нельзя.`;
+
+/**
+ * Порог опоры на случай, если API его не прислал (образ API старше 18.09.2026). Источник правды — `BOUND_SCORE`
+ * графа (apps/api/src/llm/triage-llm.ts): `GET /search` отдаёт его в поле `boundScore`. Равенство чисел держит mcp.facade.spec.
+ */
+export const FALLBACK_BOUND_SCORE = 0.45;
 
 export function createServer(api: RemarkRoundApi, scope: TokenScope, options: ServerOptions): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { instructions: INSTRUCTIONS });
@@ -55,17 +62,19 @@ export function createServer(api: RemarkRoundApi, scope: TokenScope, options: Se
       title: 'Поиск по пакету документов проекта',
       description:
         'Ищет по ТЗ, протоколам и доп. соглашениям текущего проекта (pgvector, фильтр projectId в SQL). ' +
-        'Возвращает чанки с разделом, фрагментом и близостью. Если ничего не нашлось — опоры в документах нет, это тоже ответ.',
+        'Возвращает фрагменты с разделом, текстом и близостью 0–1. Опора — только фрагмент с близостью не ниже порога: ' +
+        'того же, по которому граф RemarkRound привязывает замечание к пункту ТЗ (число приходит из API). ' +
+        'Фрагменты ниже порога помечены «опорой считать нельзя». Если выше порога ничего нет, ответ — «Опоры нет»: это тоже ответ, раздел не выдумывай.',
       inputSchema: {
         query: z.string().min(1).max(500).describe('Вопрос или фраза, например «какого цвета primary-кнопка»'),
-        k: z.number().int().min(1).max(20).optional().describe('Сколько чанков вернуть (по умолчанию 5)'),
+        k: z.number().int().min(1).max(20).optional().describe('Сколько фрагментов вернуть (по умолчанию 5)'),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ query, k }) =>
       run(async () => {
-        const { hits } = await api.search(projectId, query, k);
-        return hits.length ? hits.map(formatHit).join('\n\n') : 'В пакете документов этого проекта ничего не нашлось. Опоры нет — не выдумывай раздел.';
+        const { hits, boundScore } = await api.search(projectId, query, k);
+        return formatSearch(hits, boundScoreOf(boundScore));
       }),
   );
 
@@ -198,9 +207,55 @@ const KIND: Record<SearchHit['documentKind'], string> = {
   journal_source: 'Журнал',
 };
 
-function formatHit(h: SearchHit): string {
+/** Порог из ответа API; не число, ≤ 0 или > 1 — запасной: слабый фрагмент не должен стать опорой из-за сбоя. */
+export function boundScoreOf(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 1 ? value : FALLBACK_BOUND_SCORE;
+}
+
+/**
+ * Ответ search_spec для модели — три случая:
+ *  - все фрагменты не ниже порога — все опора;
+ *  - часть ниже — показаны все, у каждого пометка «опора» или «ниже порога, опорой считать нельзя»;
+ *  - ниже порога все — фрагментов нет вовсе, только «Опоры нет» с лучшей близостью и порогом (как нода bind графа:
+ *    ниже BOUND_SCORE привязки к пункту нет), а не пять посторонних цитат, из которых модель собрала бы опору.
+ */
+export function formatSearch(hits: SearchHit[], boundScore: number): string {
+  const threshold = String(Number(boundScore.toFixed(3)));
+  if (!hits.length) {
+    return 'Опоры нет: в пакете документов этого проекта ничего не нашлось (документов нет или они ещё индексируются). Не выдумывай раздел.';
+  }
+  const bound = hits.filter((h) => h.score >= boundScore).length;
+  if (!bound) {
+    const best = Math.max(...hits.map((h) => h.score));
+    return (
+      `Опоры нет: ни один фрагмент пакета документов этого проекта не набрал порога близости ${threshold} (лучший — ${score(best)}). ` +
+      'Не выдумывай раздел: скажи, что в документах проекта этого нет, или переформулируй запрос словами ТЗ.'
+    );
+  }
+  const head =
+    bound === hits.length
+      ? `Опора — ${bound} ${fragments(bound)} с близостью не ниже порога ${threshold}.`
+      : `Опора — ${bound} ${fragments(bound)} из ${hits.length} (близость не ниже порога ${threshold}). Остальные ниже порога: опорой их считать нельзя.`;
+  return [head, ...hits.map((h) => formatHit(h, boundScore, threshold))].join('\n\n');
+}
+
+function formatHit(h: SearchHit, boundScore: number, threshold: string): string {
   const where = [KIND[h.documentKind] ?? h.documentKind, h.documentTitle, h.section, h.page ? `стр. ${h.page}` : null].filter(Boolean).join(' · ');
-  return `[${where}] близость ${h.score.toFixed(2)}, chunkId ${h.chunkId}\n${h.content.trim()}`;
+  const mark = h.score >= boundScore ? 'опора' : `ниже порога ${threshold}, опорой считать нельзя`;
+  return `[${where}] близость ${score(h.score)} — ${mark}, chunkId ${h.chunkId}\n${h.content.trim()}`;
+}
+
+/** Близость с двумя знаками, округление вниз: 0.449 не покажется «0.45» рядом с порогом 0.45. */
+function score(value: number): string {
+  return (Math.floor(value * 100 + 1e-9) / 100).toFixed(2);
+}
+
+function fragments(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'фрагмент';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'фрагмента';
+  return 'фрагментов';
 }
 
 export function formatRemark(r: RemarkView): string {

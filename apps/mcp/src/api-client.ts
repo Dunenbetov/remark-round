@@ -16,6 +16,13 @@ export interface SearchHit {
   score: number;
 }
 
+/** Ответ `GET /projects/:id/search`: top-k без отсечения и порог опоры графа (API до 18.09.2026 порога не отдавал). */
+export interface SearchResult {
+  query: string;
+  hits: SearchHit[];
+  boundScore?: number;
+}
+
 export interface RoundSummary {
   id: string;
   number: number;
@@ -102,7 +109,13 @@ export class RemarkRoundApi {
   // ---------- без токена ----------
 
   async login(email: string, password: string): Promise<LoginResult> {
-    return this.request<LoginResult>('POST', '/auth/login', { email, password });
+    try {
+      return await this.request<LoginResult>('POST', '/auth/login', { email, password });
+    } catch (e) {
+      // 401 входа — не «токен не принят», а неверная пара: так и скажем
+      if (e instanceof ApiError && e.status === 401) throw new ApiError(401, `Вход не удался: неверный REMARKROUND_EMAIL (${email}) или REMARKROUND_PASSWORD для ${this.baseUrl}`);
+      throw e;
+    }
   }
 
   async mcpToken(projectId: string): Promise<McpTokenResult> {
@@ -119,7 +132,7 @@ export class RemarkRoundApi {
     return this.request<ProjectSummary>('GET', `/projects/${projectId}`);
   }
 
-  search(projectId: string, query: string, k?: number): Promise<{ query: string; hits: SearchHit[] }> {
+  search(projectId: string, query: string, k?: number): Promise<SearchResult> {
     const params = new URLSearchParams({ q: query });
     if (k) params.set('k', String(k));
     return this.request('GET', `/projects/${projectId}/search?${params.toString()}`);

@@ -15,6 +15,7 @@ import { AppModule } from '../app.module';
 import { hashPassword } from '../auth/password';
 import { DocumentsService } from '../documents/documents.service';
 import { EmbeddingsService } from '../llm/embeddings.service';
+import { BOUND_SCORE } from '../llm/triage-llm';
 import { validationPipe } from '../main';
 import type { ProjectContext } from '../tenancy/project-context';
 import { RagService } from './rag.service';
@@ -94,6 +95,9 @@ describe('rag search', () => {
     expect(top.content).toContain('#0B5FFF');
     expect(top.documentTitle).toBe('TZ.md');
     expect(top.score).toBeGreaterThan(0);
+    // Порог опоры графа — в ответе, поле добавлено рядом со старыми (MCP search_spec помечает фрагменты по нему)
+    expect(res.body.query).toBe('какого цвета primary-кнопка?');
+    expect(res.body.boundScore).toBe(BOUND_SCORE);
   });
 
   it('чужие чанки не попадают в выдачу даже при точном совпадении слов', async () => {
