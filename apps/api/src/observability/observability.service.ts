@@ -2,9 +2,11 @@ import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { CallbackHandler } from '@langfuse/langchain';
 import { observeOpenAI } from '@langfuse/openai';
 import { LangfuseSpanProcessor } from '@langfuse/otel';
-import { propagateAttributes, startActiveObservation, type LangfuseSpan } from '@langfuse/tracing';
-import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { getLangfuseTracerProvider, propagateAttributes, setLangfuseTracerProvider, startActiveObservation, type LangfuseSpan } from '@langfuse/tracing';
+import { context, createContextKey, diag, DiagLogLevel } from '@opentelemetry/api';
+import { AlwaysOnSampler, NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { createHash } from 'node:crypto';
+import { format } from 'node:util';
 import type OpenAI from 'openai';
 import type { LlmCallMeta } from '../llm/triage-llm';
 
@@ -30,8 +32,8 @@ export interface RunTrace {
 /**
  * ObservabilityModule (REMARKROUND.md §7.1, docs/ENGINEERING.md паттерн 3): Langfuse на каждый LLM-вызов.
  *
- * Как устроено: OpenTelemetry-провайдер регистрируется один раз на процесс; span'ы летят в Langfuse батчами.
- * Один `AgentRun` = один trace (traceId детерминирован из runId, поэтому продолжение после interrupt —
+ * Как устроено: у Langfuse свой OpenTelemetry-провайдер, один на процесс (почему не глобальный — у конструктора);
+ * span'ы летят в Langfuse батчами. Один `AgentRun` = один trace (traceId детерминирован из runId, поэтому продолжение после interrupt —
  * из другого HTTP-запроса, через часы — попадает в тот же trace). Внутри: ноды графа (CallbackHandler LangGraph),
  * generation-span на каждый вызов OpenAI (модель, параметры, токены, стрим), embedding-span на каждый
  * вызов эмбеддингов, retriever-span на поиск по pgvector. Trace несёт userId (кто нажал), sessionId = remarkId
@@ -39,6 +41,7 @@ export interface RunTrace {
  *
  * Без ключей (`LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`) или с `LANGFUSE_TRACING_ENABLED=false`
  * модуль молчит: span'ы не создаются (noop-tracer OpenTelemetry), код нод не меняется. Тесты идут так.
+ * Доезжают ли span'ы на самом деле, а не только «ключи заданы», — `tracingStatus()` для `/health`.
  */
 @Injectable()
 export class ObservabilityService implements OnApplicationShutdown {
@@ -49,6 +52,20 @@ export class ObservabilityService implements OnApplicationShutdown {
   private processor: LangfuseSpanProcessor | null = null;
   private provider: NodeTracerProvider | null = null;
 
+  /**
+   * Почему у Langfuse изолированный провайдер (P1, 18.09). `Sentry.init` в instrument.ts (до Nest) сам занимает
+   * глобальный OpenTelemetry-провайдер, менеджер контекста и propagator — даже при `tracesSampleRate: 0`. Раньше
+   * здесь стоял `provider.register()`: при включённом Sentry он молча проигрывал («duplicate registration of API:
+   * trace»), span'ы Langfuse создавал провайдер Sentry, и в Langfuse Cloud не доезжало ничего, а /health писал `on`.
+   *
+   * Теперь SDK Langfuse получает наш провайдер через `setLangfuseTracerProvider` — официальный рецепт «Langfuse
+   * рядом с Sentry», вариант isolated TracerProvider (https://langfuse.com/faq/all/existing-sentry-setup,
+   * https://langfuse.com/docs/observability/sdk/advanced-features#isolated-tracerprovider). Глобальным остаётся
+   * Sentry, в Sentry наши span'ы не попадают, в Langfuse — чужие. Другие варианты хуже: `openTelemetrySpanProcessors`
+   * в Sentry.init отдаёт решение о сэмплинге Sentry, и при `tracesSampleRate: 0` трейс без нашего родителя
+   * (`index_document`) пропадает (проверено 18.09); `skipOpenTelemetrySetup` требует собрать OpenTelemetry для Sentry
+   * вручную (@sentry/opentelemetry, sampler, propagator, context manager) — больше кода и больше мест сломаться.
+   */
   constructor() {
     const publicKey = process.env['LANGFUSE_PUBLIC_KEY'];
     const secretKey = process.env['LANGFUSE_SECRET_KEY'];
@@ -62,6 +79,8 @@ export class ObservabilityService implements OnApplicationShutdown {
       this.log.log(off ? 'langfuse: выключен (LANGFUSE_TRACING_ENABLED=false)' : 'langfuse: ключей нет, трейсы не пишутся');
       return;
     }
+    // Ошибки самого OpenTelemetry (двойная регистрация, отказ экспорта в Langfuse) — в лог, а не в пустоту
+    logOtelDiagnostics(this.log);
     this.processor = new LangfuseSpanProcessor({
       publicKey,
       secretKey,
@@ -70,9 +89,28 @@ export class ObservabilityService implements OnApplicationShutdown {
       flushAt: 20,
       flushInterval: 2,
     });
-    this.provider = new NodeTracerProvider({ spanProcessors: [this.processor] });
-    this.provider.register();
-    this.log.log(`langfuse: ${baseUrl}, проект ${this.projectId}, ссылки на ${this.publicUrl}`);
+    // AlwaysOn вместо ParentBased по умолчанию: внутри HTTP-запроса Sentry держит в контексте свой несэмплированный
+    // span (tracesSampleRate: 0), и ParentBased молча выбросил бы наш span без явного родителя — поиск из REST и MCP
+    // (`retrieve`), индексацию (`index_document`). Решение Sentry о сэмплинге к Langfuse не относится; такой span
+    // SDK помечает корнем приложения (`langfuse.internal.is_app_root`). Без Sentry разницы нет: чужих родителей нет.
+    this.provider = new NodeTracerProvider({ sampler: new AlwaysOnSampler(), spanProcessors: [this.processor] });
+    // Изолированы провайдеры, но не контекст: «текущий span» один на процесс, его хранит глобальный менеджер
+    // контекста. При Sentry он уже стоит (SentryContextManager); без Sentry ставим свой через register(), как до 18.09 —
+    // иначе startActiveObservation не делает span текущим, и ноды графа теряют родителя.
+    if (!contextPropagates()) this.provider.register();
+    setLangfuseTracerProvider(this.provider);
+    if (this.tracingStatus() === 'on') this.log.log(`langfuse: ${baseUrl}, проект ${this.projectId}, ссылки на ${this.publicUrl}`);
+    else this.log.error(`langfuse: ключи заданы, но span'ы не доедут — провайдер Langfuse не наш или контекст OpenTelemetry не передаётся; /health → tracing: degraded`);
+  }
+
+  /**
+   * Для /health: `on` — SDK Langfuse пишет в наш провайдер с нашим процессором и контекст передаётся (span'ы доедут,
+   * если Langfuse их примет: отказ экспорта — в логе строкой `otel: …`); `degraded` — ключи заданы, но провайдер
+   * подменён или контекста нет; `off` — трейсинг выключен или ключей нет.
+   */
+  tracingStatus(): TracingStatus {
+    if (!this.enabled || !this.provider) return 'off';
+    return getLangfuseTracerProvider() === this.provider && contextPropagates() ? 'on' : 'degraded';
   }
 
   /** 32 hex из runId: одинаков при старте и при продолжении прогона, поэтому оба ложатся в один trace. */
@@ -141,3 +179,31 @@ const AS_ROOT_ATTRIBUTE = 'langfuse.internal.as_root';
 
 /** Без Langfuse ноды получают «пустой» span: те же вызовы `update`, ничего не происходит. */
 const noopSpan = { update: () => noopSpan, end: () => undefined } as unknown as LangfuseSpan;
+
+/** `/health.tracing`: см. `ObservabilityService.tracingStatus`. */
+export type TracingStatus = 'on' | 'degraded' | 'off';
+
+const CONTEXT_PROBE = createContextKey('remarkround.otel-context-probe');
+
+/** Стоит ли менеджер контекста: без него `context.with` ничего не делает, и значение внутри не видно. */
+function contextPropagates(): boolean {
+  return context.with(context.active().setValue(CONTEXT_PROBE, true), () => context.active().getValue(CONTEXT_PROBE) === true);
+}
+
+/**
+ * diag — внутренний лог OpenTelemetry: туда пишут отказ регистрации провайдера и ошибки экспорта батча
+ * (401 от Langfuse, таймаут). По умолчанию он молчит — так отказ регистрации 18.09 и прошёл незамеченным.
+ */
+function logOtelDiagnostics(log: Logger): void {
+  const line = (message: string, args: unknown[]) => `otel: ${format(message, ...args)}`;
+  diag.setLogger(
+    {
+      error: (message, ...args) => log.error(line(message, args)),
+      warn: (message, ...args) => log.warn(line(message, args)),
+      info: () => undefined,
+      debug: () => undefined,
+      verbose: () => undefined,
+    },
+    { logLevel: DiagLogLevel.WARN, suppressOverrideMessage: true },
+  );
+}

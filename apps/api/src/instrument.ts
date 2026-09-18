@@ -3,20 +3,26 @@
  * Инициализируется только при SENTRY_DSN — без него модуль ничего не делает, captureException — no-op.
  * Импортируется первым в main.ts (до Nest), как велит SDK. Трейсинг выключен: latency и стоимость считает Langfuse.
  * Читает process.env напрямую: config() тянет zod и валидацию, а этот файл должен быть первым и самым лёгким.
+ *
+ * `Sentry.init` занимает глобальный OpenTelemetry-провайдер даже при `tracesSampleRate: 0`. Langfuse поэтому пишет
+ * через свой, изолированный провайдер (observability.service.ts, P1 18.09) — трогать OpenTelemetry здесь не нужно.
  */
 import * as Sentry from '@sentry/node';
 
-const dsn = process.env['SENTRY_DSN'];
-
-if (dsn) {
-  Sentry.init({
+/** Настройки Sentry API — отдельно от вызова, чтобы спека связки с Langfuse поднимала Sentry ровно так же. */
+export function sentryOptions(dsn: string): Sentry.NodeOptions {
+  return {
     dsn,
     release: process.env['APP_VERSION'] ?? 'dev',
     environment: process.env['SENTRY_ENVIRONMENT'] ?? process.env['NODE_ENV'] ?? 'development',
     tracesSampleRate: 0,
     sendDefaultPii: false,
-  });
+  };
 }
+
+const dsn = process.env['SENTRY_DSN'];
+
+if (dsn) Sentry.init(sentryOptions(dsn));
 
 /** Для /health и логов: включён ли репортинг. */
 export const sentryEnabled = Boolean(dsn);

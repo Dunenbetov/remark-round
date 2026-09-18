@@ -5,7 +5,7 @@ import { sentryEnabled } from '../instrument';
 import { config } from '../config';
 import { JobsService, type JobStats } from '../jobs/jobs.service';
 import { LlmService } from '../llm/llm.service';
-import { ObservabilityService } from '../observability/observability.service';
+import { ObservabilityService, type TracingStatus } from '../observability/observability.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagService } from '../rag/rag.service';
 
@@ -20,8 +20,12 @@ export interface HealthView {
   vectorIndex: 'ok' | 'missing' | 'unknown';
   /** Очередь фоновых задач: сколько ждёт и сколько выполняется (все инстансы). */
   jobs: JobStats;
-  /** Трейсы Langfuse: `off` — ключей нет или LANGFUSE_TRACING_ENABLED=false (на бете стек за профилем, R-B1). */
-  tracing: 'on' | 'off';
+  /**
+   * Трейсы Langfuse: `on` — span'ы идут в наш процессор Langfuse; `degraded` — ключи заданы, но провайдер
+   * OpenTelemetry не наш (span'ы не доедут, причина — в логе `langfuse:` / `otel:`); `off` — ключей нет
+   * или LANGFUSE_TRACING_ENABLED=false. Отказ самого Langfuse (401, сеть) виден только в логе `otel:` и в UI.
+   */
+  tracing: TracingStatus;
   /** Sentry (R-L5): `on`, если задан SENTRY_DSN. */
   sentry: 'on' | 'off';
 }
@@ -46,7 +50,7 @@ export class HealthController {
   @Public()
   @Get()
   async health(): Promise<HealthView> {
-    const base = { version: config().APP_VERSION, llm: this.llm.mode, vectorIndex: this.rag.vectorIndexStatus, tracing: this.observability.enabled ? ('on' as const) : ('off' as const), sentry: sentryEnabled ? ('on' as const) : ('off' as const) };
+    const base = { version: config().APP_VERSION, llm: this.llm.mode, vectorIndex: this.rag.vectorIndexStatus, tracing: this.observability.tracingStatus(), sentry: sentryEnabled ? ('on' as const) : ('off' as const) };
     let jobs: JobStats = { queued: -1, running: -1 };
     try {
       jobs = (await Promise.race([
