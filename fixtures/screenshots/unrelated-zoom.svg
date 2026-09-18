@@ -1,11 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
   <rect width="800" height="400" fill="#f4f4f4"/>
   <g transform="scale(2.2) translate(-60,-20)">
-    <text x="24" y="40" font-family="sans-serif" font-size="20" fill="#222">Оплата счёта · другой экран</text>
+    <text x="24" y="40" font-family="sans-serif" font-size="20" fill="#222">Оплата счёта</text>
     <rect x="24" y="70" width="400" height="40" fill="#fff" stroke="#999"/>
     <text x="36" y="96" font-family="sans-serif" font-size="14" fill="#666">Сумма: 150 000 ₸</text>
     <rect x="24" y="130" width="200" height="44" rx="4" fill="#0B5FFF"/>
     <text x="70" y="158" font-family="sans-serif" font-size="16" fill="#fff">Оплатить</text>
   </g>
-  <text x="24" y="380" font-family="sans-serif" font-size="12" fill="#999">Кадр другого экрана и зум ×2.2: с «было» несопоставим → cannot_compare</text>
 </svg>

@@ -19,6 +19,8 @@ import type {
 } from './triage-llm';
 import { findDuplicate } from './triage-llm';
 import { costUsd } from './pricing';
+import { llmCallLog } from './call-log';
+import { llmParams, sampling, type ImageDetail, type LlmParams } from './llm-params';
 
 /**
  * Модели по шагу (REMARKROUND.md §10): bind/classify/vision — дешёвая и быстрая, draft — сильнее.
@@ -27,66 +29,76 @@ import { costUsd } from './pricing';
 export const DEFAULT_FAST_MODEL = 'gpt-4.1-mini';
 export const DEFAULT_STRONG_MODEL = 'gpt-4.1';
 
+/** Модели, которые возьмёт OpenAiTriageLlm: явные → LLM_MODEL_FAST / LLM_MODEL_STRONG → дефолты. */
+export function resolveModels(models?: { fast?: string; strong?: string }): { fast: string; strong: string } {
+  return {
+    fast: models?.fast ?? process.env['LLM_MODEL_FAST'] ?? DEFAULT_FAST_MODEL,
+    strong: models?.strong ?? process.env['LLM_MODEL_STRONG'] ?? DEFAULT_STRONG_MODEL,
+  };
+}
+
 const CLASSES: ProposedClass[] = ['defect_candidate', 'change_request_candidate', 'unspecified', 'duplicate', 'cannot_tell'];
 const OUTCOMES: RetestOutcome[] = ['likely_addressed', 'likely_unchanged', 'cannot_tell'];
 
 /** Оборачивает клиент под конкретный вызов: ObservabilityService даёт generation-span Langfuse с именем ноды (фаза 8). */
 export type ObserveClient = (client: OpenAI, meta: LlmCallMeta) => OpenAI;
 
+type Usage = { prompt_tokens?: number; completion_tokens?: number } | null | undefined;
+
 /**
  * Официальный SDK OpenAI из LlmModule (docs/ENGINEERING.md, паттерн 3). Каждый вызов идёт через `observe(client, meta)`:
  * с Langfuse это generation-span (модель, параметры, токены, стрим), без него — тот же клиент.
+ * Гиперпараметры — из llm-params.ts: дефолты те, на которых сняты evals, env-переключатели только для экспериментов.
  */
 export class OpenAiTriageLlm implements TriageLlm {
-  readonly canSee = true;
+  /** VISION_DISABLED=1 — граф ведёт себя так, будто модель не видит кадр (эксперимент «что даёт vision»). */
+  readonly canSee: boolean;
   readonly model: string;
   private readonly fast: string;
   private readonly strong: string;
   private readonly usage = new Map<string, LlmUsage>();
   private readonly observe: ObserveClient;
+  private readonly params: LlmParams;
 
-  constructor(private readonly client: OpenAI, models?: { fast?: string; strong?: string }, observe?: ObserveClient) {
-    this.fast = models?.fast ?? process.env['LLM_MODEL_FAST'] ?? DEFAULT_FAST_MODEL;
-    this.strong = models?.strong ?? process.env['LLM_MODEL_STRONG'] ?? DEFAULT_STRONG_MODEL;
+  constructor(private readonly client: OpenAI, models?: { fast?: string; strong?: string }, observe?: ObserveClient, params?: LlmParams) {
+    const resolved = resolveModels(models);
+    this.fast = resolved.fast;
+    this.strong = resolved.strong;
     this.model = `openai/${this.fast}+${this.strong}`;
     this.observe = observe ?? ((c) => c);
+    this.params = params ?? llmParams();
+    this.canSee = !this.params.visionDisabled;
   }
 
   async visionFacts(meta: LlmCallMeta, input: VisionInput): Promise<string | null> {
+    const started = Date.now();
     const res = await this.observe(this.client, meta).chat.completions.create({
       model: this.fast,
-      temperature: 0,
-      max_tokens: 160,
+      ...sampling(this.params, 'vision'),
       messages: [
-        { role: 'system', content: `${system()}\n\nСейчас твоя задача — только факты кадра, без вердикта.` },
+        { role: 'system', content: systemPrompts(this.params).vision },
         {
           role: 'user',
-          content: [
-            { type: 'text', text: `Претензия: ${clip(input.description, LIMIT.description)}${input.expected ? `\nКак должно быть: ${clip(input.expected, LIMIT.expected)}` : ''}${input.pageOrScreen ? `\nГде: ${clip(input.pageOrScreen, LIMIT.where)}` : ''}\n\nОпиши одной-двумя фразами, что видно на кадре и относится к претензии: состояние элементов, цвета словами, тексты, расположение. Только видимое, без выводов «дефект / не дефект» и без чисел уверенности. Если кадр не про претензию — коротко скажи, что на нём. Ответ — одна строка, без кавычек, с маленькой буквы.` },
-            image(input.image),
-          ],
+          content: [{ type: 'text', text: visionUserText(input) }, image(input.image, this.params.imageDetail)],
         },
       ],
     });
-    this.count(meta.runId, this.fast, res.usage);
+    this.track(meta, this.fast, res.usage, res.choices[0]?.finish_reason, started);
     const text = res.choices[0]?.message.content?.trim();
     return text ? text.replace(/\s+/g, ' ').slice(0, 300) : null;
   }
 
   async rewriteQuery(meta: LlmCallMeta, input: RewriteInput): Promise<string> {
+    const started = Date.now();
     const res = await this.observe(this.client, meta).chat.completions.create({
       model: this.fast,
-      temperature: 0,
-      max_tokens: 60,
+      ...sampling(this.params, 'rewrite'),
       messages: [
-        { role: 'system', content: 'Ты переформулируешь поисковый запрос к техническому заданию веб-проекта. Отвечай одной строкой — только текст запроса, без кавычек и пояснений.' },
-        {
-          role: 'user',
-          content: `Замечание: ${clip(input.description, LIMIT.description)}${input.expected ? `\nКак должно быть: ${clip(input.expected, LIMIT.expected)}` : ''}${input.pageOrScreen ? `\nГде: ${clip(input.pageOrScreen, LIMIT.where)}` : ''}${input.visionFacts ? `\nНа кадре: ${clip(input.visionFacts, LIMIT.facts)}` : ''}${input.humanComment ? `\nКомментарий руководителя приёмки, где искать: ${clip(input.humanComment, LIMIT.comment)}` : ''}\nПрошлый запрос: ${clip(input.previousQuery, LIMIT.where)}\nРазделы, которые уже находили и которые не подошли: ${input.triedSections.join('; ') || '—'}\n\nСформулируй запрос словами, которыми это требование могло быть записано в ТЗ (термины интерфейса: кнопка primary, валидация, сообщение об ошибке, фильтр, экспорт).`,
-        },
+        { role: 'system', content: REWRITE_SYSTEM },
+        { role: 'user', content: rewriteUserText(input) },
       ],
     });
-    this.count(meta.runId, this.fast, res.usage);
+    this.track(meta, this.fast, res.usage, res.choices[0]?.finish_reason, started);
     const text = res.choices[0]?.message.content?.trim().replace(/^["«]|["»]$/g, '');
     return text || input.previousQuery;
   }
@@ -94,8 +106,7 @@ export class OpenAiTriageLlm implements TriageLlm {
   async classify(meta: LlmCallMeta, input: ClassifyInput): Promise<ClassifyResult> {
     const params: ChatCompletionCreateParamsNonStreaming = {
       model: this.fast,
-      temperature: 0,
-      max_tokens: 300,
+      ...sampling(this.params, 'classify'),
       response_format: {
         type: 'json_schema',
         json_schema: {
@@ -115,12 +126,13 @@ export class OpenAiTriageLlm implements TriageLlm {
         },
       },
       messages: [
-        { role: 'system', content: system() },
+        { role: 'system', content: systemPrompts(this.params).triage },
         { role: 'user', content: classifyPrompt(input) },
       ],
     };
+    const started = Date.now();
     const res = await this.observe(this.client, meta).chat.completions.create(params);
-    this.count(meta.runId, this.fast, res.usage);
+    this.track(meta, this.fast, res.usage, res.choices[0]?.finish_reason, started);
     const raw = JSON.parse(res.choices[0]?.message.content ?? '{}') as { proposedClass?: ProposedClass; hitIndexes?: number[]; duplicateOfNumber?: number | null; reason?: string };
     let proposedClass: ProposedClass = CLASSES.includes(raw.proposedClass as ProposedClass) ? (raw.proposedClass as ProposedClass) : 'unspecified';
     const chunkIds = [...new Set((raw.hitIndexes ?? []).map((i) => input.hits[i]?.chunkId).filter((x): x is string => Boolean(x)))];
@@ -139,35 +151,39 @@ export class OpenAiTriageLlm implements TriageLlm {
   }
 
   async draft(meta: LlmCallMeta, input: DraftInput, onToken?: (delta: string) => void): Promise<string> {
+    const started = Date.now();
     const stream = await this.observe(this.client, meta).chat.completions.create({
       model: this.strong,
-      temperature: 0.3,
-      max_tokens: 220,
+      ...sampling(this.params, 'draft'),
       stream: true,
       stream_options: { include_usage: true },
       messages: [
-        { role: 'system', content: system() },
+        { role: 'system', content: systemPrompts(this.params).triage },
         { role: 'user', content: draftPrompt(input) },
       ],
     });
     let text = '';
+    let finish: string | null = null;
+    let usage: Usage = null;
     for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta?.content ?? '';
+      const choice = chunk.choices[0];
+      const delta = choice?.delta?.content ?? '';
       if (delta) {
         text += delta;
         onToken?.(delta);
       }
-      if (chunk.usage) this.count(meta.runId, this.strong, chunk.usage);
+      if (choice?.finish_reason) finish = choice.finish_reason;
+      if (chunk.usage) usage = chunk.usage;
     }
+    this.track(meta, this.strong, usage, finish, started);
     return text.replace(/\s+/g, ' ').trim();
   }
 
   async retestExplain(meta: LlmCallMeta, input: RetestExplainInput): Promise<RetestExplainResult> {
-    const cites = input.citations.map((c) => `${c.section ?? 'раздел без номера'}: ${c.text}`).join('\n');
+    const started = Date.now();
     const res = await this.observe(this.client, meta).chat.completions.create({
       model: this.fast,
-      temperature: 0,
-      max_tokens: 200,
+      ...sampling(this.params, 'explain'),
       response_format: {
         type: 'json_schema',
         json_schema: {
@@ -185,19 +201,19 @@ export class OpenAiTriageLlm implements TriageLlm {
         },
       },
       messages: [
-        { role: 'system', content: `${system()}\n\nСейчас ретест. Пиксели уже сравнил алгоритм: третий кадр — дифф (старый кадр серым, изменения красным). Твоя задача — сказать, относится ли красное к претензии: likely_addressed (красное ровно там и о том, о чём претензия, и новый кадр соответствует требованию), likely_unchanged (красное не про претензию или её место без изменений), cannot_tell (не понятно, кадры о разном, или претензия про точный цвет/hex — по кадру его не подтвердить). Никогда не пиши «исправлено», «закрыто», «можно закрывать»: закрывает человек.` },
+        { role: 'system', content: systemPrompts(this.params).explain },
         {
           role: 'user',
           content: [
-            { type: 'text', text: `Претензия: ${clip(input.description, LIMIT.description)}${input.expected ? `\nКак должно быть: ${clip(input.expected, LIMIT.expected)}` : ''}\nЦитаты из документов:\n${cites || '—'}\n\nАлгоритм диффа: красное — ${input.regionText}.\n\nКадр 1 — было, кадр 2 — стало, кадр 3 — дифф.` },
-            image(input.before),
-            image(input.after),
-            image(input.diff),
+            { type: 'text', text: explainUserText(input) },
+            image(input.before, this.params.imageDetail),
+            image(input.after, this.params.imageDetail),
+            image(input.diff, this.params.imageDetail),
           ],
         },
       ],
     });
-    this.count(meta.runId, this.fast, res.usage);
+    this.track(meta, this.fast, res.usage, res.choices[0]?.finish_reason, started);
     const raw = JSON.parse(res.choices[0]?.message.content ?? '{}') as { outcome?: RetestOutcome; explanation?: string };
     const outcome = OUTCOMES.includes(raw.outcome as RetestOutcome) ? (raw.outcome as RetestOutcome) : 'cannot_tell';
     const explanation = (raw.explanation ?? '').replace(/\s+/g, ' ').trim() || `Красное на диффе: ${input.regionText}. Относится ли это к претензии — решите вы.`;
@@ -209,11 +225,10 @@ export class OpenAiTriageLlm implements TriageLlm {
    * Тот же контракт исходов; в продукте включается только через RETEST_STRATEGY=llm_only.
    */
   async retestJudge(meta: LlmCallMeta, input: RetestJudgeInput): Promise<RetestExplainResult> {
-    const cites = input.citations.map((c) => `${c.section ?? 'раздел без номера'}: ${c.text}`).join('\n');
+    const started = Date.now();
     const res = await this.observe(this.client, meta).chat.completions.create({
       model: this.fast,
-      temperature: 0,
-      max_tokens: 200,
+      ...sampling(this.params, 'judge'),
       response_format: {
         type: 'json_schema',
         json_schema: {
@@ -231,18 +246,14 @@ export class OpenAiTriageLlm implements TriageLlm {
         },
       },
       messages: [
-        { role: 'system', content: `${system()}\n\nСейчас ретест по двум кадрам: кадр 1 — было, кадр 2 — стало. Сравни их сам и скажи: likely_addressed (претензия на втором кадре устранена так, как требуют документы), likely_unchanged (место претензии не изменилось или изменилось не так), cannot_tell (кадры о разном или по кадру не проверить). Никогда не пиши «исправлено», «закрыто», «можно закрывать»: закрывает человек.` },
+        { role: 'system', content: systemPrompts(this.params).judge },
         {
           role: 'user',
-          content: [
-            { type: 'text', text: `Претензия: ${clip(input.description, LIMIT.description)}${input.expected ? `\nКак должно быть: ${clip(input.expected, LIMIT.expected)}` : ''}\nЦитаты из документов:\n${cites || '—'}\n\nКадр 1 — было, кадр 2 — стало.` },
-            image(input.before),
-            image(input.after),
-          ],
+          content: [{ type: 'text', text: judgeUserText(input) }, image(input.before, this.params.imageDetail), image(input.after, this.params.imageDetail)],
         },
       ],
     });
-    this.count(meta.runId, this.fast, res.usage);
+    this.track(meta, this.fast, res.usage, res.choices[0]?.finish_reason, started);
     const raw = JSON.parse(res.choices[0]?.message.content ?? '{}') as { outcome?: RetestOutcome; explanation?: string };
     const outcome = OUTCOMES.includes(raw.outcome as RetestOutcome) ? (raw.outcome as RetestOutcome) : 'cannot_tell';
     const explanation = (raw.explanation ?? '').replace(/\s+/g, ' ').trim() || 'По двум кадрам не понятно, относится ли изменение к претензии — решите вы.';
@@ -255,20 +266,38 @@ export class OpenAiTriageLlm implements TriageLlm {
     return u;
   }
 
-  private count(runId: string, model: string, usage: { prompt_tokens?: number; completion_tokens?: number } | null | undefined): void {
-    if (!usage) return;
-    const u = this.usage.get(runId) ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 };
-    const input = usage.prompt_tokens ?? 0;
-    const output = usage.completion_tokens ?? 0;
-    u.inputTokens += input;
-    u.outputTokens += output;
-    u.costUsd += costUsd(model, input, output);
-    this.usage.set(runId, u);
+  /** Токены и $ — в сумму прогона (AgentRun); шаг, finish_reason и время — в журнал вызовов, если его включили evals. */
+  private track(meta: LlmCallMeta, model: string, usage: Usage, finishReason: string | null | undefined, started: number): void {
+    const input = usage?.prompt_tokens ?? 0;
+    const output = usage?.completion_tokens ?? 0;
+    const cost = costUsd(model, input, output);
+    if (usage) {
+      const u = this.usage.get(meta.runId) ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+      u.inputTokens += input;
+      u.outputTokens += output;
+      u.costUsd += cost;
+      this.usage.set(meta.runId, u);
+    }
+    llmCallLog.record({ runId: meta.runId, node: meta.node, model, finishReason: finishReason ?? null, inputTokens: input, outputTokens: output, costUsd: cost, latencyMs: Date.now() - started });
   }
 }
 
-function system(): string {
-  const skill = skillText();
+// ---------- промпты ----------
+
+const REWRITE_SYSTEM = 'Ты переформулируешь поисковый запрос к техническому заданию веб-проекта. Отвечай одной строкой — только текст запроса, без кавычек и пояснений.';
+
+const EXPLAIN_TASK =
+  'Сейчас ретест. Пиксели уже сравнил алгоритм: третий кадр — дифф (старый кадр серым, изменения красным). ' +
+  // P5 (аудит 18.09): модель приняла красную разметку диффа за новый цвет кнопки («стала красной») на настоящем исправлении.
+  'Красный на третьем кадре — разметка алгоритма, а не цвет интерфейса: цвет, подписи и состояние элементов смотри только на кадре 2. ' +
+  'Твоя задача — сказать, относится ли красное к претензии: likely_addressed (красное ровно там и о том, о чём претензия, и новый кадр соответствует требованию), likely_unchanged (красное не про претензию или её место без изменений), cannot_tell (не понятно, кадры о разном, или претензия про точный цвет/hex — по кадру его не подтвердить). Никогда не пиши «исправлено», «закрыто», «можно закрывать»: закрывает человек.';
+
+const JUDGE_TASK =
+  'Сейчас ретест по двум кадрам: кадр 1 — было, кадр 2 — стало. Сравни их сам и скажи: likely_addressed (претензия на втором кадре устранена так, как требуют документы), likely_unchanged (место претензии не изменилось или изменилось не так), cannot_tell (кадры о разном или по кадру не проверить). Никогда не пиши «исправлено», «закрыто», «можно закрывать»: закрывает человек.';
+
+function system(p: LlmParams): string {
+  // SKILL_DISABLED=1 — эксперимент «что даёт Skill»: процедура из SKILL.md не попадает в промпт.
+  const skill = p.skillDisabled ? '' : skillText();
   return [
     'Ты готовишь дело по замечанию приёмки веб-проекта для руководителя приёмки (RemarkRound). Ты не судья: решение принимает человек кнопкой.',
     'Улики — фрагменты пакета документов этого проекта (ТЗ, протокол), факты кадра и другие замечания раунда. Ничего, чего нет в уликах, не существует.',
@@ -278,10 +307,61 @@ function system(): string {
   ].join('\n');
 }
 
+/** Системные промпты по шагам — те, что уйдут в модель при этих параметрах (для хешей в отчёте evals). */
+export function systemPrompts(p: LlmParams = llmParams()): Record<'triage' | 'vision' | 'rewrite' | 'explain' | 'judge', string> {
+  const base = system(p);
+  return {
+    triage: base,
+    vision: `${base}\n\nСейчас твоя задача — только факты кадра, без вердикта.`,
+    rewrite: REWRITE_SYSTEM,
+    explain: `${base}\n\n${EXPLAIN_TASK}`,
+    judge: `${base}\n\n${JUDGE_TASK}`,
+  };
+}
+
+/**
+ * Пользовательские промпты всех шагов на фиксированном примере: хеш меняется при любой правке шаблона,
+ * даже если системный промпт тот же (отчёт evals связывает цифры с версией промптов).
+ */
+export function renderedTemplates(): Record<'vision' | 'rewrite' | 'classify' | 'draft' | 'explain' | 'judge', string> {
+  const hit: EvidenceHit = { chunkId: 'c0', section: '§2.1 Primary', documentKind: 'spec', documentTitle: 'TZ.md', content: 'Primary-кнопка — синяя.', score: 0.61 };
+  const facts = { description: 'Кнопка серая', expected: 'Синяя', pageOrScreen: 'Профиль', hasScreenshot: true };
+  const classify: ClassifyInput = { ...facts, visionFacts: 'кнопка серая', hits: [hit], bound: hit, siblings: [{ number: 1, description: 'Шрифт мелкий' }], humanComment: 'смотри 2.1', faithfulnessIssue: 'ссылка без цитаты', injectionSuspected: true };
+  const retest = { description: 'Кнопка серая', expected: 'Синяя', citations: [{ section: '§2.1 Primary', text: 'Primary-кнопка — синяя.' }] };
+  return {
+    vision: visionUserText(facts),
+    rewrite: rewriteUserText({ ...facts, previousQuery: 'кнопка', visionFacts: 'кнопка серая', humanComment: 'смотри 2.1', triedSections: ['§3 Вход'] }),
+    classify: classifyPrompt(classify),
+    draft: draftPrompt({ ...classify, proposedClass: 'defect_candidate', chunkIds: ['c0'], reason: 'есть опора' }),
+    explain: explainUserText({ ...retest, regionText: 'область слева' }),
+    judge: judgeUserText(retest),
+  };
+}
+
+function visionUserText(input: Pick<VisionInput, 'description' | 'expected' | 'pageOrScreen'>): string {
+  return `Претензия: ${clip(input.description, LIMIT.description)}${input.expected ? `\nКак должно быть: ${clip(input.expected, LIMIT.expected)}` : ''}${input.pageOrScreen ? `\nГде: ${clip(input.pageOrScreen, LIMIT.where)}` : ''}\n\nОпиши одной-двумя фразами, что видно на кадре и относится к претензии: состояние элементов, цвета словами, тексты, расположение. Только видимое, без выводов «дефект / не дефект» и без чисел уверенности. Если кадр не про претензию — коротко скажи, что на нём. Ответ — одна строка, без кавычек, с маленькой буквы.`;
+}
+
+function rewriteUserText(input: RewriteInput): string {
+  return `Замечание: ${clip(input.description, LIMIT.description)}${input.expected ? `\nКак должно быть: ${clip(input.expected, LIMIT.expected)}` : ''}${input.pageOrScreen ? `\nГде: ${clip(input.pageOrScreen, LIMIT.where)}` : ''}${input.visionFacts ? `\nНа кадре: ${clip(input.visionFacts, LIMIT.facts)}` : ''}${input.humanComment ? `\nКомментарий руководителя приёмки, где искать: ${clip(input.humanComment, LIMIT.comment)}` : ''}\nПрошлый запрос: ${clip(input.previousQuery, LIMIT.where)}\nРазделы, которые уже находили и которые не подошли: ${input.triedSections.join('; ') || '—'}\n\nСформулируй запрос словами, которыми это требование могло быть записано в ТЗ (термины интерфейса: кнопка primary, валидация, сообщение об ошибке, фильтр, экспорт).`;
+}
+
+function explainUserText(input: Pick<RetestExplainInput, 'description' | 'expected' | 'citations' | 'regionText'>): string {
+  return `Претензия: ${clip(input.description, LIMIT.description)}${input.expected ? `\nКак должно быть: ${clip(input.expected, LIMIT.expected)}` : ''}\nЦитаты из документов:\n${cites(input.citations) || '—'}\n\nАлгоритм диффа: красное — ${input.regionText}.\n\nКадр 1 — было, кадр 2 — стало, кадр 3 — дифф.`;
+}
+
+function judgeUserText(input: Pick<RetestJudgeInput, 'description' | 'expected' | 'citations'>): string {
+  return `Претензия: ${clip(input.description, LIMIT.description)}${input.expected ? `\nКак должно быть: ${clip(input.expected, LIMIT.expected)}` : ''}\nЦитаты из документов:\n${cites(input.citations) || '—'}\n\nКадр 1 — было, кадр 2 — стало.`;
+}
+
+function cites(citations: Array<{ section: string | null; text: string }>): string {
+  return citations.map((c) => `${c.section ?? 'раздел без номера'}: ${c.text}`).join('\n');
+}
+
 function hitsBlock(hits: EvidenceHit[]): string {
   if (!hits.length) return '— (в пакете документов ничего близкого не нашлось)';
   return hits
-    .map((h, i) => `[${i}] ${h.documentKind === 'spec' ? 'ТЗ' : h.documentKind === 'protocol' ? 'Протокол' : h.documentKind === 'addendum' ? 'Доп. соглашение' : 'Документ'} · ${h.section ?? 'раздел без номера'} · близость ${h.score.toFixed(2)}\n${excerpt(h.content)}`)
+    .map((h, i) => `[${i}] ${h.documentKind === 'spec' ? 'ТЗ' : h.documentKind === 'protocol' ? 'Протокол' : h.documentKind === 'addendum' ? 'Доп. соглашение' : 'Документ'} · ${h.section ?? 'раздел без номера'} · близость ${h.score.toFixed(2)}\n${excerpt(h.content, LIMIT.classifyChunk)}`)
     .join('\n\n');
 }
 
@@ -307,28 +387,34 @@ function classifyPrompt(input: ClassifyInput): string {
 
 function draftPrompt(input: DraftInput): string {
   const cited = input.chunkIds.map((id) => input.hits.find((h) => h.chunkId === id)).filter((h): h is EvidenceHit => Boolean(h));
-  const sections = cited.map((h) => `${h.documentKind === 'spec' ? 'ТЗ' : 'Протокол'} (${h.section ?? 'раздел без номера'}): ${excerpt(h.content, 400)}`).join('\n');
+  const sections = cited.map((h) => `${h.documentKind === 'spec' ? 'ТЗ' : 'Протокол'} (${h.section ?? 'раздел без номера'}): ${excerpt(h.content, LIMIT.draftQuote)}`).join('\n');
   return `${facts(input)}\n\nКласс уже выбран: ${input.proposedClass}${input.duplicateOfNumber ? ` (оригинал №${input.duplicateOfNumber})` : ''}. Причина: ${input.reason || '—'}.\nОпора (единственные разделы, на которые можно ссылаться):\n${sections || '— (опоры нет: ни на какой раздел не ссылайся)'}\n\nНапиши ОДИН абзац до 60 слов для руководителя приёмки: что требует документ (ссылка вида «ТЗ (§2.1)» или «Протокол от 12.03» только из списка выше), что видно на кадре (только из фактов кадра; если кадра нет — не описывай его), и что остаётся решить человеку. Без заголовка, без списка, без слова «уверенность», без «закрыть». Заканчивай фразой, кто решает: человек.`;
 }
 
 /**
  * Потолок текста, который уходит в промпт (аудит: unbounded-text-into-prompt): импорт и соседи раунда
  * обходили лимиты форм, одна ячейка с перепиской на 50 КБ оплачивалась пять раз за прогон.
+ *
+ * Фрагменты документов (P5, аудит 18.09):
+ * - classifyChunk — чанк целиком. Чанкер режет разделы до 220 слов (≈1500 символов по-русски), а прежний потолок
+ *   700 символов отрезал вторую половину длинного раздела: модель выбирала опору, не видя текста, который её решает.
+ *   2000 — страховка от аномально длинного чанка, а не обрезка обычного;
+ * - draftQuote — 400: черновику нужна короткая цитата для ссылки, решение о классе уже принято.
  */
-const LIMIT = { description: 2000, expected: 2000, where: 200, comment: 1000, facts: 600, sibling: 200 } as const;
+const LIMIT = { description: 2000, expected: 2000, where: 200, comment: 1000, facts: 600, sibling: 200, classifyChunk: 2000, draftQuote: 400 } as const;
 
 function clip(text: string | null | undefined, max: number): string {
   const s = (text ?? '').trim();
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
-function excerpt(content: string, max = 700): string {
+function excerpt(content: string, max: number): string {
   const clean = content.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\s+/g, ' ').trim();
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-function image(frame: Frame): ChatCompletionContentPart {
-  return { type: 'image_url', image_url: { url: `data:${frame.mime};base64,${frame.data.toString('base64')}`, detail: 'auto' } };
+function image(frame: Frame, detail: ImageDetail): ChatCompletionContentPart {
+  return { type: 'image_url', image_url: { url: `data:${frame.mime};base64,${frame.data.toString('base64')}`, detail } };
 }
 
 export type { ChatCompletionMessageParam };

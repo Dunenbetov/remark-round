@@ -14,9 +14,14 @@ const CANDIDATES = [
 
 let cached: string | null = null;
 
+/** Путь к SKILL.md, который подмешивается в промпт; null — файла нет (тогда Skill в промпт не попадает). */
+export function skillPath(): string | null {
+  return CANDIDATES.find((p) => existsSync(p)) ?? null;
+}
+
 export function skillText(): string {
   if (cached !== null) return cached;
-  const path = CANDIDATES.find((p) => existsSync(p));
+  const path = skillPath();
   if (!path) {
     cached = '';
     return cached;

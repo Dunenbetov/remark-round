@@ -9,19 +9,24 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaClient, type Role } from '@remarkround/db';
-import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import request from 'supertest';
 import { FakeEmbeddingsService } from '../../test/fake-embeddings';
 import { FakeLlmService } from '../../test/fake-llm';
 import { AgentService } from '../agent/agent.service';
-import type { RetestStrategy } from '../agent/graph-state';
+import type { RetestStrategy, TriageStateType } from '../agent/graph-state';
 import { AppModule } from '../app.module';
 import { hashPassword } from '../auth/password';
 import { DocumentsService } from '../documents/documents.service';
+import { llmCallLog, type LlmCallRecord } from '../llm/call-log';
 import { EmbeddingsService } from '../llm/embeddings.service';
+import { activeSwitches, llmParams, type LlmParams } from '../llm/llm-params';
 import { LlmService } from '../llm/llm.service';
+import { renderedTemplates, resolveModels, systemPrompts } from '../llm/openai-triage-llm';
+import { skillPath } from '../llm/skill';
 import { validationPipe } from '../main';
 import { ObservabilityService } from '../observability/observability.service';
 import { RagService } from '../rag/rag.service';
@@ -29,7 +34,7 @@ import { RemarksService } from '../remarks/remarks.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
 import { loadGolden, readShot, ROOT, type Golden, type GoldenCase, type LeakageCase, type RetestCase, type TriageCase } from './golden';
-import { scoreBinding, scoreFaithfulness, scoreRetest, sectionMatches, type BindingScore, type FaithfulnessScore, type RetestScore } from './metrics';
+import { scoreBinding, scoreFaithfulness, scoreRetest, scoreRetrieval, sectionMatches, type BindingScore, type FaithfulnessScore, type RetestScore, type RetrievalScore } from './metrics';
 
 export interface RunUsage {
   inputTokens: number;
@@ -37,6 +42,9 @@ export interface RunUsage {
   costUsd: number;
   latencyMs: number;
 }
+
+/** Один вызов модели (журнал call-log.ts); в офлайне вызовов нет. */
+export type LlmCall = Omit<LlmCallRecord, 'runId'>;
 
 export interface TriageResult {
   id: string;
@@ -50,6 +58,14 @@ export interface TriageResult {
   binding: BindingScore;
   faithfulness: FaithfulnessScore;
   usage: RunUsage;
+  /** Переписываний запроса (≤ 2) и циклов faithfulness → bind (≤ 2) из состояния графа; null — состояние не прочитано. */
+  rewriteCount: number | null;
+  bindLoops: number | null;
+  /** Подписи разделов найденных фрагментов в порядке близости — то, что видел classify (после rewrite). */
+  retrieved: Array<string | null>;
+  /** hit@1/3/6 по gold.section; null — у кейса нет раздела-опоры. */
+  retrieval: RetrievalScore | null;
+  calls: LlmCall[];
   error?: string;
 }
 
@@ -62,6 +78,7 @@ export interface RetestResult {
   status: string;
   score: RetestScore;
   usage: RunUsage;
+  calls: LlmCall[];
   error?: string;
 }
 
@@ -74,6 +91,38 @@ export interface LeakageResult {
   detail: string;
 }
 
+/**
+ * С чем сняты цифры (P4): коммит, модели, эффективные гиперпараметры, заданные переключатели и хеши промптов.
+ * Без этого цифру в EVALS.md нельзя связать с версией кода и промпта (аудит 18.09, «Evals и A/B»).
+ */
+export interface RunMeta {
+  /** `git rev-parse --short HEAD`; null — не git-checkout (Docker, архив). */
+  gitSha: string | null;
+  /** Есть незакоммиченные правки в отслеживаемых файлах: цифра относится не ровно к gitSha. */
+  gitDirty: boolean | null;
+  node: string;
+  /** Модели, которые берёт OpenAI-реализация; в офлайне не вызываются. */
+  models: { fast: string; strong: string; embeddings: string };
+  llmParams: LlmParams;
+  /** Заданные переменные эксперимента как есть: LLM_TEMP_*, LLM_TOP_P, …, LLM_MODEL_*, LLM_MODE, RETEST_STRATEGY. */
+  switches: Record<string, string>;
+  prompts: {
+    /** SKILL.md целиком (с шапкой), как лежит в репозитории. */
+    skillSha256: string | null;
+    skillPath: string | null;
+    /** Подмешан ли Skill в системные промпты (SKILL_DISABLED и наличие файла). */
+    skillInjected: boolean;
+    /** Системные промпты по шагам — ровно то, что уходит в модель при этих параметрах. */
+    systemSha256: Record<string, string>;
+    /** Пользовательские шаблоны шагов, отрисованные на фиксированном примере. */
+    templateSha256: Record<string, string>;
+  };
+  langfuseEnvironment: string | null;
+  modes: string[];
+  strategies: RetestStrategy[];
+  only: string[] | null;
+}
+
 export interface EvalReport {
   startedAt: string;
   finishedAt: string;
@@ -81,6 +130,7 @@ export interface EvalReport {
   model: string;
   embeddings: string;
   golden: { path: string; version: number; cases: number };
+  run: RunMeta;
   triage: TriageResult[];
   retest: RetestResult[];
   leakage: LeakageResult[];
@@ -113,6 +163,8 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
 
   // Трейсы evals — в своём environment Langfuse, чтобы не смешивались с демо.
   process.env['LANGFUSE_TRACING_ENVIRONMENT'] ??= 'evals';
+  // Шаг, finish_reason, токены и время каждого вызова модели — только на время прогона (в продукте журнал выключен)
+  llmCallLog.enable();
 
   const fakeLlm = offline ? new FakeLlmService() : null;
   let builder = Test.createTestingModule({ imports: [AppModule] });
@@ -132,6 +184,18 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
   const documents = app.get(DocumentsService);
   const embeddings = app.get(EmbeddingsService) as { model: string };
   const observability = app.get(ObservabilityService);
+  // Состояние графа после прогона (rewriteCount, bindLoops, найденные фрагменты) — из чекпоинта через getState.
+  // Граф — приватное поле AgentService: публичного API «прочитать состояние» у продукта нет и для evals не заводим.
+  const triageGraph = (agent as unknown as { triage?: { getState(c: { configurable: { thread_id: string } }): Promise<{ values?: Partial<TriageStateType> }> } }).triage;
+  const graphState = async (runId: string | undefined): Promise<Partial<TriageStateType> | null> => {
+    if (!runId || !triageGraph) return null;
+    try {
+      return (await triageGraph.getState({ configurable: { thread_id: runId } })).values ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const callsOf = (runId: string | undefined): LlmCall[] => (runId ? llmCallLog.take(runId).map(({ runId: _r, ...call }) => call) : []);
 
   const tag = randomUUID().slice(0, 8);
   const passwordHash = await hashPassword(PASSWORD);
@@ -159,6 +223,7 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
     model: agent.model,
     embeddings: embeddings.model,
     golden: { path: 'evals/golden.json', version: golden.version, cases: golden.cases.length },
+    run: runMeta({ embeddings: embeddings.model, modes: [...modes], strategies, only: opts.only ?? null }),
     triage: [],
     retest: [],
     leakage: [],
@@ -170,6 +235,7 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
     await rag.indexDocument(spec.id);
     await rag.indexDocument(protocol.id);
     log(`evals: ${report.mode}, llm ${report.model}, embeddings ${report.embeddings}, проект ${project.id}`);
+    log(`  коммит ${report.run.gitSha ?? '—'}${report.run.gitDirty ? ' (+правки)' : ''}; переключатели: ${Object.entries(report.run.switches).map(([k, v]) => `${k}=${v}`).join(', ') || 'нет (поведение по умолчанию)'}`);
 
     let roundNumber = 1;
     const newRound = async () => prisma.round.create({ data: { projectId: project.id, number: roundNumber++ } });
@@ -197,6 +263,8 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
       }
       const latencyMs = Date.now() - started;
       const view = await remarks.get(ctx('pm'), created.id);
+      const state = await graphState(view.runId);
+      const retrieved = (state?.hits ?? []).map((h) => h.section);
       const obs = {
         proposedClass: view.proposedClass ?? null,
         remarkText: c.remark.description,
@@ -218,10 +286,16 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
         binding: scoreBinding(c.gold, obs, siblingNumbers),
         faithfulness: scoreFaithfulness(c.gold, obs),
         usage: await runUsage(view.runId, latencyMs),
+        rewriteCount: state?.rewriteCount ?? null,
+        bindLoops: state?.bindLoops ?? null,
+        retrieved,
+        retrieval: c.gold.section ? scoreRetrieval(c.gold.section, retrieved) : null,
+        calls: callsOf(view.runId),
         error,
       };
       report.triage.push(result);
-      log(`  ${result.binding.ok ? '✓' : '✗'}${result.faithfulness.ok ? ' ' : '!'} ${c.id}: ${result.proposedClass ?? '—'} [${result.citedSections.join(', ')}] ${(latencyMs / 1000).toFixed(1)}s${error ? ` ОШИБКА ${error}` : ''}${result.binding.reasons.length ? ` — ${result.binding.reasons.join('; ')}` : ''}${result.faithfulness.issues.length ? ` — faithfulness: ${result.faithfulness.issues.join('; ')}` : ''}`);
+      const loops = `${result.rewriteCount ? ` rw${result.rewriteCount}` : ''}${result.bindLoops ? ` bl${result.bindLoops}` : ''}${result.retrieval ? ` поиск ${result.retrieval.rank ? `#${result.retrieval.rank}` : 'мимо'}` : ''}`;
+      log(`  ${result.binding.ok ? '✓' : '✗'}${result.faithfulness.ok ? ' ' : '!'} ${c.id}: ${result.proposedClass ?? '—'} [${result.citedSections.join(', ')}] ${(latencyMs / 1000).toFixed(1)}s${loops}${error ? ` ОШИБКА ${error}` : ''}${result.binding.reasons.length ? ` — ${result.binding.reasons.join('; ')}` : ''}${result.faithfulness.issues.length ? ` — faithfulness: ${result.faithfulness.issues.join('; ')}` : ''}`);
     }
 
     // ---------- ретест: A/B на одном коде ----------
@@ -270,6 +344,7 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
             status: view.status,
             score: scoreRetest(c, obs),
             usage: await runUsage(view.runId, latencyMs),
+            calls: callsOf(view.runId),
             error,
           };
           report.retest.push(result);
@@ -303,12 +378,62 @@ export async function runEvals(opts: RunEvalsOptions = {}): Promise<EvalReport> 
     }
   } finally {
     report.finishedAt = new Date().toISOString();
+    llmCallLog.disable();
     await observability.flush().catch(() => undefined);
     await cleanup(prisma, [project.id, foreign.id], Object.values(users).map((u) => u.id));
     await prisma.$disconnect();
     await app.close();
   }
   return report;
+}
+
+/** Переменные эксперимента, кроме P4-переключателей: их значения тоже меняют цифры. */
+const EXTRA_SWITCHES = ['LLM_MODEL_FAST', 'LLM_MODEL_STRONG', 'LLM_MODE', 'RETEST_STRATEGY'] as const;
+
+function runMeta(input: { embeddings: string; modes: string[]; strategies: RetestStrategy[]; only: string[] | null }): RunMeta {
+  const params = llmParams();
+  const switches = activeSwitches();
+  for (const name of EXTRA_SWITCHES) if (process.env[name]) switches[name] = process.env[name]!;
+  const skill = skillPath();
+  return {
+    gitSha: git('rev-parse', '--short', 'HEAD'),
+    gitDirty: (() => {
+      const status = git('status', '--porcelain', '--untracked-files=no');
+      return status === null ? null : status.length > 0;
+    })(),
+    node: process.version,
+    models: { ...resolveModels(), embeddings: input.embeddings },
+    llmParams: params,
+    switches,
+    prompts: {
+      skillSha256: skill ? sha256(readFileSync(skill)) : null,
+      skillPath: skill ? relative(ROOT, skill) : null,
+      skillInjected: Boolean(skill) && !params.skillDisabled,
+      systemSha256: mapValues(systemPrompts(params), sha256),
+      templateSha256: mapValues(renderedTemplates(), sha256),
+    },
+    langfuseEnvironment: process.env['LANGFUSE_TRACING_ENVIRONMENT'] ?? null,
+    modes: input.modes,
+    strategies: input.strategies,
+    only: input.only,
+  };
+}
+
+/** git без исключений: вне репозитория (Docker, архив) — null. */
+function git(...args: string[]): string | null {
+  try {
+    return execFileSync('git', args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function sha256(data: string | Buffer): string {
+  return createHash('sha256').update(data).digest('hex');
+}
+
+function mapValues<T, U>(o: Record<string, T>, f: (v: T) => U): Record<string, U> {
+  return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, f(v)]));
 }
 
 async function cleanup(prisma: PrismaClient, projectIds: string[], userIds: string[]): Promise<void> {

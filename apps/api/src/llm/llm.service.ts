@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { config } from '../config';
 import { createOpenAi } from './openai-client';
 import { ObservabilityService } from '../observability/observability.service';
+import { activeSwitches } from './llm-params';
 import { OpenAiTriageLlm } from './openai-triage-llm';
 import type { ClassifyInput, ClassifyResult, DraftInput, LlmCallMeta, LlmUsage, RetestExplainInput, RetestExplainResult, RetestJudgeInput, RewriteInput, TriageLlm, VisionInput } from './triage-llm';
 import { RulesTriageLlm } from './triage-llm';
@@ -23,6 +24,9 @@ export class LlmService implements TriageLlm {
     this.impl = config().llmMode === 'openai' && apiKey ? new OpenAiTriageLlm(createOpenAi(apiKey), undefined, (client, meta) => observability.openai(client, meta)) : new RulesTriageLlm();
     if (this.impl instanceof RulesTriageLlm) this.log.warn(`triage llm: ${this.impl.model} — черновики по правилам без модели (грубее; см. /health.llm)`);
     else this.log.log(`triage llm: ${this.impl.model}`);
+    // Переключатели экспериментов (P4) в проде не нужны: если какой-то задан — это видно в логе старта, а не только в цифрах
+    const switches = Object.entries(activeSwitches()).map(([k, v]) => `${k}=${v}`);
+    if (switches.length) this.log.warn(`triage llm: заданы переключатели эксперимента — ${switches.join(', ')}`);
   }
 
   get model(): string {

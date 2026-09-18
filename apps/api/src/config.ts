@@ -45,6 +45,21 @@ const Schema = z
      */
     OPENAI_API_KEY: z.string().optional(),
     LLM_MODE: z.enum(['openai', 'rules']).optional(),
+    /**
+     * Переключатели экспериментов (docs/defense P4, сессия замеров M1). Без значения — поведение по умолчанию из
+     * apps/api/src/llm/llm-params.ts (classify T=0, draft T=0.3, top_p не шлём, draft max_tokens 220, detail auto,
+     * Skill в системном промпте, vision включён). Заданный переключатель пишется в лог старта и в отчёт evals.
+     */
+    LLM_TEMP_CLASSIFY: z.coerce.number().min(0).max(2).optional(),
+    LLM_TEMP_DRAFT: z.coerce.number().min(0).max(2).optional(),
+    /** top_p для всех chat-вызовов, если задан; без значения параметр в запрос не попадает (дефолт OpenAI = 1). */
+    LLM_TOP_P: z.coerce.number().gt(0).max(1).optional(),
+    LLM_MAX_TOKENS_DRAFT: z.coerce.number().int().min(16).max(4000).optional(),
+    LLM_IMAGE_DETAIL: z.enum(['low', 'high', 'auto']).optional(),
+    /** 1 — текст skills/uat-triage/SKILL.md не подмешивается в системные промпты. */
+    SKILL_DISABLED: z.enum(['0', '1', 'true', 'false']).optional(),
+    /** 1 — граф ведёт себя так, будто модель не видит кадр (canSee=false): нода vision пропускается. */
+    VISION_DISABLED: z.enum(['0', '1', 'true', 'false']).optional(),
     /** Дедлайн одного прогона графа (мс): вызовы модели × ретраи SDK × циклы rewrite/bind; истёк — прогон `failed` с кодом `timeout` (R-H2). */
     GRAPH_RUN_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60_000),
     /** Потолок стоимости модели на проект за скользящие сутки, USD: старт разбора/ретеста отвечает 409, пока сумма не сдвинется; 0 — без лимита. */
