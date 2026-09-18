@@ -5,6 +5,7 @@ import { sentryEnabled } from '../instrument';
 import { config } from '../config';
 import { JobsService, type JobStats } from '../jobs/jobs.service';
 import { LlmService } from '../llm/llm.service';
+import { offsiteSettings } from '../offsite/offsite';
 import { ObservabilityService } from '../observability/observability.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RagService } from '../rag/rag.service';
@@ -24,6 +25,8 @@ export interface HealthView {
   tracing: 'on' | 'off';
   /** Sentry (R-L5): `on`, если задан SENTRY_DSN. */
   sentry: 'on' | 'off';
+  /** Суточная копия файлов хранилища в Backblaze B2 (A3, R-M3): `on`, если заданы все четыре OFFSITE_B2_*. */
+  offsite: 'on' | 'off';
 }
 
 const DB_TIMEOUT_MS = 2000;
@@ -46,7 +49,7 @@ export class HealthController {
   @Public()
   @Get()
   async health(): Promise<HealthView> {
-    const base = { version: config().APP_VERSION, llm: this.llm.mode, vectorIndex: this.rag.vectorIndexStatus, tracing: this.observability.enabled ? ('on' as const) : ('off' as const), sentry: sentryEnabled ? ('on' as const) : ('off' as const) };
+    const base = { version: config().APP_VERSION, llm: this.llm.mode, vectorIndex: this.rag.vectorIndexStatus, tracing: this.observability.enabled ? ('on' as const) : ('off' as const), sentry: sentryEnabled ? ('on' as const) : ('off' as const), offsite: offsiteSettings(config()) ? ('on' as const) : ('off' as const) };
     let jobs: JobStats = { queued: -1, running: -1 };
     try {
       jobs = (await Promise.race([

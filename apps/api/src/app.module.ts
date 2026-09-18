@@ -16,6 +16,7 @@ import { ImportsModule } from './imports/imports.module';
 import { JobsModule } from './jobs/jobs.module';
 import { LlmModule } from './llm/llm.module';
 import { MediaModule } from './media/media.module';
+import { OffsiteModule } from './offsite/offsite.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -69,6 +70,7 @@ const REQUEST_ID = /^[\w.-]{8,64}$/;
     HealthModule,
     ProjectsModule,
     StorageModule,
+    OffsiteModule,
     LlmModule,
     RagModule,
     DocumentsModule,

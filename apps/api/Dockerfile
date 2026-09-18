@@ -2,6 +2,8 @@ FROM node:24-alpine
 # Кеш corepack общий, чтобы pnpm был доступен и пользователю node (entrypoint зовёт pnpm для миграций и seed)
 ENV COREPACK_HOME=/usr/local/share/corepack
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate && mkdir -p /app && chown node:node /app
+# rclone — суточная копия файлов хранилища в Backblaze B2 (src/offsite, задача A3); ставится до USER node: apk нужен root
+RUN apk add --no-cache rclone ca-certificates
 USER node
 WORKDIR /app
 

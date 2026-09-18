@@ -88,6 +88,24 @@ jobs:
           LANGFUSE_SECRET_KEY: sk-lf-ci
           LANGFUSE_INIT_USER_PASSWORD: ci-only
 
+  # Cron-сервис бэкапа (apps/backup, docs/PROD-RAILWAY.md шаг 9): дешёвая проверка, что скрипт разбирается шеллом и образ
+  # собирается (локально ~20 с). Настоящий цикл pg_dump → S3 → restore проверяется на стенде с MinIO, не в CI.
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: 'backup.sh: синтаксис POSIX sh и shellcheck'
+        run: |
+          sh -n apps/backup/backup.sh
+          if command -v shellcheck >/dev/null; then shellcheck -s sh apps/backup/backup.sh; else echo "shellcheck не найден на раннере — пропуск"; fi
+      - name: Образ backup собирается
+        run: docker build -f apps/backup/Dockerfile -t rr-backup:ci .
+      - name: 'Без переменных скрипт падает с понятной ошибкой, а не молча (код выхода 1)'
+        run: |
+          if docker run --rm rr-backup:ci > out.log 2>&1; then echo "ожидался ненулевой код выхода"; cat out.log; exit 1; fi
+          grep -q "не задана переменная B2_BUCKET" out.log
+
   # Релизные образы (аудит: no-release-artifacts): на push в main и на тег v* собираем api/web/mcp с GIT_SHA
   # и публикуем в GHCR. Прод делает `docker compose pull` по RR_TAG вместо сборки на боевом сервере (docs/PROD.md).
   images:

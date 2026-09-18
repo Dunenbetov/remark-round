@@ -6,6 +6,7 @@
  * Остальные переменные (LLM, Langfuse, STORAGE_DIR) читаются на месте — им fail-fast не нужен.
  */
 import { z } from 'zod';
+import { offsiteMissing } from './offsite/offsite';
 
 const Schema = z
   .object({
@@ -60,10 +61,20 @@ const Schema = z
      * в UTC, а Excel поясов не знает: без явного пояса «16:09» в файле было бы UTC, и через год не понять, когда закрыли.
      */
     REPORT_TIMEZONE: z.string().default('Asia/Almaty').refine(isTimeZone, 'неизвестный часовой пояс IANA (например, Asia/Almaty)'),
+    /**
+     * Суточная копия файлов хранилища в Backblaze B2 (A3, R-M3; src/offsite): бакет, S3-адрес (s3.<регион>.backblazeb2.com),
+     * keyID и applicationKey ключа приложения. Все четыре — копия включена, ни одной — выключена; часть — ошибка на старте.
+     */
+    OFFSITE_B2_BUCKET: z.string().optional(),
+    OFFSITE_B2_ENDPOINT: z.string().optional(),
+    OFFSITE_B2_KEY_ID: z.string().optional(),
+    OFFSITE_B2_APP_KEY: z.string().optional(),
   })
   .superRefine((c, ctx) => {
-    if (c.NODE_ENV !== 'production') return;
     const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    // Половина настроек — не «выключено», а забытая переменная: копия молча не работала бы до дня, когда понадобится
+    for (const key of offsiteMissing(c)) issue(key, 'копия файлов вне сервера настроена наполовину: задайте все четыре OFFSITE_B2_BUCKET, OFFSITE_B2_ENDPOINT, OFFSITE_B2_KEY_ID, OFFSITE_B2_APP_KEY — или ни одной');
+    if (c.NODE_ENV !== 'production') return;
     if (c.JWT_SECRET.length < 32 || PLACEHOLDERS.has(c.JWT_SECRET)) issue('JWT_SECRET', 'в production нужен секрет не короче 32 символов (openssl rand -hex 32)');
     // Пароль БД из демо-compose (remarkround:remarkround) в проде — забытый .env, а не выбор
     if (/:\/\/[^:\/]+:(remarkround|postgres|change-me[^@]*)@/.test(c.DATABASE_URL)) issue('DATABASE_URL', 'в production пароль БД не может быть демо-значением');

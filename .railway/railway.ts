@@ -1,7 +1,7 @@
 /**
  * Railway — Infrastructure as Code (runbook: docs/PROD-RAILWAY.md; задача A2 в docs/BETA-REVIEW.md).
  *
- * Те же сервисы, что владелец заводит в UI по шагам runbook'а: postgres (pgvector), api, web; mcp — по желанию.
+ * Те же сервисы, что владелец заводит в UI по шагам runbook'а: postgres (pgvector), api, web, backup (cron, шаг 9); mcp — по желанию.
  * Применяется НЕ на git push, а из Railway CLI: `railway config plan` (показать разницу с выбранным окружением)
  * → `railway config apply` (применить после подтверждения). Нужен CLI с командой `config` (4.58 её ещё не знает —
  * `npm i -g @railway/cli`). Файл справочный: если руками в UI уже всё настроено, применять его не обязательно.
@@ -69,6 +69,11 @@ export default defineRailway(() => {
       // Том 5 ГБ: порог «кончается место» ниже дефолтных 2 ГБ, квота проекта 1 ГБ (R-H4)
       STORAGE_MIN_FREE_MB: '512',
       STORAGE_QUOTA_MB_PER_PROJECT: '1024',
+      // Суточная копия файлов тома в Backblaze B2 (A3; те же значения, что B2_* у сервиса backup). Все четыре или ни одной
+      OFFSITE_B2_BUCKET: preserve(),
+      OFFSITE_B2_ENDPOINT: preserve(),
+      OFFSITE_B2_KEY_ID: preserve(),
+      OFFSITE_B2_APP_KEY: preserve(),
       GIT_SHA: '${{RAILWAY_GIT_COMMIT_SHA}}',
     },
   });
@@ -91,5 +96,26 @@ export default defineRailway(() => {
     },
   });
 
-  return project('remark-round', { resources: [postgres, api, web] });
+  // Бэкап базы вне Railway (A3, R-M3; docs/PROD-RAILWAY.md, шаг 9): cron-сервис — контейнер стартует по расписанию,
+  // apps/backup/backup.sh делает pg_dump → Backblaze B2 (s3:<бакет>/db/) и завершается; ненулевой код = failed-запуск.
+  // Расписание в UTC: 21:00 UTC = 02:00 Asia/Almaty. Тома нет (том монтируется только в один сервис — файлы хранилища
+  // копирует сам api, переменные OFFSITE_B2_* ниже по тем же значениям), healthcheck'а нет — сервис не слушает порт.
+  const backup = service('backup', {
+    source: github(REPO, { branch: 'main' }),
+    replicas: REGION,
+    // NEVER: упавший запуск не перезапускается по кругу — следующая попытка завтра по расписанию, а failed виден в Deployments
+    deploy: { cronSchedule: '0 21 * * *', restartPolicyType: 'NEVER' },
+    env: {
+      RAILWAY_DOCKERFILE_PATH: 'apps/backup/Dockerfile',
+      // Как у api, но без параметров пула Prisma: pg_dump (libpq) их не понимает
+      DATABASE_URL: 'postgresql://remarkround:${{postgres.POSTGRES_PASSWORD}}@${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/remarkround',
+      B2_BUCKET: preserve(),
+      B2_ENDPOINT: preserve(), // s3.<регион>.backblazeb2.com — со страницы бакета в Backblaze
+      B2_KEY_ID: preserve(),
+      B2_APP_KEY: preserve(),
+      BACKUP_KEEP_DAYS: '30',
+    },
+  });
+
+  return project('remark-round', { resources: [postgres, api, web, backup] });
 });

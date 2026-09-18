@@ -16,12 +16,12 @@
                                             postgres (pgvector/pgvector:pg17, том /var/lib/postgresql/data)
 ```
 
-- Один проект Railway, окружение `production`, три сервиса из репозитория GitHub `Dunenbetov/remark-round`, ветка `main`; `mcp` — по желанию (см. «MCP»).
+- Один проект Railway, окружение `production`, три сервиса из репозитория GitHub `Dunenbetov/remark-round`, ветка `main`, плюс cron-сервис `backup` (шаг 9); `mcp` — по желанию (см. «MCP»).
 - Деплой запускает push в `main`, но только после зелёного workflow `ci` (`.github/workflows/ci.yml`) — настройка «Wait for CI» (шаг 5).
 - Между сервисами — приватная сеть Railway: имена `<сервис>.railway.internal`, наружу смотрит только `web`.
-- Два тома: у `api` (файлы) и у `postgres` (база). Резервные копии — снимки томов Railway (шаг 8).
+- Два тома: у `api` (файлы) и у `postgres` (база). Резервные копии — снимки томов Railway (шаг 8) и ежесуточная копия вне Railway в Backblaze B2 (шаг 9): cron-сервис `backup` для базы, сам `api` для файлов.
 
-Чего здесь нет по сравнению с `docs/PROD.md`: Caddy (TLS даёт Railway), сервисов `backup`/`offsite` (вместо них снимки томов), лимитов памяти compose (Railway считает деньги за фактическое потребление — см. «Стоимость»).
+Чего здесь нет по сравнению с `docs/PROD.md`: Caddy (TLS даёт Railway), сервисов `backup`/`offsite` из compose (вместо них снимки томов и свой cron-сервис `backup`, шаг 9), лимитов памяти compose (Railway считает деньги за фактическое потребление — см. «Стоимость»).
 
 ## Ветки
 
@@ -123,7 +123,7 @@
 ```bash
 D=https://web-production-xxxx.up.railway.app
 curl -s $D/api/v1/health
-# {"ok":true,"db":"ok","version":"<sha или dev>","llm":"openai","vectorIndex":"ok","jobs":{"queued":0,"running":0},"tracing":"off","sentry":"off"}
+# {"ok":true,"db":"ok","version":"<sha или dev>","llm":"openai","vectorIndex":"ok","jobs":{"queued":0,"running":0},"tracing":"off","sentry":"off","offsite":"off"}
 curl -s $D/api/v1/auth/options
 # {"demoLogins":false,"registration":"invite_only",...}  — демо-персон нет, seed не шёл
 curl -s $D/version.txt                       # sha сборки фронта или dev
@@ -163,7 +163,7 @@ curl -sI $D/ | grep -i content-security     # CSP на месте
    ```
    Если после этого «ничего не деплоится» — в **Deployments** будет пропущенный деплой с пометкой про watch paths; принудительно — ⌘K → **Deploy Latest Commit**.
 
-Почему без `railway.json`: он больше не читается новыми сервисами («New services cannot opt into Config as Code», старые файлы перестают работать 2026-12-01). Замена — `.railway/railway.ts` (Infrastructure as Code): в репозитории лежит описание тех же трёх сервисов, но применяется оно **не на push, а из Railway CLI** (`railway config plan` → `railway config apply`, нужен CLI новее 4.58). Для беты это справочник, а не обязательный шаг; всё выше настраивается руками.
+Почему без `railway.json`: он больше не читается новыми сервисами («New services cannot opt into Config as Code», старые файлы перестают работать 2026-12-01). Замена — `.railway/railway.ts` (Infrastructure as Code): в репозитории лежит описание тех же сервисов (и cron-сервиса `backup` из шага 9), но применяется оно **не на push, а из Railway CLI** (`railway config plan` → `railway config apply`, нужен CLI новее 4.58). Для беты это справочник, а не обязательный шаг; всё выше настраивается руками.
 
 ## Шаг 6. Обновления и откат
 
@@ -181,11 +181,150 @@ curl -sI $D/ | grep -i content-security     # CSP на месте
 
 ## Шаг 8. Что дальше
 
-- **Снимки томов (A3, «backups»)**: у сервисов `postgres` и `api` → **Settings → Backups** (вкладка сервиса с томом): расписание **Daily** (хранится 6 дней), **Weekly** (27 дней), **Monthly** (89 дней) — включить Daily у обоих. Восстановление — там же **Restore** у нужной метки времени: Railway создаёт новый том из снимка и переключает сервис, старый том остаётся неподключённым. Снимки инкрементальные, платится только за уникальные данные. Это снимок диска, а не `pg_dump`: при желании логический дамп — `railway ssh` в сервис `postgres` → `pg_dump -U remarkround remarkround | gzip > /tmp/dump.sql.gz` и `railway volume files`/`scp` наружу. Раз в месяц — **репетиция restore** (R-M3), как в `docs/PROD.md`.
+- **Снимки томов (A3, «backups»)**: у сервисов `postgres` и `api` → **Settings → Backups** (вкладка сервиса с томом): расписание **Daily** (хранится 6 дней), **Weekly** (27 дней), **Monthly** (89 дней) — включить Daily у обоих. Восстановление — там же **Restore** у нужной метки времени: Railway создаёт новый том из снимка и переключает сервис, старый том остаётся неподключённым. Снимки инкрементальные, платится только за уникальные данные. Это снимок диска, а не `pg_dump`: при желании логический дамп — `railway ssh` в сервис `postgres` → `pg_dump -U remarkround remarkround | gzip > /tmp/dump.sql.gz` и `railway volume files`/`scp` наружу. Снимки — быстрая первая линия, но живут внутри Railway и копию вне его не заменяют — она в шаге 9; там же **репетиция restore** (R-M3).
 - **Uptime-монитор**: UptimeRobot (бесплатно) на `https://<домен>/api/v1/health` каждые 5 минут, ключевое слово `"ok":true`. `/health` без лимита запросов — монитор не выбьет 429.
 - **Langfuse Cloud** (решение владельца 17.09, R-B1): в Variables `api` задать `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (регион EU; US — `https://us.cloud.langfuse.com`), `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_PROJECT_ID` (из адресной строки `/project/<id>`), `LANGFUSE_TRACING_ENVIRONMENT=production`, `LANGFUSE_PUBLIC_URL=https://cloud.langfuse.com`, и заменить `LANGFUSE_TRACING_ENABLED=false` на `true`. Внимание: в compose переменная называлась `LANGFUSE_CLOUD_URL` — это compose переименовывал её в `LANGFUSE_BASE_URL`; на Railway задаётся сразу `LANGFUSE_BASE_URL`. Проверка: `/health` → `tracing: on`.
 - **Sentry** (R-L5): `SENTRY_DSN` (api), `SENTRY_DSN_WEB` (SPA, публичный DSN), `SENTRY_ENVIRONMENT=production` в Variables `api`. Проверка: `/health` → `sentry: on`. В Variables **`web`** — `CSP_CONNECT_SRC=https://*.ingest.de.sentry.io` (регион EU; для US — `https://*.ingest.us.sentry.io`): у SPA строгий CSP `connect-src 'self'`, без этого адреса браузер молча блокирует отправку ошибок фронта. Проверка: в заголовке `Content-Security-Policy` главной страницы виден адрес ingest.
 - **Свой домен** для `web` — когда появится; тогда же обновить `WEB_ORIGIN`.
+
+## Шаг 9. Бэкапы вне Railway (Backblaze B2)
+
+Задача A3, аудит R-M3. Снимки томов (шаг 8) лежат **внутри Railway**: удалён проект, заблокирован аккаунт, сбой у самого Railway — пропадут вместе с продом. Поэтому раз в сутки копия уходит в Backblaze B2 — дешёвое S3-совместимое хранилище (первые 10 ГБ бесплатно, дальше ≈ 6 $/ТБ·мес).
+
+### 9а. Что копируется и почему механизмов два
+
+| Что | Кто копирует | Куда в бакете | Когда |
+|---|---|---|---|
+| База (пользователи, проекты, замечания, журнал) | cron-сервис **`backup`** (`apps/backup`): `pg_dump` → загрузка → сверка размера → чистка старых | `db/remarkround-ГГГГММДД-ЧЧММСС.dump` | каждый день в 21:00 UTC = 02:00 Алматы |
+| Файлы (документы проектов, кадры замечаний) | сам **`api`** (`apps/api/src/offsite`): `rclone copy` тома | `storage/<projectId>/<файл>` | через 2 минуты после старта `api` и далее раз в сутки |
+
+Почему не один сервис: том Railway монтируется **только в один сервис**. Файлы лежат на томе `api` — значит, достать их может только `api`. А базе том не нужен: `pg_dump` ходит в `postgres` по приватной сети, поэтому это отдельный маленький контейнер, который запускается по расписанию, делает дело и выключается (платится за секунды работы).
+
+Правила хранения: дампы старше 30 дней (`BACKUP_KEEP_DAYS`) удаляются, но **последние 7 не удаляются никогда** — если cron месяц не работал, чистка не съест последние рабочие копии. Файлы только дописываются: удалённое на сервере в копии остаётся (это бэкап, а не зеркало); файлы хранилища пишутся один раз, поэтому изменившийся файл — ошибка в логе, а не тихая перезапись копии.
+
+### 9б. Backblaze: аккаунт, бакет, ключ
+
+1. Зарегистрироваться на `backblaze.com` → **B2 Cloud Storage**. При регистрации выбирается регион — **EU Central** (ближе к Амстердаму, где живёт прод); поменять его потом нельзя, только новым аккаунтом.
+2. **Buckets → Create a Bucket**:
+   - **Bucket Unique Name**: `remark-round-backup-<случайные-символы>`, например `remark-round-backup-7f3k9q` (имя уникально среди всех клиентов Backblaze; случайный хвост — чтобы его нельзя было угадать);
+   - **Files in Bucket are**: **Private** — обязательно: в дампе e-mail и хэши паролей пользователей;
+   - **Default Encryption**: Enable (бесплатно); **Object Lock**: Disable.
+3. После создания у бакета — **Lifecycle Settings** → **Keep only the last version of the file**. По умолчанию B2 хранит *все версии*, и «удалённый» старый дамп на деле только скрывается и продолжает занимать место; с этой настройкой скрытые версии вычищаются на следующий день.
+4. На карточке бакета есть строка **Endpoint**: `s3.eu-central-003.backblazeb2.com` (у вас может быть другой номер) — это значение `B2_ENDPOINT`. Пишется без `https://`.
+5. **Application Keys → Add a New Application Key**:
+   - **Name of Key**: `remark-round-backup`;
+   - **Allow access to Bucket(s)**: только созданный бакет (не «All») — утёкший ключ не даст доступа ни к чему другому;
+   - **Type of Access**: **Read and Write**;
+   - остальное — пусто. **Create New Key**.
+6. Страница покажет **keyID** и **applicationKey**. `applicationKey` показывается **один раз** — сразу скопируйте оба значения в Railway (следующий пункт). Потеряли — удалите ключ и создайте новый. Master Application Key для бэкапа не использовать.
+
+Какие значения куда (одни и те же четыре значения — в два сервиса, под разными именами):
+
+| Значение из Backblaze | Сервис `backup` → Variables | Сервис `api` → Variables |
+|---|---|---|
+| имя бакета | `B2_BUCKET` | `OFFSITE_B2_BUCKET` |
+| Endpoint (`s3.<регион>.backblazeb2.com`) | `B2_ENDPOINT` | `OFFSITE_B2_ENDPOINT` |
+| keyID | `B2_KEY_ID` | `OFFSITE_B2_KEY_ID` |
+| applicationKey | `B2_APP_KEY` | `OFFSITE_B2_APP_KEY` |
+
+У `api` действует правило «все четыре или ни одной»: если задать часть, `api` не стартует и в логе деплоя будет сказано, какой переменной не хватает — так забытая переменная не превращается в «копия молча не работает».
+
+> Напоминание: переменные и настройки в Railway сначала попадают в черновик и применяются только кнопкой **Deploy** в шапке проекта (см. шаг 5).
+
+### 9в. Создать сервис `backup`
+
+**Вариант 1 — из репозитория (CLI).** В `.railway/railway.ts` сервис уже описан. Нужен Railway CLI с командой `config` (`npm i -g @railway/cli`, версия ≥ 5.4x): в корне репозитория `railway link` → `railway config plan` (только показывает разницу: должен появиться новый сервис `backup`; ничего не меняет — прочитайте вывод, в нём не должно быть удалений) → `railway config apply`. Секреты (`B2_*`, `OFFSITE_B2_*`) после этого всё равно вводятся руками в UI — в коде их нет.
+
+**Вариант 2 — руками в UI:**
+
+1. В проекте **+ New → GitHub Repo** → `Dunenbetov/remark-round`. Имя сервиса — `backup` (Settings → вверху).
+2. **Settings → Source**: Branch `main`, Root Directory `/`; **Wait for CI** — включить, как у `api`.
+3. **Variables** (можно вставить разом через **Raw Editor**):
+   ```
+   RAILWAY_DOCKERFILE_PATH=apps/backup/Dockerfile
+   DATABASE_URL=postgresql://remarkround:${{postgres.POSTGRES_PASSWORD}}@${{postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/remarkround
+   B2_BUCKET=<имя бакета>
+   B2_ENDPOINT=<s3.….backblazeb2.com>
+   B2_KEY_ID=<keyID>
+   B2_APP_KEY=<applicationKey>
+   BACKUP_KEEP_DAYS=30
+   ```
+   `DATABASE_URL` — как у `api`, но **без** хвоста `?connection_limit=…` (это параметры Prisma, `pg_dump` их не знает; скрипт на всякий случай отрезает их сам).
+4. **Settings → Deploy → Cron Schedule**: `0 21 * * *`. Время — всегда UTC: 21:00 UTC = 02:00 по Алматы, ночью базе не мешает никто. **Restart Policy**: `Never` — упавший запуск не крутится по кругу, следующая попытка завтра. Region — тот же, что у остальных (EU West, Amsterdam). Домен, healthcheck и том **не нужны**.
+5. **Settings → Build → Watch Paths**: `/apps/backup/**` — образ пересобирается только когда меняется сам скрипт.
+6. У сервиса `api` → **Variables**: четыре `OFFSITE_B2_*` из таблицы выше.
+7. Кнопка **Deploy** в шапке проекта.
+
+Как устроен cron на Railway: по расписанию стартует контейнер, скрипт отрабатывает и **завершается** — это нормально, сервис между запусками «спит». Если предыдущий запуск ещё идёт, следующий пропускается. Запустить вне расписания: у сервиса `backup` → **Deployments** → меню последнего деплоя → **Run now** (или ⌘K → «Run»; проверить в UI).
+
+### 9г. Проверка
+
+1. `backup` → **Deployments** → последний запуск зелёный, в логах одна строка итога:
+   ```
+   backup: OK remarkround-20260918-210003.dump, 2.4 МБ (2516582 байт), 3 с; в хранилище дампов: 1, удалено старых: 0
+   ```
+   Красный запуск — в логах строка `backup: ОШИБКА: …` с причиной (не задана переменная, неверный ключ, база недоступна).
+2. В Backblaze → **Browse Files** → бакет → папка `db/` — файл `remarkround-….dump` с тем же размером.
+3. `curl https://<домен>/api/v1/health` → `"offsite":"on"`. В логах `api` через пару минут после деплоя: `offsite: копия файлов готова — загружено N, уже было M, ошибок 0, … с`; в бакете появилась папка `storage/`. Если `"offsite":"off"` — у `api` не заданы `OFFSITE_B2_*` (в логе старта: «копия файлов вне сервера не настроена»).
+4. Проверка «дамп читается» без восстановления: локально (нужен Docker, значения — из Backblaze):
+   ```bash
+   docker build -f apps/backup/Dockerfile -t rr-backup .
+   docker run --rm -e B2_BUCKET=… -e B2_ENDPOINT=… -e B2_KEY_ID=… -e B2_APP_KEY=… rr-backup restore-test
+   # backup: restore-test OK remarkround-….dump, 2.4 МБ, объектов в оглавлении: 159, таблиц с данными: 21
+   ```
+   `restore-test` скачивает самый свежий дамп и читает его оглавление (`pg_restore --list`); ни к какой базе не подключается.
+
+### 9д. Репетиция восстановления (R-M3)
+
+Бэкап, который ни разу не восстанавливали, — не бэкап. Раз в месяц и после каждого изменения схемы бэкапа — 15 минут на своём ноутбуке (нужен Docker). Прод при этом не трогается.
+
+1. **Скачать свежий дамп.** Backblaze → **Browse Files** → бакет → `db/` → самый новый файл → **Download**. (Или `rclone`, если настроен: `rclone copy b2:<бакет>/db/<файл> .`)
+2. **Поднять пустой Postgres той же версии** (одноразовый контейнер, порт 5499, чтобы не мешать стенду):
+   ```bash
+   docker run -d --name rr-restore -e POSTGRES_USER=remarkround -e POSTGRES_PASSWORD=restore -e POSTGRES_DB=remarkround -p 5499:5432 pgvector/pgvector:pg17
+   ```
+   Образ именно `pgvector/pgvector:pg17`: в дампе есть расширение `vector`, в обычном `postgres` его нет.
+3. **Восстановить** (подставьте имя скачанного файла; команда выполняется в папке с ним):
+   ```bash
+   docker cp remarkround-ГГГГММДД-ЧЧММСС.dump rr-restore:/tmp/restore.dump
+   docker exec rr-restore pg_restore --no-owner --no-privileges --single-transaction -U remarkround -d remarkround /tmp/restore.dump
+   ```
+   Тишина в ответ = успех. Засеките время — это ваш RTO для базы.
+4. **Два контрольных запроса** — цифры должны быть похожи на прод (людей — как на странице администратора):
+   ```bash
+   docker exec rr-restore psql -U remarkround -d remarkround -c 'SELECT count(*) AS users FROM "User"' -c 'SELECT count(*) AS remarks FROM "Remark"'
+   ```
+5. **Убрать за собой:** `docker rm -f rr-restore` и удалить скачанный файл (в нём персональные данные).
+6. **Записать дату** в таблицу ниже и закоммитить.
+
+| Дата репетиции | Дамп | Время восстановления | users / remarks | Кто |
+|---|---|---|---|---|
+| — не проводилась — | | | | |
+
+### 9е. Настоящая авария: порядок действий
+
+Сначала — быстрый путь: если жив проект Railway и пострадал только том, **снимок тома** (шаг 8, вкладка **Backups** у сервиса → **Restore**) восстанавливается за минуты и свежее ночного дампа. Снимки — первая линия, если тариф их даёт; B2 — вторая, на случай, когда самого Railway или проекта нет.
+
+Восстановление из B2:
+
+1. **База.** Новый сервис `postgres` с новым пустым томом — по шагу 1 (если старый сервис жив, но база испорчена: отключить у него том и подключить новый пустой). Остановить `api`, чтобы он не писал в базу во время восстановления (**Settings → Deploy → Remove deployment** или временно Replicas = 0; проверить в UI).
+2. Узнать имя нужного дампа: Backblaze → `db/`, обычно самый свежий.
+3. Восстановить тем же образом `backup` — одноразовым запуском с другой командой. У сервиса `backup` → **Settings → Deploy → Custom Start Command**:
+   ```
+   sh /usr/local/bin/backup.sh restore remarkround-ГГГГММДД-ЧЧММСС.dump --yes-i-know
+   ```
+   → **Deploy**, затем **Run now** у нового деплоя (cron-сервис сам стартует только по расписанию; проверить в UI) → дождаться в логах `backup: restore OK … пользователей в базе: N` → **вернуть Start Command пустым** и снова **Deploy** (иначе ночью cron вместо бэкапа попытается восстановить; он откажется — см. ниже — но бэкапа не будет).
+   Предохранители скрипта: без `--yes-i-know` не работает; если в целевой базе уже есть пользователи (непустая таблица `"User"`) — отказывается, пока не добавлен `--force` (защита от «восстановил поверх живого прода»); восстановление идёт одной транзакцией — при ошибке база остаётся как была.
+   Альтернатива без Railway-сервиса, с ноутбука: у `postgres` → **Settings → Networking → TCP Proxy** (порт 5432) даст внешний адрес вида `xxx.proxy.rlwy.net:12345`; затем `pg_restore --no-owner --no-privileges --single-transaction -d "postgresql://remarkround:<пароль>@xxx.proxy.rlwy.net:12345/remarkround" файл.dump`. После — TCP Proxy удалить: база не должна торчать наружу.
+4. **Файлы.** Их возвращает `rclone` внутри `api` (том смонтирован только там). `railway ssh` в сервис `api` (или локально `railway ssh --service api`), затем — значения переменных уже есть в окружении контейнера:
+   ```bash
+   RCLONE_CONFIG=/dev/null RCLONE_CONFIG_B2_TYPE=s3 RCLONE_CONFIG_B2_PROVIDER=Other \
+   RCLONE_CONFIG_B2_ENDPOINT="$OFFSITE_B2_ENDPOINT" RCLONE_CONFIG_B2_ACCESS_KEY_ID="$OFFSITE_B2_KEY_ID" \
+   RCLONE_CONFIG_B2_SECRET_ACCESS_KEY="$OFFSITE_B2_APP_KEY" RCLONE_CONFIG_B2_FORCE_PATH_STYLE=true RCLONE_CONFIG_B2_NO_CHECK_BUCKET=true \
+   rclone copy "b2:$OFFSITE_B2_BUCKET/storage" "$STORAGE_DIR" --transfers 8 --stats-one-line -v
+   ```
+5. Запустить `api`, проверить `/health` (`ok: true`, `db: ok`), войти, открыть любое замечание с кадром и любой документ — файл открывается, значит база и файлы согласованы. Дамп и файлы снимаются не в одну секунду: замечание, созданное между ними, может ссылаться на кадр, которого в копии нет, — для ночного окна это единицы записей.
+6. Потеря данных (RPO) — до суток для базы и файлов. Если нужно меньше — чаще cron (`0 */6 * * *`), менять в одном месте: Cron Schedule сервиса `backup` и `.railway/railway.ts`.
 
 ## MCP (по желанию)
 
@@ -195,7 +334,7 @@ curl -sI $D/ | grep -i content-security     # CSP на месте
 
 - **Один инстанс `api`** — не ставить Replicas > 1 (R-M1); Railway и не даст с томом.
 - **Пауза при деплое `api`** (том) — десятки секунд; прогон графа в этот момент вернётся в очередь и продолжится на новом контейнере (задачи с протухшим `lockedAt` возвращаются в `queued` на старте).
-- **Бэкапы — снимки томов Railway**, а не `pg_dump` + offsite, как в `docs/PROD.md`; копия вне Railway — вручную (см. шаг 8).
+- **Бэкапы**: снимки томов Railway (шаг 8) плюс копия вне Railway раз в сутки (шаг 9) — потеря данных при полной аварии до суток. Дамп базы и копия файлов снимаются не одновременно.
 - **Без `mcp` по умолчанию.**
 - **Домен `*.up.railway.app`** приемлем: писем нет (ADR 013), репутация домена почты не нужна.
 - **Приватная сеть**: имена `*.railway.internal` резолвятся только внутри окружения; после деплоя `api` nginx до 10 с может отдавать 502.
