@@ -212,3 +212,13 @@ curl -sI $D/ | grep -i content-security     # CSP на месте
 ## Что из этого стоит перепроверить в UI Railway
 
 Документация Railway описывает поведение, но не всегда точные названия пунктов; в тексте выше такие места помечены «проверить в UI»: где именно лежит переключатель **Wait for CI** (Settings → Source, блок Check Suites); **Watch Paths** (Settings → Build); есть ли поле **Dockerfile Path** в Settings → Build (если нет — переменная `RAILWAY_DOCKERFILE_PATH` работает точно); название пункта отката (**Rollback** / **Redeploy**); подставляется ли `${{RAILWAY_GIT_COMMIT_SHA}}` в `GIT_SHA` (если нет — в `/health` останется `dev`, не страшно); адрес резолвера `[fd12::10]` — нужен только если автоопределение из `resolv.conf` не сработало.
+
+## Копия базы на Mac владельца (временная страховка, B1)
+
+Пока нет бэкапов вне Railway (встроенные — только на Pro, внешнее хранилище отложено до корпоративного контура), копия снимается скриптом [`scripts/prod-db-dump.sh`](../scripts/prod-db-dump.sh): `railway ssh` в `postgres` → `pg_dump -Fc` → `~/RemarkRound-backups/`, хранятся 8 последних. **Раз в неделю** (задача по расписанию в приложении Claude, вс 21:00) и **вручную перед каждым merge с миграцией**:
+
+```bash
+./scripts/prod-db-dump.sh
+```
+
+Нужно один раз: SSH-ключ в Railway (`railway ssh keys add`) и подтверждённый отпечаток сервера (`railway ssh --service postgres -- echo ok`, ответить `yes`). Восстановление проверено 18.09: дамп разворачивается во временный `pgvector/pgvector:pg17` через `pg_restore --no-owner --no-acl` со всеми миграциями, HNSW-индексом и триггерами append-only.
