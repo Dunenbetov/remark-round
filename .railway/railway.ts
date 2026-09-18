@@ -8,8 +8,14 @@
  *
  * Почему не railway.json: по docs.railway.com/infrastructure-as-code «New services cannot opt into Config as Code»,
  * старые railway.json/railway.toml перестают читаться 2026-12-01. Чего этот DSL не умеет (справочник на 17.09.2026)
- * и что задаётся в UI: путь к Dockerfile (здесь — через переменную RAILWAY_DOCKERFILE_PATH), Watch Paths,
+ * и что задаётся в UI: путь к Dockerfile (здесь — через переменную RAILWAY_DOCKERFILE_PATH),
  * Restart Policy, «Wait for CI». Секреты — preserve(): остаются те, что введены в UI, в коде их нет.
+ *
+ * Watch Paths DSL умеет (`build: { watchPatterns }`, пакет railway 3.11). На бою они заданы 18.09 (P2) не через
+ * `railway config apply`, а мутацией `environmentStageChanges` + `environmentPatchCommitStaged(skipDeploys: true)`
+ * через `railway api`: `railway environment edit --service-config api build.watchPatterns …` в CLI 5.57.9 отвечает
+ * «No changes to apply» на любой путь. Здесь — зеркало боевых значений; синтаксис .gitignore, пути от корня
+ * репозитория с ведущим `/`. Список = всё, что COPY берёт в apps/<сервис>/Dockerfile.
  */
 import { defineRailway, github, image, preserve, project, service, volume } from 'railway/iac';
 
@@ -39,7 +45,10 @@ export default defineRailway(() => {
   // на Railway нет. Healthcheck ждёт до 300 с — первый старт прогоняет все миграции.
   const apiStorage = volume('api-storage', { sizeMB: 2048, region: 'europe-west4-drams3a' });
   const api = service('api', {
-    source: github(REPO, { branch: 'main' }),
+    // checkSuites = «Wait for CI»: деплой только после зелёного workflow ci (без него apply выключил бы ожидание)
+    source: github(REPO, { branch: 'main', checkSuites: true }),
+    // Коммит только в docs/ или apps/web не пересобирает api (Railway пишет SKIPPED) и не рвёт WebSocket команде
+    build: { watchPatterns: ['/apps/api/**', '/packages/db/**', '/skills/**', '/fixtures/**', '/package.json', '/pnpm-lock.yaml', '/pnpm-workspace.yaml', '/.npmrc'] },
     healthcheck: '/api/v1/health',
     healthcheckTimeout: 300,
     replicas: REGION,
@@ -56,6 +65,8 @@ export default defineRailway(() => {
       JWT_EXPIRES_SECONDS: '86400',
       WEB_ORIGIN: preserve(), // https://<домен web> — известен после «Generate Domain» у web
       ADMIN_EMAILS: preserve(),
+      // Регистрация открыта для любого e-mail на бете (решение владельца 17.09, ADR 006); проекты создаёт тот, кому админ выдал право
+      REGISTRATION_MODE: 'open',
       OPENAI_API_KEY: preserve(),
       STORAGE_DIR: '/app/apps/api/storage',
       MIGRATE_ON_START: 'true',
@@ -64,8 +75,18 @@ export default defineRailway(() => {
       TRUST_PROXY_HOPS: '1',
       IMPORT_MAX_ROWS: '100',
       IMPORT_MAX_BYTES: '5242880',
-      // Первый запуск без трейсов; Langfuse Cloud (LANGFUSE_BASE_URL + ключи) и Sentry — отдельным шагом runbook'а
-      LANGFUSE_TRACING_ENABLED: 'false',
+      // Langfuse Cloud (EU) и Sentry (EU) включены на бою 18.09 — зеркало боевых значений, ключи только в UI (preserve).
+      // Проверка, что span'ы доезжают: /health → tracing: on (не degraded) и трейс по ссылке с карточки (PROD-RAILWAY.md)
+      LANGFUSE_TRACING_ENABLED: 'true',
+      LANGFUSE_BASE_URL: 'https://cloud.langfuse.com',
+      LANGFUSE_PUBLIC_URL: 'https://cloud.langfuse.com',
+      LANGFUSE_TRACING_ENVIRONMENT: 'production',
+      LANGFUSE_PROJECT_ID: preserve(),
+      LANGFUSE_PUBLIC_KEY: preserve(),
+      LANGFUSE_SECRET_KEY: preserve(),
+      SENTRY_DSN: preserve(),
+      SENTRY_DSN_WEB: preserve(), // DSN для SPA: web получает его от api (GET /auth/options)
+      SENTRY_ENVIRONMENT: preserve(),
       // Том 5 ГБ: порог «кончается место» ниже дефолтных 2 ГБ, квота проекта 1 ГБ (R-H4)
       STORAGE_MIN_FREE_MB: '512',
       STORAGE_QUOTA_MB_PER_PROJECT: '1024',
@@ -75,7 +96,9 @@ export default defineRailway(() => {
 
   // SPA + nginx: публичный домен, /api и /api/v1/ws — в api по приватной сети (apps/web/nginx.conf.template)
   const web = service('web', {
-    source: github(REPO, { branch: 'main' }),
+    // checkSuites = «Wait for CI»: деплой только после зелёного workflow ci (без него apply выключил бы ожидание)
+    source: github(REPO, { branch: 'main', checkSuites: true }),
+    build: { watchPatterns: ['/apps/web/**', '/package.json', '/pnpm-lock.yaml', '/pnpm-workspace.yaml', '/.npmrc'] },
     healthcheck: '/',
     replicas: REGION,
     env: {

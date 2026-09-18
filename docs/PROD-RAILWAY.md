@@ -130,7 +130,7 @@ curl -s $D/version.txt                       # sha сборки фронта и�
 curl -sI $D/ | grep -i content-security     # CSP на месте
 ```
 
-Что значит каждое поле `/health` (`apps/api/src/health/health.controller.ts`): `db: ok` — база отвечает за 2 с (иначе 503 и `db: down`); `vectorIndex: ok` — расширение `vector` и HNSW-индекс на месте, то есть **pgvector в базе есть** (это и есть проверка шага 1; `missing` — индекс не создан, `unknown` — не удалось проверить); `llm: openai` — ключ модели принят; `jobs` — очередь; `tracing`/`sentry` — `off` до подключения.
+Что значит каждое поле `/health` (`apps/api/src/health/health.controller.ts`): `db: ok` — база отвечает за 2 с (иначе 503 и `db: down`); `vectorIndex: ok` — расширение `vector` и HNSW-индекс на месте, то есть **pgvector в базе есть** (это и есть проверка шага 1; `missing` — индекс не создан, `unknown` — не удалось проверить); `llm: openai` — ключ модели принят; `jobs` — очередь; `sentry` — `off` до подключения; `tracing` — `off` до подключения, `on` — span'ы идут в процессор Langfuse, `degraded` — ключи заданы, но span'ы не доедут (как проверить по-настоящему — «Langfuse Cloud» в шаге 8).
 
 Дальше — как в `docs/PROD.md`: администратор из `ADMIN_EMAILS` регистрируется на `$D/register` (только ему регистрация открыта без ссылки), в меню аккаунта → **Администрирование** → «Пригласить руководителя приёмки» — ссылка `/join/<token>`, которую он отправляет сам (живёт 7 дней); руководитель создаёт проект и приглашает участников.
 
@@ -153,6 +153,7 @@ curl -sI $D/ | grep -i content-security     # CSP на месте
    /pnpm-lock.yaml
    /package.json
    /pnpm-workspace.yaml
+   /.npmrc
    ```
    `web`:
    ```
@@ -160,8 +161,11 @@ curl -sI $D/ | grep -i content-security     # CSP на месте
    /pnpm-lock.yaml
    /package.json
    /pnpm-workspace.yaml
+   /.npmrc
    ```
    Если после этого «ничего не деплоится» — в **Deployments** будет пропущенный деплой с пометкой про watch paths; принудительно — ⌘K → **Deploy Latest Commit**.
+
+   **На бою применено 18.09 (P2)**, без передеплоя. `railway environment edit --service-config api build.watchPatterns '[…]'` в CLI 5.57.9 отвечает «No changes to apply» на любой путь (даже `deploy.healthcheckTimeout`), поэтому — через GraphQL: `railway api` → `environmentStageChanges(environmentId, input: {services: {<id>: {build: {watchPatterns: […]}}}}, merge: true)` → `environmentPatchCommitStaged(environmentId, skipDeploys: true)`. Проверка: `railway environment config --json` (поле `services.<id>.build.watchPatterns`) или `railway config pull --json`. Зеркало — `build.watchPatterns` в `.railway/railway.ts`; `railway config apply` для этого не запускать (план показывает и чужие расхождения: переменные, `checkSuites`).
 
 Почему без `railway.json`: он больше не читается новыми сервисами («New services cannot opt into Config as Code», старые файлы перестают работать 2026-12-01). Замена — `.railway/railway.ts` (Infrastructure as Code): в репозитории лежит описание тех же трёх сервисов, но применяется оно **не на push, а из Railway CLI** (`railway config plan` → `railway config apply`, нужен CLI новее 4.58). Для беты это справочник, а не обязательный шаг; всё выше настраивается руками.
 
@@ -183,7 +187,11 @@ curl -sI $D/ | grep -i content-security     # CSP на месте
 
 - **Снимки томов (A3, «backups»)**: у сервисов `postgres` и `api` → **Settings → Backups** (вкладка сервиса с томом): расписание **Daily** (хранится 6 дней), **Weekly** (27 дней), **Monthly** (89 дней) — включить Daily у обоих. Восстановление — там же **Restore** у нужной метки времени: Railway создаёт новый том из снимка и переключает сервис, старый том остаётся неподключённым. Снимки инкрементальные, платится только за уникальные данные. Это снимок диска, а не `pg_dump`: при желании логический дамп — `railway ssh` в сервис `postgres` → `pg_dump -U remarkround remarkround | gzip > /tmp/dump.sql.gz` и `railway volume files`/`scp` наружу. Раз в месяц — **репетиция restore** (R-M3), как в `docs/PROD.md`.
 - **Uptime-монитор**: UptimeRobot (бесплатно) на `https://<домен>/api/v1/health` каждые 5 минут, ключевое слово `"ok":true`. `/health` без лимита запросов — монитор не выбьет 429.
-- **Langfuse Cloud** (решение владельца 17.09, R-B1): в Variables `api` задать `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (регион EU; US — `https://us.cloud.langfuse.com`), `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_PROJECT_ID` (из адресной строки `/project/<id>`), `LANGFUSE_TRACING_ENVIRONMENT=production`, `LANGFUSE_PUBLIC_URL=https://cloud.langfuse.com`, и заменить `LANGFUSE_TRACING_ENABLED=false` на `true`. Внимание: в compose переменная называлась `LANGFUSE_CLOUD_URL` — это compose переименовывал её в `LANGFUSE_BASE_URL`; на Railway задаётся сразу `LANGFUSE_BASE_URL`. Проверка: `/health` → `tracing: on`.
+- **Langfuse Cloud** (решение владельца 17.09, R-B1): в Variables `api` задать `LANGFUSE_BASE_URL=https://cloud.langfuse.com` (регион EU; US — `https://us.cloud.langfuse.com`), `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_PROJECT_ID` (из адресной строки `/project/<id>`), `LANGFUSE_TRACING_ENVIRONMENT=production`, `LANGFUSE_PUBLIC_URL=https://cloud.langfuse.com`, и заменить `LANGFUSE_TRACING_ENABLED=false` на `true`. Внимание: в compose переменная называлась `LANGFUSE_CLOUD_URL` — это compose переименовывал её в `LANGFUSE_BASE_URL`; на Railway задаётся сразу `LANGFUSE_BASE_URL`. Подключено 18.09.
+  **Проверка, что трейсы доезжают**, а не только «ключи заданы». До 18.09 `/health` писал `on`, а в Cloud не пришло ни одного span'а: `Sentry.init` занимал глобальный OpenTelemetry-провайдер, и Langfuse молча проигрывал (P1 в `docs/defense/DEFENSE-PLAN.md`, теперь у Langfuse изолированный провайдер). Что смотреть:
+  1. `/health` → `tracing: on`. `degraded` — ключи есть, но SDK Langfuse пишет не в наш провайдер: span'ы не уйдут, причина в Deploy Logs строкой `langfuse: …` или `otel: …`. `on` не значит, что Cloud принял span'ы: при неверном ключе или регионе `/health` остаётся `on`, а в логах появляется `otel: … OTLPExporterError: Unauthorized`.
+  2. Разобрать одно замечание, войти как PM и нажать на карточке «Трейс в Langfuse». Трейс появляется через 2–5 с: батч уходит раз в 2 с. В трейсе — корень `triage`, ноды графа (`retrieve_docs`, `classify_evidence`, `draft_rationale`, …), generation с токенами и стоимостью, `environment = production`. После решения PM в том же трейсе появляется `triage.resume`.
+  3. В Deploy Logs нет строк `otel:`.
 - **Sentry** (R-L5): `SENTRY_DSN` (api), `SENTRY_DSN_WEB` (SPA, публичный DSN), `SENTRY_ENVIRONMENT=production` в Variables `api`. Проверка: `/health` → `sentry: on`. В Variables **`web`** — `CSP_CONNECT_SRC=https://*.ingest.de.sentry.io` (регион EU; для US — `https://*.ingest.us.sentry.io`): у SPA строгий CSP `connect-src 'self'`, без этого адреса браузер молча блокирует отправку ошибок фронта. Проверка: в заголовке `Content-Security-Policy` главной страницы виден адрес ingest.
 - **Свой домен** для `web` — когда появится; тогда же обновить `WEB_ORIGIN`.
 
