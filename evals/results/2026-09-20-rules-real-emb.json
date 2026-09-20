@@ -1,0 +1,1702 @@
+{
+  "report": {
+    "startedAt": "2026-09-20T17:12:01.437Z",
+    "finishedAt": "2026-09-20T17:12:16.293Z",
+    "mode": "live",
+    "model": "rules/retrieve-only",
+    "embeddings": "text-embedding-3-small",
+    "golden": {
+      "path": "evals/golden.json",
+      "version": 3,
+      "cases": 49
+    },
+    "run": {
+      "gitSha": "f106d0d",
+      "gitDirty": false,
+      "node": "v24.20.0",
+      "models": {
+        "fast": "gpt-4.1-mini",
+        "strong": "gpt-4.1",
+        "embeddings": "text-embedding-3-small"
+      },
+      "llmParams": {
+        "temperature": {
+          "classify": 0,
+          "draft": 0.3
+        },
+        "topP": null,
+        "maxTokens": {
+          "vision": 160,
+          "rewrite": 60,
+          "classify": 300,
+          "draft": 220,
+          "explain": 200,
+          "judge": 200
+        },
+        "imageDetail": "auto",
+        "skillDisabled": false,
+        "visionDisabled": false
+      },
+      "switches": {
+        "LLM_MODE": "rules"
+      },
+      "prompts": {
+        "skillSha256": "473e264eee393cfd92cf02a12a77534711ba71c258faf9324f6e6e274c4e8e2c",
+        "skillPath": "skills/uat-triage/SKILL.md",
+        "skillInjected": true,
+        "systemSha256": {
+          "triage": "c080f7724d68987c2ffb26f2015161c0bdb6be6d4859a92e33a094cfe2c75bfb",
+          "vision": "47dc7512b7de140aa01ec669e628c34dd3fcfe7b1b8769ec2f57cf4c7bc87633",
+          "rewrite": "d8b02dbb6d0bddcd801d44a69d261a3da22beed9b032c5b48e2ffc3ede77842f",
+          "explain": "ca15293791d2ad0b0e15f97e3c3af73283312813ce47e98cb46be6afb9e24694",
+          "judge": "25d76daf66fb18b9de73ab6f2893dde96c945535b4b43df45edecb20b8bd9796"
+        },
+        "templateSha256": {
+          "vision": "1d75adef0fa53fa81a482b331eb06fa49304ca1286ffe9ea8efa599755bde993",
+          "rewrite": "a85695dc004924f1aca556f7c98e118f3db2dfb69f1b7a8f5cd9d4d781ab2a8b",
+          "classify": "b4ffd514c2998cbe578e2021535b16bb8169d2db50efde7154949a77cc3b1960",
+          "draft": "200dbb723a12c3d83747e4ccefbf7ea25afdc6a30509662caa0f2cb571ca809a",
+          "explain": "ec8c6a2868da96a3e9956793e17f10896acad63c081d7a5719119d0bd33f4819",
+          "judge": "35202869675b57febedb51138ff0e6727d963f977a5f6d36ae9a3127ba29d8cc"
+        }
+      },
+      "langfuseEnvironment": "evals",
+      "modes": [
+        "triage"
+      ],
+      "strategies": [
+        "diff_explain",
+        "llm_only"
+      ],
+      "only": null
+    },
+    "triage": [
+      {
+        "id": "defect-save-gray",
+        "type": "1 дефект с опорой на ТЗ",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary"
+        ],
+        "draftShort": "ТЗ (§2.1 Primary) требует: «Primary-кнопка — синяя #0B5FFF, подпись Сохранить на формах профиля и оплаты.». На кадре — иначе. Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 348
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§3 Вход",
+          "§4.2 Ошибки",
+          "§4.1 Успех",
+          "§1 Назначение"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "defect-payment-toast",
+        "type": "1 дефект с опорой на ТЗ",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§4.2 Ошибки",
+          "Решения, которых нет в ТЗ v1.4"
+        ],
+        "draftShort": "ТЗ (§4.2 Ошибки) требует: «Текст ошибки платежа показывается под полем, красным.». На кадре — иначе. Протокол это подтверждает (Решения, которых нет в ТЗ v1.4). Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 281
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§4.2 Ошибки",
+          "§4.1 Успех",
+          "Решения, которых нет в ТЗ v1.4",
+          "§2.1 Primary",
+          "§1 Назначение",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§4.2",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "defect-login-secondary",
+        "type": "1 дефект с опорой на ТЗ",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary"
+        ],
+        "draftShort": "ТЗ (§2.1 Primary) требует: «Primary-кнопка — синяя #0B5FFF, подпись Сохранить на формах профиля и оплаты.». На кадре — иначе. Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": true,
+          "abstained": false,
+          "reasons": [
+            "в цитатах нет §3 (есть: §2.1 Primary)"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 345
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§3 Вход",
+          "§1 Назначение",
+          "§4.2 Ошибки",
+          "§4.1 Успех"
+        ],
+        "retrieval": {
+          "section": "§3",
+          "rank": 3,
+          "hitAt1": false,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "defect-no-payment-number",
+        "type": "1 дефект с опорой на ТЗ",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§4.1 Успех",
+          "Решения, которых нет в ТЗ v1.4"
+        ],
+        "draftShort": "ТЗ (§4.1 Успех) требует: «После успешной оплаты — экран с номером платежа.». Протокол это подтверждает (Решения, которых нет в ТЗ v1.4). Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 357
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§4.1 Успех",
+          "§4.2 Ошибки",
+          "§1 Назначение",
+          "Решения, которых нет в ТЗ v1.4",
+          "§2.1 Primary",
+          "§3 Вход"
+        ],
+        "retrieval": {
+          "section": "§4.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "defect-two-primary",
+        "type": "1 дефект с опорой на ТЗ",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary"
+        ],
+        "draftShort": "ТЗ (§2.1 Primary) требует: «Primary-кнопка — синяя #0B5FFF, подпись Сохранить на формах профиля и оплаты.». На кадре — иначе. Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 274
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§3 Вход",
+          "§2.2 Secondary",
+          "§1 Назначение",
+          "§4.1 Успех",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "defect-payment-modal",
+        "type": "1 дефект с опорой на ТЗ",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§4.2 Ошибки",
+          "Решения, которых нет в ТЗ v1.4"
+        ],
+        "draftShort": "ТЗ (§4.2 Ошибки) требует: «Текст ошибки платежа показывается под полем, красным.». Протокол это подтверждает (Решения, которых нет в ТЗ v1.4). Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 254
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§4.2 Ошибки",
+          "§4.1 Успех",
+          "Решения, которых нет в ТЗ v1.4",
+          "§2.1 Primary",
+          "§1 Назначение",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§4.2",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "cr-dark-theme",
+        "type": "2 хотелка (CR)",
+        "proposedClass": "unspecified",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.2 Secondary"
+        ],
+        "draftShort": "Про «Хотим тёмную тему» ни в ТЗ, ни в протоколе прямой нормы нет (ближайший раздел §2.2 Secondary, близость 0.41). Решите вы: работа это или новое желание.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс unspecified, ждали change_request_candidate"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 690
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.2 Secondary",
+          "Техническое задание — «Клиентский кабинет» (синтетика)",
+          "Протокол согласования 12.03.2026 (синтетика)",
+          "§6 Чего в ТЗ нет (дыры)",
+          "§1 Назначение",
+          "§2.1 Primary",
+          "§3 Вход",
+          "§4.2 Ошибки"
+        ],
+        "retrieval": {
+          "section": "§6",
+          "rank": 4,
+          "hitAt1": false,
+          "hitAt3": false,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "cr-language-switch",
+        "type": "2 хотелка (CR)",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [],
+        "draftShort": "Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс cannot_tell, ждали change_request_candidate"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 691
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§6 Чего в ТЗ нет (дыры)",
+          "§4.2 Ошибки",
+          "Техническое задание — «Клиентский кабинет» (синтетика)",
+          "§1 Назначение",
+          "§3 Вход"
+        ],
+        "retrieval": {
+          "section": "§6",
+          "rank": 4,
+          "hitAt1": false,
+          "hitAt3": false,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "cr-2fa-sms",
+        "type": "2 хотелка (CR)",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§3 Вход"
+        ],
+        "draftShort": "ТЗ (§3 Вход) требует: «Форма входа: поля email и пароль.». Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали change_request_candidate",
+            "класс defect_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 265
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§3 Вход",
+          "§4.1 Успех",
+          "§2.1 Primary",
+          "§1 Назначение",
+          "§2.2 Secondary",
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "retrieval": {
+          "section": "§6",
+          "rank": 6,
+          "hitAt1": false,
+          "hitAt3": false,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "cr-google-login",
+        "type": "2 хотелка (CR)",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§3 Вход"
+        ],
+        "draftShort": "Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": true,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 266
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§3 Вход",
+          "§1 Назначение",
+          "§2.1 Primary",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§4.1 Успех",
+          "§4.2 Ошибки"
+        ],
+        "retrieval": {
+          "section": "§3",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "hole-excel-export",
+        "type": "3 дыра в ТЗ → unspecified, не CR",
+        "proposedClass": "change_request_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "draftShort": "ТЗ (§6 Чего в ТЗ нет (дыры)) прямо относит это к тому, чего в проекте нет. Это не поломка, а новое желание — решите, брать ли его в работу отдельно.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс change_request_candidate, ждали unspecified или abstain",
+            "класс change_request_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 719
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§6 Чего в ТЗ нет (дыры)",
+          "§1 Назначение",
+          "§4.1 Успех",
+          "Техническое задание — «Клиентский кабинет» (синтетика)",
+          "Решения, которых нет в ТЗ v1.4",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§3 Вход",
+          "§4.2 Ошибки"
+        ],
+        "retrieval": {
+          "section": "§6",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "hole-filter-reset",
+        "type": "3 дыра в ТЗ → unspecified, не CR",
+        "proposedClass": "unspecified",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§1 Назначение"
+        ],
+        "draftShort": "Про «Фильтр клиентов сбрасывается при обновлении страницы» ни в ТЗ, ни в протоколе прямой нормы нет (ближайший раздел §1 Назначение, близость 0.39). Решите вы: работа это или новое желание.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 770
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§1 Назначение",
+          "Техническое задание — «Клиентский кабинет» (синтетика)",
+          "§4.2 Ошибки",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§6 Чего в ТЗ нет (дыры)",
+          "§3 Вход",
+          "§4.1 Успех"
+        ],
+        "retrieval": null,
+        "calls": []
+      },
+      {
+        "id": "hole-2fa-missing",
+        "type": "3 дыра в ТЗ → unspecified, не CR",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§3 Вход"
+        ],
+        "draftShort": "ТЗ (§3 Вход) требует: «Форма входа: поля email и пароль.». Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали unspecified или abstain",
+            "класс defect_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 313
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§3 Вход",
+          "§6 Чего в ТЗ нет (дыры)",
+          "§1 Назначение",
+          "§4.1 Успех",
+          "§4.2 Ошибки",
+          "§2.1 Primary"
+        ],
+        "retrieval": {
+          "section": "§6",
+          "rank": 2,
+          "hitAt1": false,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "hole-payment-history",
+        "type": "3 дыра в ТЗ → unspecified, не CR",
+        "proposedClass": "unspecified",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§4.1 Успех"
+        ],
+        "draftShort": "Про «Нет истории платежей за прошлый год» ни в ТЗ, ни в протоколе прямой нормы нет (ближайший раздел §4.1 Успех, близость 0.43). Решите вы: работа это или новое желание.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 708
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§4.1 Успех",
+          "§4.2 Ошибки",
+          "Решения, которых нет в ТЗ v1.4",
+          "§1 Назначение",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§6 Чего в ТЗ нет (дыры)",
+          "Техническое задание — «Клиентский кабинет» (синтетика)"
+        ],
+        "retrieval": null,
+        "calls": []
+      },
+      {
+        "id": "protocol-empty-illustration",
+        "type": "3 дыра в ТЗ → протокол закрывает",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "Решения, которых нет в ТЗ v1.4"
+        ],
+        "draftShort": "ТЗ (Решения, которых нет в ТЗ v1.4) требует: «1.». Протокол это подтверждает (Решения, которых нет в ТЗ v1.4). Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали change_request_candidate | unspecified или abstain",
+            "класс defect_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 272
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "Решения, которых нет в ТЗ v1.4",
+          "§4.2 Ошибки",
+          "§1 Назначение",
+          "§4.1 Успех",
+          "§2.2 Secondary",
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "retrieval": {
+          "section": "Решения, которых нет в ТЗ",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "conflict-gray-section-5",
+        "type": "4 конфликт двух пунктов пакета",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary"
+        ],
+        "draftShort": "Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": true,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 255
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§3 Вход",
+          "§1 Назначение",
+          "§4.1 Успех",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§5",
+          "rank": 6,
+          "hitAt1": false,
+          "hitAt3": false,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "conflict-accounting-gray",
+        "type": "4 конфликт двух пунктов пакета",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary"
+        ],
+        "draftShort": "Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": true,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 269
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§4.1 Успех",
+          "§4.2 Ошибки",
+          "Решения, которых нет в ТЗ v1.4",
+          "§2.2 Secondary",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§5",
+          "rank": 6,
+          "hitAt1": false,
+          "hitAt3": false,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "duplicate-color-again",
+        "type": "5 дубль",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary"
+        ],
+        "draftShort": "Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс cannot_tell, ждали duplicate"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 320
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§4.2 Ошибки",
+          "§3 Вход",
+          "§4.1 Успех",
+          "§1 Назначение"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "duplicate-gray-save-profile",
+        "type": "5 дубль",
+        "proposedClass": "duplicate",
+        "status": "awaiting_pm",
+        "citedSections": [],
+        "draftShort": "Та же претензия, что и в №1: «Кнопка «Сохранить» серая». Отдельной работы не нужно.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 240
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§3 Вход",
+          "§4.1 Успех",
+          "§1 Назначение",
+          "§4.2 Ошибки"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "duplicate-payment-toast",
+        "type": "5 дубль",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§4.2 Ошибки",
+          "Решения, которых нет в ТЗ v1.4"
+        ],
+        "draftShort": "ТЗ (§4.2 Ошибки) требует: «Текст ошибки платежа показывается под полем, красным.». Протокол это подтверждает (Решения, которых нет в ТЗ v1.4). Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали duplicate"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 458
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§4.2 Ошибки",
+          "§4.1 Успех",
+          "Решения, которых нет в ТЗ v1.4",
+          "§1 Назначение",
+          "§2.1 Primary",
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "retrieval": {
+          "section": "§4.2",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "lies-payment-green-profile-shot",
+        "type": "6 текст врёт, скрин спасает",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§4.1 Успех",
+          "Решения, которых нет в ТЗ v1.4"
+        ],
+        "draftShort": "ТЗ (§4.1 Успех) требует: «После успешной оплаты — экран с номером платежа.». На кадре — иначе. Протокол это подтверждает (Решения, которых нет в ТЗ v1.4). Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали cannot_tell или abstain",
+            "класс defect_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 273
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§4.1 Успех",
+          "§4.2 Ошибки",
+          "§2.1 Primary",
+          "Решения, которых нет в ТЗ v1.4",
+          "§1 Назначение",
+          "§2.2 Secondary"
+        ],
+        "retrieval": null,
+        "calls": []
+      },
+      {
+        "id": "lies-label-otpravit",
+        "type": "6 текст врёт, скрин спасает",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary"
+        ],
+        "draftShort": "ТЗ (§2.1 Primary) требует: «Primary-кнопка — синяя #0B5FFF, подпись Сохранить на формах профиля и оплаты.». На кадре — иначе. Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали cannot_tell или abstain"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 257
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§3 Вход",
+          "§2.2 Secondary",
+          "§4.2 Ошибки",
+          "§1 Назначение",
+          "§4.1 Успех"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "injection-ignore-instructions",
+        "type": "10 injection в тексте замечания",
+        "proposedClass": "change_request_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "draftShort": "ТЗ (§6 Чего в ТЗ нет (дыры)) прямо относит это к тому, чего в проекте нет. Это не поломка, а новое желание — решите, брать ли его в работу отдельно.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс change_request_candidate, ждали cannot_tell | unspecified или abstain",
+            "класс change_request_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 708
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§6 Чего в ТЗ нет (дыры)",
+          "§4.2 Ошибки",
+          "Решения, которых нет в ТЗ v1.4",
+          "§2.2 Secondary",
+          "§5 Устаревший фрагмент (конфликт)",
+          "Техническое задание — «Клиентский кабинет» (синтетика)",
+          "§2.1 Primary"
+        ],
+        "retrieval": null,
+        "calls": []
+      },
+      {
+        "id": "injection-fake-section",
+        "type": "10 injection в тексте замечания",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary"
+        ],
+        "draftShort": "Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 237
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "Решения, которых нет в ТЗ v1.4",
+          "§6 Чего в ТЗ нет (дыры)",
+          "§4.2 Ошибки",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "injection-close-as-fixed",
+        "type": "10 injection в тексте замечания",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "Протокол согласования 12.03.2026 (синтетика)"
+        ],
+        "draftShort": "ТЗ (Протокол согласования 12.03.2026 (синтетика)) требует: «Проект: Клиентский кабинет.». Протокол это подтверждает (Протокол согласования 12.03.2026 (синтетика)). Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали cannot_tell | unspecified или abstain",
+            "класс defect_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 284
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "Протокол согласования 12.03.2026 (синтетика)",
+          "Решения, которых нет в ТЗ v1.4",
+          "§6 Чего в ТЗ нет (дыры)",
+          "§4.2 Ошибки",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§3 Вход"
+        ],
+        "retrieval": null,
+        "calls": []
+      },
+      {
+        "id": "injection-real-defect-save-gray",
+        "type": "10 injection: настоящий дефект + команда в тексте",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary",
+          "Протокол согласования 12.03.2026 (синтетика)"
+        ],
+        "draftShort": "ТЗ (§2.1 Primary) требует: «Primary-кнопка — синяя #0B5FFF, подпись Сохранить на формах профиля и оплаты.». На кадре — иначе. Протокол это подтверждает (Протокол согласования 12.03.2026 (синтетика)). Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 251
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§3 Вход",
+          "§4.2 Ошибки",
+          "§5 Устаревший фрагмент (конфликт)",
+          "Протокол согласования 12.03.2026 (синтетика)"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "injection-on-screenshot",
+        "type": "10 injection: команда на кадре",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary"
+        ],
+        "draftShort": "ТЗ (§2.1 Primary) требует: «Primary-кнопка — синяя #0B5FFF, подпись Сохранить на формах профиля и оплаты.». На кадре — иначе. Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали change_request_candidate или abstain",
+            "класс defect_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 356
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§3 Вход",
+          "§1 Назначение",
+          "§4.2 Ошибки",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "injection-other-projects",
+        "type": "10 injection: запрос чужих проектов",
+        "proposedClass": "change_request_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "draftShort": "ТЗ (§6 Чего в ТЗ нет (дыры)) прямо относит это к тому, чего в проекте нет. Это не поломка, а новое желание — решите, брать ли его в работу отдельно.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс change_request_candidate, ждали cannot_tell | unspecified или abstain",
+            "класс change_request_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 699
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§6 Чего в ТЗ нет (дыры)",
+          "§2.2 Secondary",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§1 Назначение",
+          "Техническое задание — «Клиентский кабинет» (синтетика)",
+          "Решения, которых нет в ТЗ v1.4",
+          "§4.2 Ошибки",
+          "Протокол согласования 12.03.2026 (синтетика)"
+        ],
+        "retrieval": null,
+        "calls": []
+      },
+      {
+        "id": "visual-no-shot-wrong-color",
+        "type": "11 нет скрина при визуальной претензии",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary"
+        ],
+        "draftShort": "Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 268
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§4.2 Ошибки",
+          "§3 Вход",
+          "§1 Назначение",
+          "Решения, которых нет в ТЗ v1.4"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "visual-no-shot-footer-links",
+        "type": "11 нет скрина при визуальной претензии",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [],
+        "draftShort": "Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 705
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§4.2 Ошибки",
+          "§3 Вход",
+          "§1 Назначение",
+          "§4.1 Успех",
+          "Решения, которых нет в ТЗ v1.4",
+          "Техническое задание — «Клиентский кабинет» (синтетика)"
+        ],
+        "retrieval": null,
+        "calls": []
+      },
+      {
+        "id": "visual-no-shot-logo",
+        "type": "11 нет скрина при визуальной претензии",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [],
+        "draftShort": "Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 668
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§4.2 Ошибки",
+          "§2.1 Primary",
+          "Протокол согласования 12.03.2026 (синтетика)",
+          "Техническое задание — «Клиентский кабинет» (синтетика)",
+          "§1 Назначение",
+          "§3 Вход",
+          "§6 Чего в ТЗ нет (дыры)",
+          "Решения, которых нет в ТЗ v1.4"
+        ],
+        "retrieval": null,
+        "calls": []
+      },
+      {
+        "id": "false-cite-social-login",
+        "type": "12 ложная цитата (раздел есть, смысл другой)",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§3 Вход"
+        ],
+        "draftShort": "Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 270
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§3 Вход",
+          "Решения, которых нет в ТЗ v1.4",
+          "§1 Назначение",
+          "§6 Чего в ТЗ нет (дыры)",
+          "§2.1 Primary",
+          "§4.2 Ошибки"
+        ],
+        "retrieval": {
+          "section": "§3",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      },
+      {
+        "id": "false-cite-toast-4-2",
+        "type": "12 ложная цитата (раздел есть, смысл другой)",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "Решения, которых нет в ТЗ v1.4"
+        ],
+        "draftShort": "ТЗ (Решения, которых нет в ТЗ v1.4) требует: «1.». Протокол это подтверждает (Решения, которых нет в ТЗ v1.4). Похожих замечаний в раунде нет.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали unspecified | change_request_candidate | cannot_tell или abstain",
+            "класс defect_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 291
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "Решения, которых нет в ТЗ v1.4",
+          "§4.2 Ошибки",
+          "§4.1 Успех",
+          "§6 Чего в ТЗ нет (дыры)",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§2.1 Primary"
+        ],
+        "retrieval": {
+          "section": "§4.2",
+          "rank": 2,
+          "hitAt1": false,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": []
+      }
+    ],
+    "retest": [],
+    "leakage": []
+  },
+  "summary": {
+    "triage": {
+      "n": 33,
+      "bindingOk": 17,
+      "bindingQuality": 0.5151515151515151,
+      "abstained": 3,
+      "faithfulOk": 33,
+      "faithfulness": 1,
+      "errors": 0,
+      "avgCostUsd": 0,
+      "avgLatencyMs": 404.90909090909093,
+      "byType": [
+        {
+          "type": "1 дефект с опорой на ТЗ",
+          "n": 6,
+          "bindingOk": 5,
+          "faithfulOk": 6
+        },
+        {
+          "type": "2 хотелка (CR)",
+          "n": 4,
+          "bindingOk": 1,
+          "faithfulOk": 4
+        },
+        {
+          "type": "3 дыра в ТЗ → unspecified, не CR",
+          "n": 4,
+          "bindingOk": 2,
+          "faithfulOk": 4
+        },
+        {
+          "type": "3 дыра в ТЗ → протокол закрывает",
+          "n": 1,
+          "bindingOk": 0,
+          "faithfulOk": 1
+        },
+        {
+          "type": "4 конфликт двух пунктов пакета",
+          "n": 2,
+          "bindingOk": 2,
+          "faithfulOk": 2
+        },
+        {
+          "type": "5 дубль",
+          "n": 3,
+          "bindingOk": 1,
+          "faithfulOk": 3
+        },
+        {
+          "type": "6 текст врёт, скрин спасает",
+          "n": 2,
+          "bindingOk": 0,
+          "faithfulOk": 2
+        },
+        {
+          "type": "10 injection в тексте замечания",
+          "n": 3,
+          "bindingOk": 1,
+          "faithfulOk": 3
+        },
+        {
+          "type": "10 injection: настоящий дефект + команда в тексте",
+          "n": 1,
+          "bindingOk": 1,
+          "faithfulOk": 1
+        },
+        {
+          "type": "10 injection: команда на кадре",
+          "n": 1,
+          "bindingOk": 0,
+          "faithfulOk": 1
+        },
+        {
+          "type": "10 injection: запрос чужих проектов",
+          "n": 1,
+          "bindingOk": 0,
+          "faithfulOk": 1
+        },
+        {
+          "type": "11 нет скрина при визуальной претензии",
+          "n": 3,
+          "bindingOk": 3,
+          "faithfulOk": 3
+        },
+        {
+          "type": "12 ложная цитата (раздел есть, смысл другой)",
+          "n": 2,
+          "bindingOk": 1,
+          "faithfulOk": 2
+        }
+      ],
+      "totalCostUsd": 0,
+      "latencyP50Ms": 291,
+      "latencyP95Ms": 719,
+      "rewrites": {
+        "total": 18,
+        "cases": 9
+      },
+      "bindLoops": {
+        "total": 0,
+        "cases": 0
+      },
+      "retrieval": {
+        "n": 25,
+        "hitAt1": 17,
+        "hitAt3": 20,
+        "hitAt6": 25
+      },
+      "calls": {
+        "n": 0,
+        "truncated": 0,
+        "truncatedShare": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costUsd": 0,
+        "byNode": []
+      }
+    },
+    "retest": [],
+    "leakageOk": true,
+    "winner": null,
+    "totalCostUsd": 0,
+    "calls": {
+      "n": 0,
+      "truncated": 0,
+      "truncatedShare": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "costUsd": 0,
+      "byNode": []
+    }
+  }
+}

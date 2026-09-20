@@ -1,0 +1,1081 @@
+{
+  "report": {
+    "startedAt": "2026-09-20T17:16:57.401Z",
+    "finishedAt": "2026-09-20T17:17:30.542Z",
+    "mode": "live",
+    "model": "openai/gpt-4.1-mini+gpt-4.1",
+    "embeddings": "text-embedding-3-small",
+    "golden": {
+      "path": "evals/golden.json",
+      "version": 3,
+      "cases": 49
+    },
+    "run": {
+      "gitSha": "f106d0d",
+      "gitDirty": false,
+      "node": "v24.20.0",
+      "models": {
+        "fast": "gpt-4.1-mini",
+        "strong": "gpt-4.1",
+        "embeddings": "text-embedding-3-small"
+      },
+      "llmParams": {
+        "temperature": {
+          "classify": 0,
+          "draft": 0.3
+        },
+        "topP": null,
+        "maxTokens": {
+          "vision": 160,
+          "rewrite": 60,
+          "classify": 300,
+          "draft": 220,
+          "explain": 200,
+          "judge": 200
+        },
+        "imageDetail": "auto",
+        "skillDisabled": false,
+        "visionDisabled": false
+      },
+      "switches": {},
+      "prompts": {
+        "skillSha256": "473e264eee393cfd92cf02a12a77534711ba71c258faf9324f6e6e274c4e8e2c",
+        "skillPath": "skills/uat-triage/SKILL.md",
+        "skillInjected": true,
+        "systemSha256": {
+          "triage": "c080f7724d68987c2ffb26f2015161c0bdb6be6d4859a92e33a094cfe2c75bfb",
+          "vision": "47dc7512b7de140aa01ec669e628c34dd3fcfe7b1b8769ec2f57cf4c7bc87633",
+          "rewrite": "d8b02dbb6d0bddcd801d44a69d261a3da22beed9b032c5b48e2ffc3ede77842f",
+          "explain": "ca15293791d2ad0b0e15f97e3c3af73283312813ce47e98cb46be6afb9e24694",
+          "judge": "25d76daf66fb18b9de73ab6f2893dde96c945535b4b43df45edecb20b8bd9796"
+        },
+        "templateSha256": {
+          "vision": "1d75adef0fa53fa81a482b331eb06fa49304ca1286ffe9ea8efa599755bde993",
+          "rewrite": "a85695dc004924f1aca556f7c98e118f3db2dfb69f1b7a8f5cd9d4d781ab2a8b",
+          "classify": "b4ffd514c2998cbe578e2021535b16bb8169d2db50efde7154949a77cc3b1960",
+          "draft": "200dbb723a12c3d83747e4ccefbf7ea25afdc6a30509662caa0f2cb571ca809a",
+          "explain": "ec8c6a2868da96a3e9956793e17f10896acad63c081d7a5719119d0bd33f4819",
+          "judge": "35202869675b57febedb51138ff0e6727d963f977a5f6d36ae9a3127ba29d8cc"
+        }
+      },
+      "langfuseEnvironment": "evals",
+      "modes": [
+        "retest"
+      ],
+      "strategies": [
+        "diff_explain",
+        "llm_only"
+      ],
+      "only": null
+    },
+    "triage": [],
+    "retest": [
+      {
+        "id": "retest-diff-not-about-claim-logo",
+        "type": "7 ретест: дифф есть, но не про претензию",
+        "strategy": "diff_explain",
+        "outcome": "likely_unchanged",
+        "explanation": "Красное на диффе расположено слева посередине, но на кадрах в этой области нет логотипа, только форма и кнопка. Логотип в шапке на кадрах не виден, и изменения не касаются логотипа. Претензия о пропаже логотипа не подтверждается изменениями на диффе.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2634,
+          "outputTokens": 89,
+          "costUsd": 0.001196,
+          "latencyMs": 1931
+        },
+        "calls": [
+          {
+            "node": "explain",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2634,
+            "outputTokens": 89,
+            "costUsd": 0.0011960000000000002,
+            "latencyMs": 1802
+          }
+        ]
+      },
+      {
+        "id": "retest-diff-not-about-claim-logo",
+        "type": "7 ретест: дифф есть, но не про претензию",
+        "strategy": "llm_only",
+        "outcome": "cannot_tell",
+        "explanation": "В предоставленных кадрах отсутствует шапка с логотипом, видна только форма профиля компании. По этим кадрам нельзя определить, пропал ли логотип в шапке.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 1984,
+          "outputTokens": 52,
+          "costUsd": 0.000877,
+          "latencyMs": 1051
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1984,
+            "outputTokens": 52,
+            "costUsd": 0.0008768000000000001,
+            "latencyMs": 1002
+          }
+        ]
+      },
+      {
+        "id": "retest-diff-not-about-claim-title",
+        "type": "7 ретест: дифф есть, но не про претензию",
+        "strategy": "diff_explain",
+        "outcome": "likely_unchanged",
+        "explanation": "Красное на диффе — область кнопки, но цвет и состояние кнопки не изменились: она по-прежнему серая, а не синяя primary (#0B5FFF), как требует ТЗ. Значит, претензия остаётся актуальной.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2634,
+          "outputTokens": 70,
+          "costUsd": 0.001166,
+          "latencyMs": 1252
+        },
+        "calls": [
+          {
+            "node": "explain",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2634,
+            "outputTokens": 70,
+            "costUsd": 0.0011656000000000001,
+            "latencyMs": 1165
+          }
+        ]
+      },
+      {
+        "id": "retest-diff-not-about-claim-title",
+        "type": "7 ретест: дифф есть, но не про претензию",
+        "strategy": "llm_only",
+        "outcome": "likely_unchanged",
+        "explanation": "На втором кадре кнопка «Сохранить» осталась серой, не стала синей primary-кнопкой, как требует §2.1. Визуально цвет и стиль кнопки не изменились.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 1984,
+          "outputTokens": 58,
+          "costUsd": 0.000886,
+          "latencyMs": 1132
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1984,
+            "outputTokens": 58,
+            "costUsd": 0.0008864000000000001,
+            "latencyMs": 1058
+          }
+        ]
+      },
+      {
+        "id": "retest-incomparable-zoom",
+        "type": "8 кадры несопоставимы",
+        "strategy": "diff_explain",
+        "outcome": "cannot_tell",
+        "explanation": "Изменения разбросаны по 81% кадра — другой экран, масштаб или сдвиг вёрстки. Проверьте на стенде и закройте без кадра, если исправлено.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": false,
+          "falseAddressed": false,
+          "issues": [
+            "пояснение закрывает замечание"
+          ]
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 73
+        },
+        "calls": []
+      },
+      {
+        "id": "retest-incomparable-zoom",
+        "type": "8 кадры несопоставимы",
+        "strategy": "llm_only",
+        "outcome": "cannot_tell",
+        "explanation": "На первом кадре кнопка «Сохранить» серая, на втором кадре показана синяя кнопка с текстом «Оплатить». Кнопка «Сохранить» на втором кадре отсутствует, поэтому нельзя проверить, изменилась ли она в соответствии с требованиями.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 1984,
+          "outputTokens": 75,
+          "costUsd": 0.000914,
+          "latencyMs": 1337
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1984,
+            "outputTokens": 75,
+            "costUsd": 0.0009136,
+            "latencyMs": 1285
+          }
+        ]
+      },
+      {
+        "id": "retest-incomparable-mobile",
+        "type": "8 кадры несопоставимы",
+        "strategy": "diff_explain",
+        "outcome": "cannot_tell",
+        "explanation": "Кадры разного размера: 800×400 и 400×800 — пиксели не сопоставить. Приложите кадр того же размера, что первый (800×400), или, если проверили на стенде, закройте без кадра.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 64
+        },
+        "calls": []
+      },
+      {
+        "id": "retest-incomparable-mobile",
+        "type": "8 кадры несопоставимы",
+        "strategy": "llm_only",
+        "outcome": "likely_addressed",
+        "explanation": "На первом кадре кнопка серая, на втором — синяя, что соответствует требованию §2.1 о primary-кнопке синего цвета #0B5FFF с подписью «Сохранить» на форме профиля.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": false,
+          "falseAddressed": true,
+          "issues": [
+            "исход likely_addressed, ждали cannot_tell"
+          ]
+        },
+        "usage": {
+          "inputTokens": 1984,
+          "outputTokens": 63,
+          "costUsd": 0.000894,
+          "latencyMs": 1130
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1984,
+            "outputTokens": 63,
+            "costUsd": 0.0008944000000000001,
+            "latencyMs": 1084
+          }
+        ]
+      },
+      {
+        "id": "retest-addressed-blue",
+        "type": "7+ ретест: исправлено по претензии",
+        "strategy": "diff_explain",
+        "outcome": "likely_addressed",
+        "explanation": "Красное на диффе совпадает с областью кнопки «Сохранить». Во втором кадре кнопка синяя, как требует §2.1 (цвет #0B5FFF). Значит, претензия о серой кнопке устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2634,
+          "outputTokens": 67,
+          "costUsd": 0.001161,
+          "latencyMs": 1400
+        },
+        "calls": [
+          {
+            "node": "explain",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2634,
+            "outputTokens": 67,
+            "costUsd": 0.0011608000000000002,
+            "latencyMs": 1288
+          }
+        ]
+      },
+      {
+        "id": "retest-addressed-blue",
+        "type": "7+ ретест: исправлено по претензии",
+        "strategy": "llm_only",
+        "outcome": "likely_addressed",
+        "explanation": "На втором кадре кнопка «Сохранить» синяя, что соответствует описанию primary-кнопки из документа (§2.1). На форме одна primary-кнопка, подпись соответствует требованиям. Значит, претензия устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 1984,
+          "outputTokens": 63,
+          "costUsd": 0.000894,
+          "latencyMs": 1269
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1984,
+            "outputTokens": 63,
+            "costUsd": 0.0008944000000000001,
+            "latencyMs": 1216
+          }
+        ]
+      },
+      {
+        "id": "retest-addressed-blue-plus-field",
+        "type": "7+ ретест: исправлено по претензии",
+        "strategy": "diff_explain",
+        "outcome": "likely_addressed",
+        "explanation": "Красное на диффе совпадает с областью кнопки «Сохранить». Во втором кадре кнопка синяя, что соответствует требованию из ТЗ (§2.1 Primary: синий #0B5FFF). Значит, претензия о серой кнопке устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2634,
+          "outputTokens": 74,
+          "costUsd": 0.001172,
+          "latencyMs": 1265
+        },
+        "calls": [
+          {
+            "node": "explain",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2634,
+            "outputTokens": 74,
+            "costUsd": 0.0011720000000000003,
+            "latencyMs": 1174
+          }
+        ]
+      },
+      {
+        "id": "retest-addressed-blue-plus-field",
+        "type": "7+ ретест: исправлено по претензии",
+        "strategy": "llm_only",
+        "outcome": "likely_addressed",
+        "explanation": "На втором кадре кнопка «Сохранить» синяя, что соответствует описанию primary-кнопки из документа (§2.1). На форме одна primary-кнопка, подпись соответствует требованиям. Значит, претензия устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 1984,
+          "outputTokens": 63,
+          "costUsd": 0.000894,
+          "latencyMs": 1222
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1984,
+            "outputTokens": 63,
+            "costUsd": 0.0008944000000000001,
+            "latencyMs": 1167
+          }
+        ]
+      },
+      {
+        "id": "retest-addressed-payment-under-field",
+        "type": "7+ ретест: исправлено по претензии",
+        "strategy": "diff_explain",
+        "outcome": "likely_addressed",
+        "explanation": "Красное на диффе показывает исчезновение тоста сверху и появление текста ошибки красным под полем ввода карты, как указано в ТЗ §4.2. Новый кадр соответствует требованию: ошибка отображается под полем, красным цветом, тоста сверху нет.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2624,
+          "outputTokens": 73,
+          "costUsd": 0.001166,
+          "latencyMs": 1202
+        },
+        "calls": [
+          {
+            "node": "explain",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2624,
+            "outputTokens": 73,
+            "costUsd": 0.0011664000000000002,
+            "latencyMs": 1097
+          }
+        ]
+      },
+      {
+        "id": "retest-addressed-payment-under-field",
+        "type": "7+ ретест: исправлено по претензии",
+        "strategy": "llm_only",
+        "outcome": "likely_addressed",
+        "explanation": "Во втором кадре ошибка оплаты отображается под полем ввода карты красным текстом, как указано в §4.2. В первом кадре ошибка показывалась тостом сверху, что не соответствует требованиям. Таким образом, претензия устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 1976,
+          "outputTokens": 67,
+          "costUsd": 0.000898,
+          "latencyMs": 1099
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1976,
+            "outputTokens": 67,
+            "costUsd": 0.0008976000000000001,
+            "latencyMs": 1045
+          }
+        ]
+      },
+      {
+        "id": "retest-unchanged-identical",
+        "type": "7 ретест: ничего не изменилось",
+        "strategy": "diff_explain",
+        "outcome": "likely_unchanged",
+        "explanation": "Новый кадр совпадает со старым пиксель в пиксель — ничего не изменилось.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 87
+        },
+        "calls": []
+      },
+      {
+        "id": "retest-unchanged-identical",
+        "type": "7 ретест: ничего не изменилось",
+        "strategy": "llm_only",
+        "outcome": "likely_unchanged",
+        "explanation": "На втором кадре кнопка «Сохранить» осталась серой, цвет не изменился на синий #0B5FFF, как требует §2.1 из ТЗ. Значит, претензия по цвету кнопки не устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 1984,
+          "outputTokens": 67,
+          "costUsd": 0.000901,
+          "latencyMs": 1292
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1984,
+            "outputTokens": 67,
+            "costUsd": 0.0009008000000000001,
+            "latencyMs": 1248
+          }
+        ]
+      },
+      {
+        "id": "retest-green-not-spec",
+        "type": "7 ретест: изменилось, но не по ТЗ",
+        "strategy": "diff_explain",
+        "outcome": "likely_unchanged",
+        "explanation": "Красное на диффе выделяет область кнопки, но цвет кнопки изменился с серого на зелёный, а не на синий #0B5FFF, как требует ТЗ. Значит, претензия о цвете primary-кнопки не устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2639,
+          "outputTokens": 72,
+          "costUsd": 0.001171,
+          "latencyMs": 1320
+        },
+        "calls": [
+          {
+            "node": "explain",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2639,
+            "outputTokens": 72,
+            "costUsd": 0.0011708000000000003,
+            "latencyMs": 1230
+          }
+        ]
+      },
+      {
+        "id": "retest-green-not-spec",
+        "type": "7 ретест: изменилось, но не по ТЗ",
+        "strategy": "llm_only",
+        "outcome": "likely_unchanged",
+        "explanation": "Кнопка изменила цвет с серого на зелёный, а не на синий #0B5FFF, как указано в требованиях для primary-кнопки. Значит, претензия по цвету не устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 1989,
+          "outputTokens": 64,
+          "costUsd": 0.000898,
+          "latencyMs": 1086
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1989,
+            "outputTokens": 64,
+            "costUsd": 0.000898,
+            "latencyMs": 1041
+          }
+        ]
+      },
+      {
+        "id": "retest-outline-still-secondary",
+        "type": "7 ретест: изменилось, но не по ТЗ",
+        "strategy": "diff_explain",
+        "outcome": "likely_unchanged",
+        "explanation": "На втором кадре кнопка \"Сохранить\" не синяя, а серая с обводкой, что не соответствует требованию синей primary-кнопки (#0B5FFF). Красное на диффе не указывает на изменение цвета кнопки в сторону синего, а лишь выделяет область кнопки. Следовательно, претензия сохраняется.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2634,
+          "outputTokens": 90,
+          "costUsd": 0.001198,
+          "latencyMs": 1343
+        },
+        "calls": [
+          {
+            "node": "explain",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2634,
+            "outputTokens": 90,
+            "costUsd": 0.0011976,
+            "latencyMs": 1245
+          }
+        ]
+      },
+      {
+        "id": "retest-outline-still-secondary",
+        "type": "7 ретест: изменилось, но не по ТЗ",
+        "strategy": "llm_only",
+        "outcome": "likely_unchanged",
+        "explanation": "На первом кадре кнопка серая, что соответствует претензии. На втором кадре кнопка стала белой с серой рамкой, то есть не синей primary-кнопкой, как требует ТЗ. Значит, претензия не устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 1984,
+          "outputTokens": 69,
+          "costUsd": 0.000904,
+          "latencyMs": 1215
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1984,
+            "outputTokens": 69,
+            "costUsd": 0.000904,
+            "latencyMs": 1161
+          }
+        ]
+      },
+      {
+        "id": "retest-toast-text-changed",
+        "type": "7 ретест: дифф есть, но не про претензию",
+        "strategy": "diff_explain",
+        "outcome": "likely_unchanged",
+        "explanation": "Красное пятно на диффе соответствует области тоста сверху, а не тексту ошибки под полем. На втором кадре ошибка оплаты по-прежнему показана тостом сверху, а не под полем красным, как требует §4.2. Значит, претензия не устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2626,
+          "outputTokens": 78,
+          "costUsd": 0.001175,
+          "latencyMs": 1398
+        },
+        "calls": [
+          {
+            "node": "explain",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2626,
+            "outputTokens": 78,
+            "costUsd": 0.0011752,
+            "latencyMs": 1306
+          }
+        ]
+      },
+      {
+        "id": "retest-toast-text-changed",
+        "type": "7 ретест: дифф есть, но не про претензию",
+        "strategy": "llm_only",
+        "outcome": "likely_unchanged",
+        "explanation": "На втором кадре ошибка оплаты по-прежнему показывается в виде красного блока сверху (тоста), а не под полем ввода, как требует §4.2. Позиция и стиль ошибки не изменились в соответствии с требованиями.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 1976,
+          "outputTokens": 65,
+          "costUsd": 0.000894,
+          "latencyMs": 1127
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1976,
+            "outputTokens": 65,
+            "costUsd": 0.0008944000000000001,
+            "latencyMs": 1074
+          }
+        ]
+      },
+      {
+        "id": "retest-incomparable-2x",
+        "type": "8 кадры несопоставимы",
+        "strategy": "diff_explain",
+        "outcome": "cannot_tell",
+        "explanation": "Кадры разного размера: 800×400 и 1600×800 — пиксели не сопоставить. Приложите кадр того же размера, что первый (800×400), или, если проверили на стенде, закройте без кадра.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 86
+        },
+        "calls": []
+      },
+      {
+        "id": "retest-incomparable-2x",
+        "type": "8 кадры несопоставимы",
+        "strategy": "llm_only",
+        "outcome": "likely_addressed",
+        "explanation": "На втором кадре кнопка «Сохранить» синяя, что соответствует требованию из §2.1 о primary-кнопке синего цвета #0B5FFF. Таким образом, претензия устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": false,
+          "falseAddressed": true,
+          "issues": [
+            "исход likely_addressed, ждали cannot_tell"
+          ]
+        },
+        "usage": {
+          "inputTokens": 3483,
+          "outputTokens": 58,
+          "costUsd": 0.001486,
+          "latencyMs": 1312
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 3483,
+            "outputTokens": 58,
+            "costUsd": 0.001486,
+            "latencyMs": 1265
+          }
+        ]
+      },
+      {
+        "id": "retest-near-blue-hex",
+        "type": "7 ретест: точный цвет по кадру не подтвердить",
+        "strategy": "diff_explain",
+        "outcome": "likely_addressed",
+        "explanation": "Красное на диффе совпадает с областью кнопки «Сохранить». Во втором кадре кнопка синяя, что соответствует требованию ТЗ §2.1 (#0B5FFF). Значит, претензия по цвету кнопки решена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": false,
+          "falseAddressed": true,
+          "issues": [
+            "исход likely_addressed, ждали cannot_tell | likely_unchanged"
+          ]
+        },
+        "usage": {
+          "inputTokens": 2651,
+          "outputTokens": 69,
+          "costUsd": 0.001171,
+          "latencyMs": 1149
+        },
+        "calls": [
+          {
+            "node": "explain",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2651,
+            "outputTokens": 69,
+            "costUsd": 0.0011708000000000003,
+            "latencyMs": 1049
+          }
+        ]
+      },
+      {
+        "id": "retest-near-blue-hex",
+        "type": "7 ретест: точный цвет по кадру не подтвердить",
+        "strategy": "llm_only",
+        "outcome": "likely_addressed",
+        "explanation": "На первом кадре кнопка серая, на втором — синяя, близкая к #0B5FFF, как указано в ТЗ §2.1. Подпись и расположение кнопки соответствуют требованиям. Значит, претензия по цвету кнопки устранена.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": false,
+          "falseAddressed": true,
+          "issues": [
+            "исход likely_addressed, ждали cannot_tell | likely_unchanged"
+          ]
+        },
+        "usage": {
+          "inputTokens": 2001,
+          "outputTokens": 74,
+          "costUsd": 0.000919,
+          "latencyMs": 1226
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2001,
+            "outputTokens": 74,
+            "costUsd": 0.0009188000000000001,
+            "latencyMs": 1179
+          }
+        ]
+      },
+      {
+        "id": "retest-incomparable-2x-still-gray",
+        "type": "8 кадры несопоставимы",
+        "strategy": "diff_explain",
+        "outcome": "cannot_tell",
+        "explanation": "Кадры разного размера: 800×400 и 1600×800 — пиксели не сопоставить. Приложите кадр того же размера, что первый (800×400), или, если проверили на стенде, закройте без кадра.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 74
+        },
+        "calls": []
+      },
+      {
+        "id": "retest-incomparable-2x-still-gray",
+        "type": "8 кадры несопоставимы",
+        "strategy": "llm_only",
+        "outcome": "likely_unchanged",
+        "explanation": "На втором кадре кнопка «Сохранить» по-прежнему серая, а не синяя #0B5FFF, как требует §2.1. Изменений, соответствующих требованиям, не видно.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 3483,
+          "outputTokens": 60,
+          "costUsd": 0.001489,
+          "latencyMs": 1401
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 3483,
+            "outputTokens": 60,
+            "costUsd": 0.0014892,
+            "latencyMs": 1357
+          }
+        ]
+      },
+      {
+        "id": "retest-incomparable-2x-other-screen",
+        "type": "8 кадры несопоставимы",
+        "strategy": "diff_explain",
+        "outcome": "cannot_tell",
+        "explanation": "Кадры разного размера: 800×400 и 1600×800 — пиксели не сопоставить. Приложите кадр того же размера, что первый (800×400), или, если проверили на стенде, закройте без кадра.",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": 0,
+          "latencyMs": 79
+        },
+        "calls": []
+      },
+      {
+        "id": "retest-incomparable-2x-other-screen",
+        "type": "8 кадры несопоставимы",
+        "strategy": "llm_only",
+        "outcome": "cannot_tell",
+        "explanation": "На первом кадре кнопка «Сохранить» серая, на втором кадре кнопка синяя, но с текстом «Оплатить» и на другой форме. Нет второго кадра с кнопкой «Сохранить» синего цвета, поэтому нельзя проверить, исправлена ли претензия именно по кнопке «Сохранить».",
+        "status": "awaiting_business_close",
+        "score": {
+          "ok": true,
+          "falseAddressed": false,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 3483,
+          "outputTokens": 86,
+          "costUsd": 0.001531,
+          "latencyMs": 1604
+        },
+        "calls": [
+          {
+            "node": "judge",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 3483,
+            "outputTokens": 86,
+            "costUsd": 0.0015308,
+            "latencyMs": 1564
+          }
+        ]
+      }
+    ],
+    "leakage": []
+  },
+  "summary": {
+    "triage": {
+      "n": 0,
+      "bindingOk": 0,
+      "bindingQuality": 0,
+      "abstained": 0,
+      "faithfulOk": 0,
+      "faithfulness": 0,
+      "errors": 0,
+      "avgCostUsd": 0,
+      "avgLatencyMs": 0,
+      "byType": [],
+      "totalCostUsd": 0,
+      "latencyP50Ms": 0,
+      "latencyP95Ms": 0,
+      "rewrites": {
+        "total": 0,
+        "cases": 0
+      },
+      "bindLoops": {
+        "total": 0,
+        "cases": 0
+      },
+      "retrieval": {
+        "n": 0,
+        "hitAt1": 0,
+        "hitAt3": 0,
+        "hitAt6": 0
+      },
+      "calls": {
+        "n": 0,
+        "truncated": 0,
+        "truncatedShare": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costUsd": 0,
+        "byNode": []
+      }
+    },
+    "retest": [
+      {
+        "strategy": "diff_explain",
+        "n": 15,
+        "ok": 13,
+        "quality": 0.8666666666666667,
+        "falseAddressed": 1,
+        "avgCostUsd": 0.0007050666666666667,
+        "avgLatencyMs": 848.2,
+        "avgTokens": 1626.1333333333334,
+        "totalCostUsd": 0.010576,
+        "latencyP50Ms": 1202,
+        "latencyP95Ms": 1931,
+        "withModel": 9,
+        "calls": {
+          "n": 9,
+          "truncated": 0,
+          "truncatedShare": 0,
+          "inputTokens": 23710,
+          "outputTokens": 682,
+          "costUsd": 0.010575200000000002,
+          "byNode": [
+            {
+              "node": "explain",
+              "models": [
+                "gpt-4.1-mini"
+              ],
+              "n": 9,
+              "truncated": 0,
+              "avgInputTokens": 2634.4444444444443,
+              "avgOutputTokens": 75.77777777777777,
+              "costUsd": 0.010575200000000002,
+              "latencyP50Ms": 1230,
+              "latencyP95Ms": 1802
+            }
+          ]
+        }
+      },
+      {
+        "strategy": "llm_only",
+        "n": 15,
+        "ok": 12,
+        "quality": 0.8,
+        "falseAddressed": 3,
+        "avgCostUsd": 0.0010186,
+        "avgLatencyMs": 1233.5333333333333,
+        "avgTokens": 2349.8,
+        "totalCostUsd": 0.015279,
+        "latencyP50Ms": 1222,
+        "latencyP95Ms": 1604,
+        "withModel": 15,
+        "calls": {
+          "n": 15,
+          "truncated": 0,
+          "truncatedShare": 0,
+          "inputTokens": 34263,
+          "outputTokens": 984,
+          "costUsd": 0.0152796,
+          "byNode": [
+            {
+              "node": "judge",
+              "models": [
+                "gpt-4.1-mini"
+              ],
+              "n": 15,
+              "truncated": 0,
+              "avgInputTokens": 2284.2,
+              "avgOutputTokens": 65.6,
+              "costUsd": 0.0152796,
+              "latencyP50Ms": 1167,
+              "latencyP95Ms": 1564
+            }
+          ]
+        }
+      }
+    ],
+    "leakageOk": true,
+    "winner": "diff_explain",
+    "totalCostUsd": 0.025855,
+    "calls": {
+      "n": 24,
+      "truncated": 0,
+      "truncatedShare": 0,
+      "inputTokens": 57973,
+      "outputTokens": 1666,
+      "costUsd": 0.0258548,
+      "byNode": [
+        {
+          "node": "explain",
+          "models": [
+            "gpt-4.1-mini"
+          ],
+          "n": 9,
+          "truncated": 0,
+          "avgInputTokens": 2634.4444444444443,
+          "avgOutputTokens": 75.77777777777777,
+          "costUsd": 0.010575200000000002,
+          "latencyP50Ms": 1230,
+          "latencyP95Ms": 1802
+        },
+        {
+          "node": "judge",
+          "models": [
+            "gpt-4.1-mini"
+          ],
+          "n": 15,
+          "truncated": 0,
+          "avgInputTokens": 2284.2,
+          "avgOutputTokens": 65.6,
+          "costUsd": 0.0152796,
+          "latencyP50Ms": 1167,
+          "latencyP95Ms": 1564
+        }
+      ]
+    }
+  }
+}
