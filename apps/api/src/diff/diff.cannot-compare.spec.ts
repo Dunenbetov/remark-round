@@ -160,7 +160,9 @@ describe('retest через API', () => {
     const res = { body: await retest(id, ZOOM, 'zoom.png') };
     expect(res.body.status).toBe('awaiting_business_close');
     expect(res.body.retest.outcome).toBe('cannot_tell');
-    expect(res.body.retest.explanation).toMatch(/Не могу сравнить кадры/);
+    // Заголовок «Не могу сравнить кадры» ставит интерфейс; в тексте — причина и выход (закрыть без кадра, ADR 010)
+    expect(res.body.retest.explanation).toMatch(/разбросаны|слишком разные/);
+    expect(res.body.retest.explanation).toMatch(/закройте без кадра/);
     expect(res.body.screenshots.map((s: { kind: string }) => s.kind)).toEqual(['original', 'retest']);
 
     await h.http.post(`/api/v1/projects/${h.projectId}/remarks/${id}/close`).set(h.auth('developer')).expect(403);

@@ -29,6 +29,19 @@ export interface RetestInput {
  * Граф ретеста (docs/GRAPH.md «Ретест», ADR 002): пиксели считает DiffModule, модель только поясняет,
  * относится ли красное к претензии (likely_addressed | likely_unchanged | cannot_tell). Закрывает бизнес.
  */
+/**
+ * Пояснение к «сравнить нельзя» — с выходом для заказчика, а не тупиком: кадры разного размера — самый частый случай
+ * у людей, которые режут скрин руками (замечание владельца 20.09). Пиксели при этом честно не сопоставимы (ADR 002),
+ * поэтому подсказываем размер первого кадра или закрытие без кадра (ADR 010). Заголовок «Не могу сравнить кадры»
+ * ставит интерфейс, здесь его не повторяем.
+ */
+export function cannotCompareText(r: { reason: string; before?: { width: number; height: number }; after?: { width: number; height: number } }): string {
+  if (r.before && r.after && (r.before.width !== r.after.width || r.before.height !== r.after.height)) {
+    return `Кадры разного размера: ${r.before.width}×${r.before.height} и ${r.after.width}×${r.after.height} — пиксели не сопоставить. Приложите кадр того же размера, что первый (${r.before.width}×${r.before.height}), или, если проверили на стенде, закройте без кадра.`;
+  }
+  return `${r.reason.charAt(0).toUpperCase()}${r.reason.slice(1)}. Проверьте на стенде и закройте без кадра, если исправлено.`;
+}
+
 export function buildRetestGraph(deps: GraphDeps, checkpointer: BaseCheckpointSaver) {
   const ctxOf = (s: S): ProjectContext => ({ userId: s.userId, projectId: s.projectId, role: s.role });
   const meta = (s: S, node: LlmCallMeta['node']): LlmCallMeta => ({ node, runId: s.runId, remarkId: s.remarkId, projectId: s.projectId });
@@ -47,7 +60,7 @@ export function buildRetestGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
     const [before, after] = await Promise.all([deps.storage.read(facts.originalKey), deps.storage.read(facts.retestKey)]);
     const r = deps.diff.compare(before, after);
     if (r.kind === 'cannot_compare') {
-      return { retestSize: r.after ?? null, result: { outcome: 'cannot_tell' as const, explanation: `Не могу сравнить кадры: ${r.reason}.` } };
+      return { retestSize: r.after ?? null, result: { outcome: 'cannot_tell' as const, explanation: cannotCompareText(r) } };
     }
     const retestSize = { width: r.width, height: r.height };
     if (r.changedPixels === 0 || !r.region) {

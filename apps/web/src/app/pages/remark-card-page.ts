@@ -101,7 +101,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                                 <span class="meta">{{ copy.after }}</span>
                               </button>
                             } @else if (role() === 'business') {
-                              <rr-drop-zone [title]="copy.attachNewFrameLong" [hint]="copy.pasteHint" [busy]="busy()" [paste]="true" size="wide" (file)="onDropped('retest', $event)" />
+                              <rr-drop-zone [title]="copy.attachNewFrameLong" [hint]="retestHint()" [busy]="busy()" [paste]="true" size="wide" (file)="onDropped('retest', $event)" />
                             }
                           </div>
                         }
@@ -1289,6 +1289,11 @@ export class RemarkCardPage {
   // ---------- кадры ----------
 
   protected readonly original = computed<Screenshot | null>(() => this.remark()!.screenshots.find((x) => x.kind === 'original') ?? null);
+  /** Подсказка дропзоны ретеста: размер первого кадра, если он известен, плюс как прикрепить. */
+  protected readonly retestHint = computed(() => {
+    const o = this.original();
+    return o?.width && o.height ? `${CARD.sameSizeHint(o.width, o.height)} · ${CARD.pasteHint}` : CARD.pasteHint;
+  });
 
   protected readonly frames = computed<ViewerFrame[]>(() => {
     const shots = this.remark()!.screenshots;

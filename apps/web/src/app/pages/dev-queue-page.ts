@@ -141,7 +141,7 @@ const QUOTE_LEN = 90;
       background: var(--rr-object);
       border-color: transparent;
       border-radius: var(--rr-r-xl);
-      padding: 0 var(--sp-3) var(--sp-3);
+      padding: var(--sp-2) var(--sp-3) var(--sp-3);
       box-shadow: var(--rr-shadow-ink), inset 0 1px 0 rgba(255, 255, 255, 0.18);
     }
     .rows--todo rr-group-header {
@@ -178,6 +178,14 @@ const QUOTE_LEN = 90;
     }
     .rows--todo .row--card + .row--card {
       margin-top: var(--sp-3);
+    }
+    /* «Готово · Всё передано на проверку» — тот же белый лист, что и строки: на индиго тёмный текст не читался */
+    .rows--todo .row--done,
+    .rows--todo .row--done:hover {
+      background: var(--rr-surface);
+      border-radius: var(--rr-r-md);
+      border-bottom: 0;
+      box-shadow: var(--rr-shadow-1), inset 0 1px 0 rgba(255, 255, 255, 0.9);
     }
     .rows--todo .row--card:hover,
     .rows--todo .row--card.row--focused {
