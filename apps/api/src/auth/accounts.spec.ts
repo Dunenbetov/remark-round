@@ -100,8 +100,8 @@ describe('accounts', () => {
     expect(typeof options.body.demoLogins).toBe('boolean');
     expect(options.body.registration).toBe('open');
     // Демо-персоны приходят с сервера только при demoLogins (D-2): в тестах NODE_ENV=test → включены
-    expect(options.body.demoAccounts).toHaveLength(3);
-    expect(options.body.demoAccounts.map((a: { role: string }) => a.role).sort()).toEqual(['business', 'developer', 'pm']);
+    expect(options.body.demoAccounts).toHaveLength(4); // Business · PM · Developer · Admin (20.09)
+    expect(options.body.demoAccounts.map((a: { role: string }) => a.role).sort()).toEqual(['admin', 'business', 'developer', 'pm']);
     expect(options.body.demoPassword).toBe('remarkround');
     // Sentry для SPA (R-L5): DSN приходит только при SENTRY_DSN_WEB
     expect(options.body.sentryDsn).toBeUndefined();

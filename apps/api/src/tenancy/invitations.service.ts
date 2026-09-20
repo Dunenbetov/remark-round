@@ -1,7 +1,8 @@
-import { GoneException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Invitation, Role } from '@remarkround/db';
 import { createHash, randomBytes } from 'node:crypto';
 import { securityEvent } from '../observability/security-log';
+import { isInstanceAdmin } from '../auth/instance-admin';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ProjectContext } from './project-context';
 
@@ -242,6 +243,11 @@ export class InvitationsService {
   }
 
   private async accept(row: Invitation, userId: string): Promise<void> {
+    // Администратор инстанса в проекты не входит (ADR 006, 20.09): ссылка на проект для него — 409, не membership
+    if (row.projectId) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+      if (user && isInstanceAdmin(user.email)) throw new ConflictException('Администратор инстанса не участвует в проектах — войдите под отдельным аккаунтом');
+    }
     await this.prisma.$transaction(async (tx) => {
       // Две вкладки принимают одну ссылку разом (I-4): acceptedAt ставится условно, второй получает 410, а не второе место
       const { count } = await tx.invitation.updateMany({ where: { id: row.id, acceptedAt: null }, data: { acceptedAt: new Date(), acceptedByUserId: userId } });

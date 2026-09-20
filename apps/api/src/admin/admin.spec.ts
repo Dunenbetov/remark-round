@@ -160,4 +160,17 @@ describe('instance admin', () => {
     await h.http.patch('/api/v1/admin/users/00000000-0000-4000-8000-000000000000').set(bearer(adminToken)).send({ disabled: true }).expect(404);
     await h.http.patch(`/api/v1/admin/users/${biz.id}`).set(bearer(adminToken)).send({ disabled: 'yes' }).expect(422);
   });
+
+  it('в проекты не входит (ADR 006, 20.09): e-mail администратора участником — 409, принять проектное приглашение — 409', async () => {
+    const res = await h.http.post(`/api/v1/projects/${h.projectId}/members`).set(h.auth('pm')).send({ email: 'instance-admin-2@test.dev', role: 'developer' }).expect(409);
+    expect(res.body.message).toMatch(/отдельный аккаунт/);
+    // Ссылку PM отправил адресно другому человеку, но принять её вошедшим может кто угодно — кроме администратора
+    const email = `for-admin-${tag}@client.test`;
+    const invited = await h.http.post(`/api/v1/projects/${h.projectId}/members`).set(h.auth('pm')).send({ email, role: 'developer' }).expect(201);
+    await h.http.post(`/api/v1/invitations/${invited.body.invitation.token}/accept`).set(bearer(adminToken)).expect(409);
+    expect(await h.prisma.membership.count({ where: { userId: created[0]!, projectId: h.projectId } })).toBe(0);
+    // Приглашение не сгорело: тот, кому оно адресовано, ещё может им воспользоваться
+    expect((await h.prisma.invitation.findFirst({ where: { projectId: h.projectId, email } }))?.acceptedAt).toBeNull();
+    await h.prisma.invitation.deleteMany({ where: { projectId: h.projectId, email } });
+  });
 });

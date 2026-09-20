@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { isInstanceAdmin } from '../auth/instance-admin';
 import type { Membership, Role, User } from '@remarkround/db';
 import { securityEvent } from '../observability/security-log';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,6 +25,8 @@ export interface MembersView {
 export type AddMemberResult = { kind: 'member'; member: MemberSummary } | { kind: 'invitation'; invitation: InvitationCreated };
 
 export const LAST_PM = 'Единственный руководитель приёмки — сначала назначьте другого';
+/** Администратор инстанса — не сторона и не участник (ADR 006, 20.09): для работы в проекте нужен отдельный аккаунт. */
+export const ADMIN_NOT_MEMBER = 'Администратор инстанса не участвует в проектах — заведите ему отдельный аккаунт';
 
 /**
  * Участники проекта (ADR 005): ведёт руководитель приёмки (pm) или admin. Роль — на проект.
@@ -53,6 +56,7 @@ export class MembersService {
    */
   async add(ctx: ProjectContext, email: string, role: Role): Promise<AddMemberResult> {
     const normalized = normalizeEmail(email);
+    if (isInstanceAdmin(normalized)) throw new ConflictException(ADMIN_NOT_MEMBER);
     const user = await this.prisma.user.findUnique({ where: { email: normalized } });
     const existing = user ? await this.prisma.membership.findUnique({ where: { userId_projectId: { userId: user.id, projectId: ctx.projectId } } }) : null;
     if (!user || !existing) return { kind: 'invitation', invitation: await this.invitations.create(ctx, normalized, role) };

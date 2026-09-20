@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, inject
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AccountService } from '../core/account.service';
 import { ApiService } from '../core/api.service';
-import { APP_NAME, LOGIN, ROLE_TITLE } from '../core/copy';
+import { APP_NAME, LOGIN, ROLE_ADMIN, ROLE_TITLE } from '../core/copy';
 import { homeUrl } from '../core/guards';
 import type { Role } from '../core/models';
 import { SessionService } from '../core/session.service';
@@ -363,7 +363,8 @@ export class LoginPage {
 
   protected readonly appName = APP_NAME;
   protected readonly copy = LOGIN;
-  protected readonly roleTitle = ROLE_TITLE;
+  /** Демо-администратор — не сторона: подпись «Администратор», а не проектная роль admin (ADR 006). */
+  protected readonly roleTitle: Record<Role, string> = { ...ROLE_TITLE, admin: ROLE_ADMIN };
   /** Демо-персоны и пароль приходят с сервера только на стенде (D-2): в бандле их нет. */
   protected readonly demoAccounts = signal<ReadonlyArray<{ email: string; name: string; role: Role; does: string }>>([]);
   protected readonly demoPassword = signal('');

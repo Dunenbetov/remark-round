@@ -59,8 +59,8 @@ services:
       RETEST_STRATEGY: ${RETEST_STRATEGY:-diff_explain}
       # Демо-данные при старте (миграции всегда): PM / Business / Developer, ТЗ + протокол, раунд 2. SEED_ON_START=false — выключить
       SEED_ON_START: ${SEED_ON_START:-true}
-      # Контур доступа (ADR 006): на демо-стенде администратор инстанса — демо-PM; регистрация открыта (NODE_ENV=development)
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-pm@remarkround.dev}
+      # Контур доступа (ADR 006): на демо-стенде администратор инстанса — отдельная демо-персона admin@ (видит только /admin); регистрация открыта (NODE_ENV=development)
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@remarkround.dev}
       REGISTRATION_MODE: ${REGISTRATION_MODE:-}
       REGISTRATION_DOMAINS: ${REGISTRATION_DOMAINS:-}
       # Пояс дат в xlsx-журнале (ADR 011): сервер в UTC, Excel поясов не знает

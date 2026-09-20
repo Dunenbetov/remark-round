@@ -21,7 +21,7 @@ docker compose up
 
 | Сервис | URL | Вход |
 |---|---|---|
-| Web (Angular) | http://localhost:4200 | pm@remarkround.dev (PM), business@ (заказчик), developer@ (разработчик), пароль `remarkround` — демо-персоны названы ролями |
+| Web (Angular) | http://localhost:4200 | pm@remarkround.dev (PM), business@ (заказчик), developer@ (разработчик), admin@ (администратор инстанса — только `/admin`), пароль `remarkround` — демо-персоны названы ролями |
 | API | http://localhost:3001/api/v1/health | JWT, `docs/API.md` |
 | MCP (Streamable HTTP) | http://localhost:3002/mcp | токен из `POST /api/v1/projects/:id/mcp-token` |
 | Langfuse | http://localhost:3000 | pm@remarkround.dev / `remarkround` |

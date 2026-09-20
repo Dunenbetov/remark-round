@@ -66,7 +66,8 @@ export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'acc
               {{ nav.addRemark }}
             </a>
           }
-          @if (user()) {
+          <!-- Администратор инстанса в проектах не участвует — приглашений у него нет (20.09) -->
+          @if (user() && !session.isInstanceAdmin()) {
             <rr-invitations-bell />
           }
           <rr-theme-toggle />
@@ -246,7 +247,7 @@ export class AppBar {
   /** Нижний таб-бар на узком экране. Карточка и форма выключают: у них своя липкая зона снизу. */
   readonly tabs = input(true);
 
-  private readonly session = inject(SessionService);
+  protected readonly session = inject(SessionService);
   protected readonly store = inject(RemarksStore);
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
@@ -347,7 +348,6 @@ export class AppBar {
     const role = this.role();
     const items: MenuItem[] = [{ id: 'profile', label: NAV.profile, separatorBefore: true }];
     if (role === 'business' || role === 'pm') items.push({ id: 'how', label: NAV.howItWorks });
-    if (this.session.isInstanceAdmin()) items.push({ id: 'admin', label: NAV.admin });
     items.push({ id: 'logout', label: NAV.logout, separatorBefore: true });
     return items;
   });
@@ -412,10 +412,6 @@ export class AppBar {
     if (id === 'how') {
       const role = this.role();
       if (role === 'business' || role === 'pm') this.onboarding.open(role);
-      return;
-    }
-    if (id === 'admin') {
-      void this.router.navigateByUrl('/admin');
       return;
     }
     if (id === 'profile') {

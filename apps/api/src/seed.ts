@@ -23,6 +23,7 @@ const DEMO_USER_ID: Partial<Record<Role, string>> = {
   pm: 'a1111111-1111-4111-8111-111111111111',
   business: 'a2222222-2222-4222-8222-222222222222',
   developer: 'a3333333-3333-4333-8333-333333333333',
+  admin: 'a4444444-4444-4444-8444-444444444444',
 };
 
 export const SEED = {
@@ -35,6 +36,8 @@ export const SEED = {
     const account = DEMO_ACCOUNTS.find((a) => a.role === role)!;
     return { id: DEMO_USER_ID[role]!, email: account.email, name: account.name, role };
   }),
+  /** Администратор инстанса стенда (ADMIN_EMAILS в docker-compose): без стороны и без проектов, видит только /admin. */
+  adminUser: { id: DEMO_USER_ID.admin!, email: DEMO_ACCOUNTS.find((a) => a.role === 'admin')!.email, name: 'Admin' },
   otherUser: { id: 'b1111111-1111-4111-8111-111111111111', email: 'other@other-tenant.dev', name: 'Чужой', role: 'admin' as Role },
   documents: [
     { id: 'd1111111-1111-4111-8111-111111111111', projectId: '11111111-1111-4111-8111-111111111111', kind: 'spec' as DocumentKind, title: 'ТЗ_Клиентский_кабинет_v1.4.md', fixture: 'fixtures/spec/TZ.md', effectiveAt: '2026-01-14' },
@@ -71,6 +74,12 @@ export async function seed(prisma: PrismaClient, options: { index?: boolean } = 
       update: { role: u.role },
     });
   }
+  const a = SEED.adminUser;
+  await prisma.user.upsert({
+    where: { id: a.id },
+    create: { id: a.id, email: a.email, name: a.name, passwordHash, preferredRole: null, canCreateProjects: true },
+    update: { email: a.email, name: a.name, passwordHash, preferredRole: null },
+  });
   const o = SEED.otherUser;
   await prisma.user.upsert({
     where: { email: o.email },

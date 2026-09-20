@@ -1,5 +1,5 @@
 /**
- * Убрать демо-данные (D-1 ревью беты): 4 демо-пользователя и 2 демо-проекта seed.ts по фиксированным id — на случай,
+ * Убрать демо-данные (D-1 ревью беты): 5 демо-пользователей и 2 демо-проекта seed.ts по фиксированным id — на случай,
  * если том стенда доехал до прода. Порядок — от листьев к корням: ссылки на Project без каскада (Remark, AgentRun,
  * DocumentChunk, ImportJob — RESTRICT), история и кадры уходят каскадом вместе с замечанием (триггер «только
  * дописывается» пропускает каскад, ADR 011). Других данных не трогает — только эти id. Файлы кадров в storage остаются.
@@ -16,7 +16,7 @@ export interface SeedRemovalIds {
 
 export const DEMO_IDS: SeedRemovalIds = {
   projectIds: [SEED.projectId, SEED.otherProjectId],
-  userIds: [...SEED.users.map((u) => u.id), SEED.otherUser.id],
+  userIds: [...SEED.users.map((u) => u.id), SEED.adminUser.id, SEED.otherUser.id],
 };
 
 export async function removeSeed(prisma: PrismaClient, ids: SeedRemovalIds = DEMO_IDS): Promise<{ projects: number; users: number }> {

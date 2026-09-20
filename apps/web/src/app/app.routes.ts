@@ -1,6 +1,6 @@
 import { inject } from '@angular/core';
 import { Routes } from '@angular/router';
-import { authGuard, homeUrl, instanceAdminGuard, legacyUrlGuard, projectGuard, projectHomeGuard, projectIdResolver, remarkIdResolver, roleGuard } from './core/guards';
+import { authGuard, homeUrl, instanceAdminGuard, legacyUrlGuard, notInstanceAdminGuard, projectGuard, projectHomeGuard, projectIdResolver, remarkIdResolver, roleGuard } from './core/guards';
 import { legacyMatcher, remarkMatcher, roundMatcher } from './core/links';
 import { ADMIN, DOCUMENTS, EMPTY, IMPORT, JOIN, LOGIN, NAV, NEW_REMARK, PROFILE, PROJECTS, REGISTER, RESET, ROUNDS, TEAM } from './core/copy';
 import { SessionService } from './core/session.service';
@@ -30,7 +30,7 @@ export const routes: Routes = [
   { path: 'reset/:token', component: ResetPage, title: RESET.pageTitle },
   { path: 'no-access', component: NoAccessPage, title: EMPTY.noAccess },
   // Без проекта — ожидание или создание; с проектами — список
-  { path: 'projects', component: ProjectsPage, title: PROJECTS.title, canActivate: [authGuard] },
+  { path: 'projects', component: ProjectsPage, title: PROJECTS.title, canActivate: [notInstanceAdminGuard] },
   { path: 'profile', component: ProfilePage, title: PROFILE.title, canActivate: [authGuard] },
   // Администрирование инстанса (ADR 006): люди и проекты поперёк тенантов
   { path: 'admin', component: AdminPage, title: ADMIN.title, canActivate: [instanceAdminGuard] },

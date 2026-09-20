@@ -10,6 +10,7 @@ import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
 import { DEMO_ACCOUNTS, DEMO_PASSWORD, type DemoAccount } from './demo-accounts';
+import { isInstanceAdmin } from './instance-admin';
 import { hashPassword, verifyPassword } from './password';
 
 export interface JwtPayload {
@@ -260,9 +261,7 @@ export class AuthService {
   }
 }
 
-export function isInstanceAdmin(email: string): boolean {
-  return config().adminEmails.has(normalizeEmail(email));
-}
+export { isInstanceAdmin } from './instance-admin';
 
 /** Администратор инстанса — скрытая роль «Администратор», не сторона: `preferredRole` у него всегда null, что бы ни лежало в строке. */
 export function toAuthUser(user: User): AuthUser {

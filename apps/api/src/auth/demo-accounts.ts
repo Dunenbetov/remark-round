@@ -18,4 +18,6 @@ export const DEMO_ACCOUNTS: readonly DemoAccount[] = [
   { email: 'business@remarkround.dev', name: 'Business', role: 'business', does: 'добавляет замечания, закрывает исправленное' },
   { email: 'pm@remarkround.dev', name: 'PM', role: 'pm', does: 'решает, работа ли это, по черновику с цитатой ТЗ' },
   { email: 'developer@remarkround.dev', name: 'Developer', role: 'developer', does: 'видит только принятые поломки' },
+  // Администратор инстанса (ADR 006, 20.09): не сторона и не участник проектов — только люди, проекты и приглашения
+  { email: 'admin@remarkround.dev', name: 'Admin', role: 'admin', does: 'люди, проекты и приглашения инстанса' },
 ];

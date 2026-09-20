@@ -12,6 +12,16 @@ export const authGuard: CanActivateFn = () => {
   return session.isLoggedIn() ? true : inject(Router).createUrlTree(['/login']);
 };
 
+/**
+ * Администратору инстанса — только /admin (решение владельца 20.09, ADR 006): в проектах он не участвует,
+ * даже если у его аккаунта есть membership. Проекты, ожидание приглашения и старые ссылки ведут в /admin.
+ */
+export const notInstanceAdminGuard: CanActivateFn = () => {
+  const session = inject(SessionService);
+  if (!session.isLoggedIn()) return inject(Router).createUrlTree(['/login']);
+  return session.isInstanceAdmin() ? inject(Router).createUrlTree(['/admin']) : true;
+};
+
 /** Параметр маршрута с учётом предков: `project` живёт на верхнем уровне, `round` — на сегменте раунда. */
 function param(route: ActivatedRouteSnapshot, name: string): string | null {
   for (let r: ActivatedRouteSnapshot | null = route; r; r = r.parent) {
@@ -34,6 +44,7 @@ export const projectGuard: CanActivateFn = async (route, state) => {
   const session = inject(SessionService);
   const router = inject(Router);
   const account = inject(AccountService);
+  if (session.isInstanceAdmin()) return router.createUrlTree(['/admin']);
   const key = route.paramMap.get('project') ?? '';
   let m = session.membershipByKey(key);
   if (!m) {
@@ -76,6 +87,7 @@ export const legacyUrlGuard: CanActivateFn = async (_route, state) => {
   const router = inject(Router);
   const account = inject(AccountService);
   const api = inject(ApiService);
+  if (session.isInstanceAdmin()) return router.createUrlTree(['/admin']);
   const [, projectId = '', ...rest] = state.url.split(/[?#]/)[0]!.split('/').filter(Boolean);
   let m = session.membership(projectId);
   if (!m) {
@@ -115,13 +127,14 @@ export function roleGuard(...roles: Role[]): CanActivateFn {
 
 /**
  * Корень: разработчика ведём в очередь, остальных — в последний раунд; без проекта — на страницу проектов (ожидание или создание).
- * Администратор инстанса без проектов (ADR 006, 17.09) — сразу в /admin: его дело — люди и приглашения, а не «ждать, пока добавят».
+ * Администратор инстанса (ADR 006, 17.09; 20.09 — всегда) — в /admin: его дело — люди и приглашения, не проекты.
  */
 export function homeUrl(session: SessionService): string {
   if (!session.isLoggedIn()) return '/login';
+  // Администратор инстанса — всегда /admin, проекты ему не показываем (20.09)
+  if (session.isInstanceAdmin()) return '/admin';
   const membership = session.membership(session.currentProjectId());
-  if (membership) return homeUrlFor(membership);
-  return session.isInstanceAdmin() ? '/admin' : '/projects';
+  return membership ? homeUrlFor(membership) : '/projects';
 }
 
 export function homeUrlFor(membership: Membership): string {
