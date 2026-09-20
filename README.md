@@ -110,6 +110,8 @@ cursor .    # команда ставится из самого Cursor: Command 
 
 Проверка: Settings → MCP → `remarkround` зелёный, 4 tool'а; в чате «какого цвета primary-кнопка по ТЗ?» — вызов `search_spec`. Сервер из `.cursor/mcp.json` Cursor может добавить выключенным — включите тумблер в том же окне (проверено 20.09).
 
+Как это выглядит: [скриншот сессии Claude Code](docs/screenshots/claude-code-skill-mcp.png) — Skill подгрузился сам на вопрос «баг или хотелка?», `search_spec` ответил «Опоры нет» на вопрос не по теме, `get_round_remarks` отдал очередь раунда (20.09.2026).
+
 Skill в Cursor подключён ссылкой [`.cursor/skills/uat-triage`](.cursor/skills/) на тот же каталог `skills/uat-triage`: Cursor ищет скиллы в `.cursor/skills/`, `.agents/skills/` и совместимых `.claude/skills/`, а раскладку плагина Claude Code (`skills/` в корне) не читает (документация Cursor, проверено 20.09). Файл один, копий нет. После добавления ссылки Cursor нужно перезапустить; Skill появится в Settings → Skills как `uat-triage`.
 
 ## Соответствие требованиям курса nFactorial
