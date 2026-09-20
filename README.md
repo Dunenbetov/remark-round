@@ -65,7 +65,7 @@ docker compose up
 
 ## Установка Skill и MCP в IDE
 
-Skill `uat-triage` и MCP-сервер `remarkround` работают и вне веб-интерфейса — в ИИ-ассистенте редактора. Корень репозитория устроен как плагин Claude Code: манифест [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json), Skill — [`skills/uat-triage/`](skills/uat-triage/), MCP-сервер — [`.mcp.json`](.mcp.json). Для Cursor тот же сервер описан в [`.cursor/mcp.json`](.cursor/mcp.json).
+Skill `uat-triage` и MCP-сервер `remarkround` работают и вне веб-интерфейса — в ИИ-ассистенте редактора. Корень репозитория устроен как плагин Claude Code: манифест [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json), Skill — [`skills/uat-triage/`](skills/uat-triage/), MCP-сервер — [`.mcp.json`](.mcp.json). Для Cursor тот же сервер описан в [`.cursor/mcp.json`](.cursor/mcp.json), а тот же Skill подключён ссылкой `.cursor/skills/uat-triage` — копии файла нет.
 
 Рядом с `SKILL.md` лежат справочники [`references/`](skills/uat-triage/references/): классы, примеры из golden, инструменты по шагам. Тело `SKILL.md` на них не ссылается: оно без изменений идёт в системный промпт графа, а промпт заморожен до замеров M1.
 
@@ -108,7 +108,9 @@ claude --plugin-dir .    # из корня репозитория, в том ж�
 cursor .    # команда ставится из самого Cursor: Command Palette → Shell Command: Install 'cursor' command
 ```
 
-Проверка: Settings → MCP → `remarkround` зелёный, 4 tool'а; в чате «какого цвета primary-кнопка по ТЗ?» — вызов `search_spec`. Процедуру Skill Cursor получает MCP-prompt'ом `uat-triage`.
+Проверка: Settings → MCP → `remarkround` зелёный, 4 tool'а; в чате «какого цвета primary-кнопка по ТЗ?» — вызов `search_spec`. Сервер из `.cursor/mcp.json` Cursor может добавить выключенным — включите тумблер в том же окне (проверено 20.09).
+
+Skill в Cursor подключён ссылкой [`.cursor/skills/uat-triage`](.cursor/skills/) на тот же каталог `skills/uat-triage`: Cursor ищет скиллы в `.cursor/skills/`, `.agents/skills/` и совместимых `.claude/skills/`, а раскладку плагина Claude Code (`skills/` в корне) не читает (документация Cursor, проверено 20.09). Файл один, копий нет. После добавления ссылки Cursor нужно перезапустить; Skill появится в Settings → Skills как `uat-triage`.
 
 ## Соответствие требованиям курса nFactorial
 
