@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { Title } from '@angular/platform-browser';
 import { Router, RouterLink } from '@angular/router';
 import type { JoinAck, Phase, Presence, Remark, RemarkHistoryEntry, Role, Screenshot, ServerEvent, VerdictCode } from '../core/models';
-import { APP_NAME, CARD, DECISION, DEV_QUEUE, EMPTY, HISTORY_ACTION, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, PillTone, QUEUE, ROLE_SHORT, ROUND, STAMP_LABEL, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
+import { APP_NAME, CARD, DECISION, DEV_QUEUE, EMPTY, HISTORY_ACTION, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, PillTone, QUEUE, ROLE_SHORT, ROUND, STAMP_LABEL, STATUS_LABEL, TITLE, VERDICT_LABEL, statusLabelFor } from '../core/copy';
 import { filterRemarks } from '../core/journal-filter';
 import { PendingActionService } from '../core/pending-action.service';
 import { QueueService } from '../core/queue.service';
@@ -74,7 +74,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                   (go)="go($event)"
                 />
                 <article class="paper card" [attr.data-status]="r.status">
-                  <rr-card-header [number]="r.number" [title]="r.title" [status]="showPill() ? r.status : null" [meta]="metaLine()" [presence]="presence()" [stamp]="headerStamp()" />
+                  <rr-card-header [number]="r.number" [title]="r.title" [status]="showPill() ? r.status : null" [role]="role()" [meta]="metaLine()" [presence]="presence()" [stamp]="headerStamp()" />
                   @if (role() === 'business' || role() === 'pm') {
                     <rr-process-strip class="card__strip" mode="static" [current]="r.status" [role]="role()" [compact]="true" />
                   }
@@ -186,11 +186,19 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                             @if (r.seen) {
                               <div class="soft"><span class="seen">{{ copy.seen }}</span> {{ r.seen }}</div>
                             }
-                            @if (specCitation(); as c) {
-                              <rr-citation [citation]="c" [documentsLink]="documentsLink()" [visible]="quoteVisible()" />
+                            <!-- заказчик до решения: черновика и цитат ему не показываем (ADR 007), а не пустую колонку -->
+                            @if (customerWaiting()) {
+                              <div class="soft">{{ copy.customerWaiting }}</div>
                             }
-                            @for (c of otherCitations(); track c.id) {
-                              <rr-citation [citation]="c" />
+                            @if (draftShown()) {
+                              @if (specCitation(); as c) {
+                                <rr-citation [citation]="c" [documentsLink]="documentsLink()" [visible]="quoteVisible()" />
+                              } @else if (noSpecNote()) {
+                                <div class="soft">{{ copy.noSpecCitation }}</div>
+                              }
+                              @for (c of otherCitations(); track c.id) {
+                                <rr-citation [citation]="c" />
+                              }
                             }
                             @if (!running()) {
                               <div class="draft fade" [style.opacity]="draftVisible() ? 1 : 0">
@@ -327,7 +335,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                               <span class="history__who">{{ e.by ? person(e.by.name, e.by.role) : copy.historySystem }}</span>
                               <span>{{ actionLabel(e) }}</span>
                               @if (e.fromStatus !== e.toStatus) {
-                                <span class="history__to">→ {{ statusLabel[e.toStatus] }}</span>
+                                <span class="history__to">→ {{ statusLabelFor(e.toStatus, role()) }}</span>
                               }
                               @if (e.detail) {
                                 <span class="meta history__detail">{{ e.detail }}</span>
@@ -799,6 +807,7 @@ export class RemarkCardPage {
   protected readonly empty = EMPTY;
   protected readonly newRemark = NEW_REMARK;
   protected readonly statusLabel = STATUS_LABEL;
+  protected readonly statusLabelFor = statusLabelFor;
   protected readonly pressed = this.shortcuts.pressed;
   /** История переходов (аудит: remark-history): грузится при раскрытии и перечитывается при каждом изменении карточки. */
   protected readonly history = signal<RemarkHistoryEntry[]>([]);
@@ -1234,7 +1243,7 @@ export class RemarkCardPage {
     }
     if (!r.verdict) return null;
     const code = r.verdict.code;
-    const label = code === 'rejected_binding' ? STATUS_LABEL[r.status] : VERDICT_LABEL[code];
+    const label = code === 'rejected_binding' ? statusLabelFor(r.status, this.role()) : VERDICT_LABEL[code];
     return { label, who: r.verdict.userName ?? '', at: dateTimeRu(r.verdict.at), changeable: false, stamp: STAMP_LABEL[code], tone: STAMP_TONE[code], comment: r.verdict.comment };
   });
 
@@ -1320,6 +1329,15 @@ export class RemarkCardPage {
 
   protected readonly specCitation = computed(() => this.remark()!.citations.find((c) => c.source === 'spec') ?? null);
   protected readonly otherCitations = computed(() => this.remark()!.citations.filter((c) => c.source !== 'spec'));
+  /** Заказчику черновик приходит только вместе с решением (ADR 007) — до него и цитаты не показываем. */
+  protected readonly draftShown = computed(() => this.role() !== 'business' || (this.remark()?.draft.length ?? 0) > 0);
+  /** Заказчик смотрит замечание, которое ждёт руководителя приёмки: вместо пустой колонки — объяснение. */
+  protected readonly customerWaiting = computed(() => !this.running() && !this.draftShown() && this.remark()?.status === 'awaiting_pm');
+  /** Разбор был, а цитаты из ТЗ нет — так и пишем, а не оставляем место пустым (20.09). */
+  protected readonly noSpecNote = computed(() => {
+    const s = this.remark()!.status;
+    return !this.running() && s !== 'imported' && s !== 'reopened' && s !== 'duplicate' && s !== 'triaging';
+  });
   protected readonly documentsLink = computed(() => links.documents(this.slug()));
 
   protected readonly retestVerdict = computed(() => {
@@ -1361,7 +1379,7 @@ export class RemarkCardPage {
       case 'closed':
         return PHASE_EXTRA.closedAt(r.closedByName ?? '', dateTimeRu(r.closedAt));
       default:
-        return STATUS_LABEL[r.status];
+        return statusLabelFor(r.status, role);
     }
   });
 

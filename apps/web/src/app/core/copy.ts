@@ -30,6 +30,21 @@ export const STATUS_LABEL: Record<RemarkStatus, string> = {
   reopened: 'Открыли снова',
 };
 
+/**
+ * Те же статусы для того, от кого решения не ждут: заказчик после «Добавить замечание» видит не «Ждёт вашего решения»,
+ * а чьего именно (замечание владельца 20.09). Тексты — как в xlsx сервера (STATUS_LABEL_RU).
+ */
+export const OTHER_STATUS_LABEL: Partial<Record<RemarkStatus, string>> = {
+  awaiting_pm: 'Ждёт решения руководителя приёмки',
+  unspecified: 'Нужно решение заказчика',
+};
+
+/** Подпись статуса для того, кто смотрит: «вашего» — только адресату решения, остальным — чьего. */
+export function statusLabelFor(status: RemarkStatus, role: Role | null | undefined): string {
+  const mine = (status === 'awaiting_pm' && role === 'pm') || (status === 'unspecified' && role === 'business');
+  return (mine ? undefined : OTHER_STATUS_LABEL[status]) ?? STATUS_LABEL[status];
+}
+
 export type PillTone = 'wait' | 'work' | 'muted' | 'ok' | 'danger';
 
 export const STATUS_TONE: Record<RemarkStatus, PillTone> = {
@@ -198,6 +213,10 @@ export const CARD = {
   frame: 'Кадр',
   viewerClose: 'Закрыть',
   awaitingPmNote: 'Решение принимает руководитель приёмки.',
+  /** Заказчик до решения: черновика и цитат ему не показываем (ADR 007) — вместо пустой колонки объяснение. */
+  customerWaiting: 'Разбор готов и ждёт руководителя приёмки. Что нашли в документах и что решили — появится здесь вместе с решением.',
+  /** Цитаты из ТЗ нет: место, которое подтверждало бы замечание, не нашлось (20.09). */
+  noSpecCitation: 'В ТЗ опоры не нашли: места, которое описывало бы этот экран, в тексте нет.',
   zoomOpen: 'Открыть кадр',
   fromJournal: (id: string) => `Из журнала · ${id}`,
   severity: 'Важность:',
@@ -621,6 +640,13 @@ export const DOCUMENTS = {
     addendum: { title: 'Добавьте доп. соглашение', hint: 'Если было · PDF, DOCX, DOC или MD' },
   },
   newVersion: 'Новая версия',
+  download: 'Скачать',
+  /** Пустое место полки для тех, кто не загружает (заказчик, разработчик): документы кладёт руководитель приёмки. */
+  emptySlot: {
+    spec: { title: 'ТЗ ещё не загружено', hint: 'Его загружает руководитель приёмки' },
+    protocol: { title: 'Протокола нет', hint: 'Если был — его загрузит руководитель приёмки' },
+    addendum: { title: 'Доп. соглашения нет', hint: 'Если было — его загрузит руководитель приёмки' },
+  },
   moreTitle: 'Ещё в пакете',
   searchTitle: 'Проверить, что найдётся',
   searchPlaceholder: 'Например: цвет кнопки «Сохранить»',

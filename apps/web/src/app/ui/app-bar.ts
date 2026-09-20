@@ -78,13 +78,18 @@ export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'acc
         </div>
       </div>
     </header>
-    @if (tabs() && !brandOnly() && projectId() && role() !== 'developer') {
+    @if (tabs() && !brandOnly() && projectId()) {
       <nav class="tabs" [attr.aria-label]="nav.sections">
-        <a class="tabs__link" [class.tabs__link--on]="section() === 'journal'" [attr.aria-current]="section() === 'journal' ? 'page' : null" [routerLink]="journalLink()">{{ nav.journal }}</a>
-        <a class="tabs__link" [class.tabs__link--on]="section() === 'documents'" [attr.aria-current]="section() === 'documents' ? 'page' : null" [routerLink]="docsLink()">{{ nav.documents }}</a>
-        <a class="tabs__link" [class.tabs__link--on]="section() === 'import'" [attr.aria-current]="section() === 'import' ? 'page' : null" [routerLink]="importLink()">{{ nav.import }}</a>
-        @if (canManage()) {
-          <a class="tabs__link" [class.tabs__link--on]="section() === 'team'" [attr.aria-current]="section() === 'team' ? 'page' : null" [routerLink]="teamLink()">{{ nav.team }}</a>
+        @if (role() === 'developer') {
+          <a class="tabs__link" [class.tabs__link--on]="section() === 'dev'" [attr.aria-current]="section() === 'dev' ? 'page' : null" [routerLink]="devLink()">{{ nav.dev }}</a>
+          <a class="tabs__link" [class.tabs__link--on]="section() === 'documents'" [attr.aria-current]="section() === 'documents' ? 'page' : null" [routerLink]="docsLink()">{{ nav.documents }}</a>
+        } @else {
+          <a class="tabs__link" [class.tabs__link--on]="section() === 'journal'" [attr.aria-current]="section() === 'journal' ? 'page' : null" [routerLink]="journalLink()">{{ nav.journal }}</a>
+          <a class="tabs__link" [class.tabs__link--on]="section() === 'documents'" [attr.aria-current]="section() === 'documents' ? 'page' : null" [routerLink]="docsLink()">{{ nav.documents }}</a>
+          <a class="tabs__link" [class.tabs__link--on]="section() === 'import'" [attr.aria-current]="section() === 'import' ? 'page' : null" [routerLink]="importLink()">{{ nav.import }}</a>
+          @if (canManage()) {
+            <a class="tabs__link" [class.tabs__link--on]="section() === 'team'" [attr.aria-current]="section() === 'team' ? 'page' : null" [routerLink]="teamLink()">{{ nav.team }}</a>
+          }
         }
       </nav>
     }
@@ -317,12 +322,15 @@ export class AppBar {
     return items;
   });
 
-  /** Разделы: у PM и бизнеса — Журнал (со счётчиком «Ждут меня») · Документы · Импорт; у разработчика — «В работу». */
+  /** Разделы: у PM и бизнеса — Журнал (со счётчиком «Ждут меня») · Документы · Импорт; у разработчика — «В работу» · Документы (пакет читает вся команда, 20.09). */
   protected readonly segments = computed<SegmentItem[]>(() => {
     const role = this.role();
     if (role === 'developer') {
       const count = this.store.devQueue().filter((r) => r.status === 'defect').length;
-      return [{ id: 'dev', label: NAV.dev, count, link: links.dev(this.slug()) }];
+      return [
+        { id: 'dev', label: NAV.dev, count, link: this.devLink() },
+        { id: 'documents', label: NAV.documents, link: this.docsLink() },
+      ];
     }
     const count = filterRemarks(this.store.remarks(), 'Ждут меня', role).length;
     const items: SegmentItem[] = [
@@ -367,6 +375,7 @@ export class AppBar {
   protected readonly newRemarkLink = computed(() => links.newRemark(this.slug(), this.store.roundNumber()));
   protected readonly importLink = computed(() => links.import(this.slug(), this.store.roundNumber()));
   protected readonly docsLink = computed(() => links.documents(this.slug()));
+  protected readonly devLink = computed(() => links.dev(this.slug()));
   protected readonly teamLink = computed(() => links.team(this.slug()));
 
   protected onContextPick(id: string): void {

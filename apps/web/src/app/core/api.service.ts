@@ -282,6 +282,11 @@ export class ApiService {
     return this.run(this.http.get<ApiDocument[]>(`${API_BASE}/projects/${projectId}/documents`));
   }
 
+  /** Файл документа как загрузили; приходит с Bearer, поэтому blob → saveBlob (core/download.ts). */
+  documentFile(projectId: string, documentId: string): Promise<Blob> {
+    return this.run(this.http.get(`${API_BASE}/projects/${projectId}/documents/${documentId}/file`, { responseType: 'blob' }));
+  }
+
   uploadDocument(projectId: string, file: File, kind: DocumentKind): Promise<ApiDocument> {
     const form = new FormData();
     form.append('file', file, file.name);

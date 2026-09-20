@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, input, signal, untracked } from '@angular/core';
-import type { Presence, RemarkStatus } from '../core/models';
+import type { Presence, RemarkStatus, Role } from '../core/models';
 import { PRESENCE, PillTone, ROLE_GENITIVE } from '../core/copy';
 import { StatusPill } from './status-pill';
 import { Stamp } from './stamp';
@@ -25,7 +25,7 @@ type ShownPresence = Presence & { leaving?: boolean };
         <span class="n-display ch__n" style="view-transition-name: remark-n">{{ number() }}</span>
         <h1 class="ch__title">{{ title() }}</h1>
         @if (status()) {
-          <rr-status-pill class="ch__pill" [status]="status()!" [dot]="true" />
+          <rr-status-pill class="ch__pill" [status]="status()!" [role]="role()" [dot]="true" />
         }
         @if (stamp(); as s) {
           <rr-stamp class="ch__stamp" [label]="s.label" [tone]="s.tone" />
@@ -151,6 +151,8 @@ export class CardHeader {
   readonly title = input.required<string>();
   /** null → пилюлю не рендерить. */
   readonly status = input<RemarkStatus | null>(null);
+  /** Кто смотрит — для подписи статуса («вашего» только своему адресату). */
+  readonly role = input<Role | null>(null);
   readonly meta = input<string>('');
   readonly presence = input<Presence[]>([]);
   readonly stamp = input<HeaderStamp | null>(null);

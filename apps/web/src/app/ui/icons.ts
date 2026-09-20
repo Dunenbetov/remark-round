@@ -11,6 +11,7 @@ export type IconName =
   | 'close'
   | 'search'
   | 'upload'
+  | 'download'
   | 'paperclip'
   | 'image'
   | 'zoom-in'
@@ -50,6 +51,7 @@ const ICONS: Record<IconName, string> = {
   close: 'M6 6l12 12M18 6 6 18',
   search: LENS,
   upload: 'M12 16V4m-5 5 5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3',
+  download: 'M12 4v12m-5-5 5 5 5-5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3',
   paperclip:
     'm21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48',
   image:

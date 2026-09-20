@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { Title } from '@angular/platform-browser';
 import { Router, RouterLink } from '@angular/router';
 import type { Remark, Screenshot } from '../core/models';
-import { APP_NAME, CARD, EMPTY, JOURNAL, JournalChip, NAV, PHASE_EXTRA, QUEUE, ROLE_SHORT, ROLE_TITLE, ROUNDS, STATUS_LABEL, TITLE, VERDICT_LABEL } from '../core/copy';
+import { APP_NAME, CARD, EMPTY, JOURNAL, JournalChip, NAV, PHASE_EXTRA, QUEUE, ROLE_SHORT, ROLE_TITLE, ROUNDS, STATUS_LABEL, TITLE, VERDICT_LABEL, statusLabelFor } from '../core/copy';
 import { dateRu } from '../core/format';
 import { filterRemarks } from '../core/journal-filter';
 import { OnboardingService } from '../core/onboarding.service';
@@ -138,7 +138,7 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
                               <div class="journal__text">
                                 <span class="journal__title-text">{{ r.title }}</span>
                                 <span class="meta journal__meta">{{ metaLine(r) }}</span>
-                                <rr-status-pill class="journal__status-inline" [status]="r.status" [dot]="true" />
+                                <rr-status-pill class="journal__status-inline" [status]="r.status" [role]="role()" [dot]="true" />
                               </div>
                               @if (thumb(r); as s) {
                                 <span class="thumb journal__thumb"><rr-shot [variant]="s.variant ?? 'grey'" [src]="s.url" /></span>
@@ -151,7 +151,7 @@ const TILE_LABEL: Partial<Record<JournalChip, string>> = {
                               <button type="button" class="btn btn--text act" [disabled]="store.loading()" (click)="link(r)">{{ linkLabel(r.duplicateOfNumber) }}</button>
                             }
                           </td>
-                          <td class="journal__status"><rr-status-pill [status]="r.status" /></td>
+                          <td class="journal__status"><rr-status-pill [status]="r.status" [role]="role()" /></td>
                         </tr>
                       }
                     }
@@ -593,7 +593,7 @@ export class JournalPage {
       const label = VERDICT_LABEL[r.verdict.code];
       return r.verdict.userName ? `${label} · ${r.verdict.userName}` : label;
     }
-    return STATUS_LABEL[r.status];
+    return statusLabelFor(r.status, this.role());
   }
 
   protected linkLabel(n: number): string {

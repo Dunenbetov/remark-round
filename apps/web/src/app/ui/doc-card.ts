@@ -11,7 +11,7 @@ const TEXT_EXT = new Set(['md', 'txt', 'markdown']);
  * Карточка документа проекта: eyebrow типа, имя файла, «дата · N фрагментов», пилюля статуса.
  * Число фрагментов — то, что реально попадёт в поиск; страниц нет (у сервера их нет).
  * Пульс на uploaded/parsed — документ ещё читаем; failed — под пилюлей подсказка загрузить снова.
- * С `versionLabel` справа внизу — «Новая версия»: выбор файла того же типа.
+ * С `versionLabel` справа внизу — «Новая версия»: выбор файла того же типа; с `downloadLabel` — «Скачать» (вся команда).
  */
 @Component({
   selector: 'rr-doc-card',
@@ -37,13 +37,21 @@ const TEXT_EXT = new Set(['md', 'txt', 'markdown']);
           <span class="meta dc__retry">{{ retryUpload }}</span>
         }
       </div>
-      @if (versionLabel(); as label) {
-        <label class="btn btn--text btn--sm dc__version" [class.dc__version--busy]="busy()">
-          <input type="file" class="visually-hidden" [accept]="accept()" [disabled]="busy()" (change)="onPick($event)" />
-          <rr-icon name="upload" [size]="16" />
-          {{ busy() ? uploading : label }}
-        </label>
-      }
+      <div class="dc__actions">
+        @if (downloadLabel(); as label) {
+          <button type="button" class="btn btn--text btn--sm" [class.btn--busy]="downloading()" [disabled]="downloading()" (click)="download.emit()">
+            <rr-icon name="download" [size]="16" />
+            {{ label }}
+          </button>
+        }
+        @if (versionLabel(); as label) {
+          <label class="btn btn--text btn--sm dc__version" [class.dc__version--busy]="busy()">
+            <input type="file" class="visually-hidden" [accept]="accept()" [disabled]="busy()" (change)="onPick($event)" />
+            <rr-icon name="upload" [size]="16" />
+            {{ busy() ? uploading : label }}
+          </label>
+        }
+      </div>
     </div>
   `,
   styles: `
@@ -101,6 +109,15 @@ const TEXT_EXT = new Set(['md', 'txt', 'markdown']);
       gap: var(--sp-2);
       min-width: 0;
     }
+    .dc__actions {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-1);
+      flex: none;
+    }
+    .dc__actions .btn {
+      gap: var(--sp-1);
+    }
     /* «Новая версия» — label над скрытым input[type=file], как в rr-drop-zone: клик открывает выбор файла */
     .dc__version {
       flex: none;
@@ -128,8 +145,12 @@ export class DocCard {
   readonly versionLabel = input<string | null>(null);
   readonly accept = input('');
   readonly busy = input(false);
+  /** Подпись «Скачать»; без неё кнопки нет. Файл отдаёт страница: он приходит с Bearer. */
+  readonly downloadLabel = input<string | null>(null);
+  readonly downloading = input(false);
   /** Файл новой версии; тип документа знает страница (слот полки). */
   readonly file = output<File>();
+  readonly download = output<void>();
 
   protected readonly statusLabel = DOC_STATUS_LABEL;
   protected readonly statusTone = DOC_STATUS_TONE;

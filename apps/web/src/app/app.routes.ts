@@ -44,7 +44,8 @@ export const routes: Routes = [
     resolve: { projectId: projectIdResolver },
     children: [
       { path: '', pathMatch: 'full', component: JournalPage, title: NAV.journal, data: { round: 'latest' }, canActivate: [projectHomeGuard, roleGuard('pm', 'business', 'admin')] },
-      { path: 'documents', component: DocumentsPage, title: DOCUMENTS.title, canActivate: [roleGuard('pm', 'business', 'admin')] },
+      // Пакет читает вся команда, включая разработчика (20.09); загружает только pm/admin — это решает сама страница и сервер
+      { path: 'documents', component: DocumentsPage, title: DOCUMENTS.title, canActivate: [roleGuard('pm', 'business', 'admin', 'developer')] },
       { path: 'team', component: TeamPage, title: TEAM.title, canActivate: [roleGuard('pm', 'admin')] },
       { path: 'dev', component: DevQueuePage, title: NAV.dev, canActivate: [roleGuard('developer')] },
       { path: 'rounds', component: RoundsPage, title: ROUNDS.title, canActivate: [roleGuard('pm', 'business', 'admin')] },

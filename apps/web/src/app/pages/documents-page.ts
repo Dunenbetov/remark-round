@@ -1,12 +1,16 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { ApiService } from '../core/api.service';
 import { DOCUMENTS, ROLE_TITLE } from '../core/copy';
-import type { DocumentKind } from '../core/models';
+import { saveBlob } from '../core/download';
+import { errorMessage } from '../core/errors';
+import type { DocumentKind, ProjectDocument } from '../core/models';
 import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { AppBar } from '../ui/app-bar';
 import { DocCard } from '../ui/doc-card';
 import { DocSearch } from '../ui/doc-search';
 import { DropZone } from '../ui/drop-zone';
+import { EmptyState } from '../ui/empty-state';
 import { ErrorBanner } from '../ui/error-banner';
 import { PageHeader } from '../ui/page-header';
 import { Skeleton } from '../ui/skeleton';
@@ -26,18 +30,20 @@ const UPLOAD_KINDS: ReadonlyArray<UploadKind> = ['spec', 'protocol', 'addendum']
  * Ряд 2 (если есть): «Ещё в пакете» — прежние версии и исходники журналов.
  * Последний ряд: поиск «что найдётся» на две колонки + «Зачем документы». Строки тянутся до одной высоты.
  * Пока документ читается (uploaded/parsed), список опрашиваем раз в 2 с.
+ * Загружает только руководитель приёмки (и admin); заказчик и разработчик читают и скачивают (20.09): у них вместо
+ * дропзоны — «ТЗ ещё не загружено», на карточке нет «Новой версии».
  */
 @Component({
   selector: 'rr-documents-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AppBar, PageHeader, ErrorBanner, Skeleton, DropZone, DocCard, DocSearch],
+  imports: [AppBar, PageHeader, ErrorBanner, Skeleton, DropZone, DocCard, DocSearch, EmptyState],
   template: `
     <div class="page">
       <rr-app-bar />
       <main id="main" class="page__body page__body--loose">
         <rr-page-header size="lg" [eyebrow]="eyebrow()" [title]="copy.title" [subtitle]="copy.subtitle" />
 
-        @if (store.error(); as err) {
+        @if (store.error() ?? downloadError(); as err) {
           <rr-error-banner class="banner" [message]="err" [busy]="store.loading()" (retry)="reload()" />
         }
 
@@ -47,7 +53,19 @@ const UPLOAD_KINDS: ReadonlyArray<UploadKind> = ['spec', 'protocol', 'addendum']
           } @else {
             @for (s of slots(); track s.kind; let i = $index) {
               @if (s.doc; as d) {
-                <rr-doc-card [doc]="d" [index]="i" [versionLabel]="copy.newVersion" [accept]="accept" [busy]="uploadingKind() === s.kind" (file)="upload($event, s.kind)" />
+                <rr-doc-card
+                  [doc]="d"
+                  [index]="i"
+                  [versionLabel]="canUpload() ? copy.newVersion : null"
+                  [accept]="accept"
+                  [busy]="uploadingKind() === s.kind"
+                  [downloadLabel]="copy.download"
+                  [downloading]="downloading() === d.id"
+                  (file)="upload($event, s.kind)"
+                  (download)="download(d)"
+                />
+              } @else if (!canUpload()) {
+                <rr-empty-state class="slot rise" [style.--i]="i" [title]="copy.emptySlot[s.kind].title" [hint]="copy.emptySlot[s.kind].hint" />
               } @else {
                 <rr-drop-zone
                   class="slot rise"
@@ -66,7 +84,7 @@ const UPLOAD_KINDS: ReadonlyArray<UploadKind> = ['spec', 'protocol', 'addendum']
             @if (extras().length) {
               <h2 class="grid__all more">{{ copy.moreTitle }}</h2>
               @for (d of extras(); track d.id; let i = $index) {
-                <rr-doc-card [doc]="d" [index]="i + 3" />
+                <rr-doc-card [doc]="d" [index]="i + 3" [downloadLabel]="copy.download" [downloading]="downloading() === d.id" (download)="download(d)" />
               }
             }
           }
@@ -151,6 +169,7 @@ export class DocumentsPage {
   readonly projectId = input.required<string>();
 
   protected readonly store = inject(RemarksStore);
+  private readonly api = inject(ApiService);
   private readonly session = inject(SessionService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -159,9 +178,16 @@ export class DocumentsPage {
 
   /** Какой слот сейчас загружает файл: спиннер только у него. */
   protected readonly uploadingKind = signal<UploadKind | null>(null);
+  /** Какой документ сейчас скачиваем (файл идёт с Bearer через blob), и ошибка последней попытки. */
+  protected readonly downloading = signal<string | null>(null);
+  protected readonly downloadError = signal<string | null>(null);
+
+  private readonly role = computed(() => this.session.roleIn(this.projectId()));
+  /** Загружать и заменять документы может руководитель приёмки; сервер отвечает 403 остальным (docs/API.md). */
+  protected readonly canUpload = computed(() => this.role() === 'pm' || this.role() === 'admin');
 
   protected readonly eyebrow = computed(() => {
-    const role = this.session.roleIn(this.projectId());
+    const role = this.role();
     return [role ? ROLE_TITLE[role] : '', this.store.projectName()].filter(Boolean).join(' · ') || null;
   });
   /** Полка: последняя версия каждого типа (API отдаёт документы по createdAt asc) или пустое место. */
@@ -201,6 +227,20 @@ export class DocumentsPage {
       this.uploadingKind.set(null);
     }
     this.pollWhileIndexing();
+  }
+
+  /** Скачать как загрузили: имя файла — то же, что на карточке (сервер шлёт его и в Content-Disposition). */
+  protected async download(d: ProjectDocument): Promise<void> {
+    if (this.downloading()) return;
+    this.downloading.set(d.id);
+    this.downloadError.set(null);
+    try {
+      saveBlob(await this.api.documentFile(this.projectId(), d.id), d.fileName);
+    } catch (err) {
+      this.downloadError.set(errorMessage(err));
+    } finally {
+      this.downloading.set(null);
+    }
   }
 
   /** Статус «Читаем документ…» обновляем опросом, пока индексация в фоне. */
