@@ -484,20 +484,50 @@ function toCitation(c: RemarkRow['citations'][number]): CitationView {
     source: isProtocol ? 'protocol' : 'spec',
     heading,
     section,
-    text: quote(c.quoteText ?? ''),
+    text: quoteForView(c.quoteText ?? ''),
     soft: isProtocol,
   };
 }
 
-/** Цитата в кавычках «…», без markdown-звёздочек и обратных кавычек. */
-export function quote(content: string): string {
-  const clean = content
+/** Текст чанка без markdown-звёздочек и обратных кавычек, пробелы схлопнуты. */
+function cleanQuote(content: string): string {
+  return content
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/`(.+?)`/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Цитата в кавычках «…», обрезанная по 240 знакам. Идёт в промпт ретеста (retestFacts), поэтому текст здесь
+ * не меняется: иначе поплывут цифры evals. Для экрана — quoteForView ниже.
+ */
+export function quote(content: string): string {
+  const clean = cleanQuote(content);
   const cut = clean.length > 240 ? `${clean.slice(0, 237).trimEnd()}…` : clean;
   return `«${cut}»`;
+}
+
+const QUOTE_SOFT = 240;
+const QUOTE_HARD = 480;
+/** Конец предложения: точка, «!», «?» или «;», за которыми пробел и заглавная буква (или конец текста) — «п. 4.3» не считается. */
+const SENTENCE_END = /[.!?;](?=\s+[А-ЯЁA-Z«(]|\s*$)/g;
+
+/**
+ * Цитата на карточке: обрыв не на полуслове, а на конце предложения (замечание владельца 20.09).
+ * До 240 знаков — как есть; длиннее — дописываем предложение до конца, но не дальше 480; если предложение ещё длиннее,
+ * режем по последнему концу предложения перед 240, а без него — по слову с многоточием.
+ */
+export function quoteForView(content: string): string {
+  const clean = cleanQuote(content);
+  if (clean.length <= QUOTE_SOFT) return `«${clean}»`;
+  const ends = [...clean.matchAll(SENTENCE_END)].map((m) => m.index! + 1);
+  const ahead = ends.find((i) => i >= QUOTE_SOFT && i <= QUOTE_HARD);
+  if (ahead) return `«${clean.slice(0, ahead)}»`;
+  const behind = ends.filter((i) => i < QUOTE_SOFT).at(-1);
+  if (behind && behind >= QUOTE_SOFT / 2) return `«${clean.slice(0, behind)}»`;
+  const word = clean.lastIndexOf(' ', QUOTE_SOFT - 1);
+  return `«${clean.slice(0, word > QUOTE_SOFT / 2 ? word : QUOTE_SOFT - 1).trimEnd()}…»`;
 }
 
 function firstLine(s: string): string {

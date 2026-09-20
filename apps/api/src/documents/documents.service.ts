@@ -57,6 +57,13 @@ export class DocumentsService {
     return { ...toSummary(row), chunks: row._count.chunks };
   }
 
+  /** Файл документа как загрузили: имя и тип из строки, путь на диске — для скачивания всей командой. */
+  async file(ctx: ProjectContext, documentId: string): Promise<{ title: string; mime: string; path: string }> {
+    const row = await this.prisma.document.findFirst({ where: { id: documentId, projectId: ctx.projectId }, select: { title: true, mime: true, storageKey: true } });
+    if (!row) throw new NotFoundException();
+    return { title: row.title, mime: row.mime, path: this.storage.pathOf(row.storageKey) };
+  }
+
   /** Создаёт документ и возвращает его сразу; индексация идёт в фоне, статус виден через GET. */
   async upload(ctx: ProjectContext, input: UploadInput, options: { indexInBackground?: boolean } = {}): Promise<DocumentSummary> {
     if (!input.data.length) throw new UnprocessableEntityException('Пустой файл');

@@ -45,7 +45,12 @@ export class StorageService {
   }
 
   async read(storageKey: string): Promise<Buffer> {
-    return readFile(this.path(storageKey));
+    return readFile(this.pathOf(storageKey));
+  }
+
+  /** Путь файла на диске по ключу — для потоковой отдачи (документ пакета целиком в памяти не нужен). */
+  pathOf(storageKey: string): string {
+    return this.path(storageKey);
   }
 
   /** Ключ из тела запроса (screenshotKey) принимается, только если он этого проекта и той же формы, что даёт save(). */

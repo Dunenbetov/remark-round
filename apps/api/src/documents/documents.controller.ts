@@ -2,15 +2,20 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
+  NotFoundException,
   Param,
   Post,
+  StreamableFile,
   UnprocessableEntityException,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { MembershipGuard } from '../tenancy/membership.guard';
 import { Ctx, ProjectContext } from '../tenancy/project-context';
 import { Roles, RolesGuard } from '../tenancy/roles';
@@ -24,8 +29,8 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024;
 export class DocumentsController {
   constructor(private readonly documents: DocumentsService) {}
 
+  /** Пакет читает вся команда, включая разработчика: ТЗ и протокол — их рабочие документы (замечание владельца 20.09). */
   @Get()
-  @Roles('admin', 'pm', 'business')
   list(@Ctx() ctx: ProjectContext): Promise<DocumentSummary[]> {
     return this.documents.list(ctx);
   }
@@ -54,6 +59,25 @@ export class DocumentsController {
   @Get(':documentId')
   get(@Ctx() ctx: ProjectContext, @Param('documentId') documentId: string): Promise<DocumentSummary> {
     return this.documents.get(ctx, documentId);
+  }
+
+  /**
+   * Файл как загрузили — скачать, а не открыть: у DOCX и PDF в браузере всё равно нет просмотра, а CSP с sandbox
+   * не даст исполниться скрипту внутри чужого файла. Имя по RFC 5987, кириллица в Content-Disposition не ломается.
+   */
+  @Get(':documentId/file')
+  @Header('Content-Security-Policy', "default-src 'none'; sandbox")
+  @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Cache-Control', 'private, no-store')
+  async file(@Ctx() ctx: ProjectContext, @Param('documentId') documentId: string): Promise<StreamableFile> {
+    const f = await this.documents.file(ctx, documentId);
+    try {
+      await stat(f.path);
+    } catch {
+      throw new NotFoundException();
+    }
+    const name = encodeURIComponent(f.title);
+    return new StreamableFile(createReadStream(f.path), { type: f.mime, disposition: `attachment; filename="${name}"; filename*=UTF-8''${name}` });
   }
 
   @Post(':documentId/reindex')
