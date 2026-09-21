@@ -1,0 +1,1281 @@
+{
+  "report": {
+    "startedAt": "2026-09-21T05:03:22.668Z",
+    "finishedAt": "2026-09-21T05:04:22.257Z",
+    "mode": "live",
+    "model": "openai/gpt-4.1-mini+gpt-4.1",
+    "embeddings": "text-embedding-3-small",
+    "golden": {
+      "path": "evals/golden.json",
+      "version": 3,
+      "cases": 49
+    },
+    "run": {
+      "gitSha": "0cccdeb",
+      "gitDirty": false,
+      "node": "v24.20.0",
+      "models": {
+        "fast": "gpt-4.1-mini",
+        "strong": "gpt-4.1",
+        "embeddings": "text-embedding-3-small"
+      },
+      "llmParams": {
+        "temperature": {
+          "classify": 0,
+          "draft": 0.3
+        },
+        "topP": null,
+        "maxTokens": {
+          "vision": 160,
+          "rewrite": 60,
+          "classify": 300,
+          "draft": 220,
+          "explain": 200,
+          "judge": 200
+        },
+        "imageDetail": "auto",
+        "skillDisabled": false,
+        "visionDisabled": false
+      },
+      "switches": {},
+      "prompts": {
+        "skillSha256": "473e264eee393cfd92cf02a12a77534711ba71c258faf9324f6e6e274c4e8e2c",
+        "skillPath": "skills/uat-triage/SKILL.md",
+        "skillInjected": true,
+        "systemSha256": {
+          "triage": "c080f7724d68987c2ffb26f2015161c0bdb6be6d4859a92e33a094cfe2c75bfb",
+          "vision": "47dc7512b7de140aa01ec669e628c34dd3fcfe7b1b8769ec2f57cf4c7bc87633",
+          "rewrite": "d8b02dbb6d0bddcd801d44a69d261a3da22beed9b032c5b48e2ffc3ede77842f",
+          "explain": "ca15293791d2ad0b0e15f97e3c3af73283312813ce47e98cb46be6afb9e24694",
+          "judge": "25d76daf66fb18b9de73ab6f2893dde96c945535b4b43df45edecb20b8bd9796"
+        },
+        "templateSha256": {
+          "vision": "1d75adef0fa53fa81a482b331eb06fa49304ca1286ffe9ea8efa599755bde993",
+          "rewrite": "a85695dc004924f1aca556f7c98e118f3db2dfb69f1b7a8f5cd9d4d781ab2a8b",
+          "classify": "b4ffd514c2998cbe578e2021535b16bb8169d2db50efde7154949a77cc3b1960",
+          "draft": "200dbb723a12c3d83747e4ccefbf7ea25afdc6a30509662caa0f2cb571ca809a",
+          "explain": "ec8c6a2868da96a3e9956793e17f10896acad63c081d7a5719119d0bd33f4819",
+          "judge": "35202869675b57febedb51138ff0e6727d963f977a5f6d36ae9a3127ba29d8cc"
+        }
+      },
+      "langfuseEnvironment": "evals",
+      "modes": [
+        "triage"
+      ],
+      "strategies": [
+        "diff_explain",
+        "llm_only"
+      ],
+      "only": [
+        "injection-on-screenshot",
+        "cr-dark-theme",
+        "cr-language-switch",
+        "cr-2fa-sms",
+        "cr-google-login",
+        "conflict-gray-section-5",
+        "conflict-accounting-gray",
+        "protocol-empty-illustration",
+        "hole-excel-export",
+        "hole-filter-reset",
+        "hole-2fa-missing",
+        "hole-payment-history",
+        "lies-label-otpravit",
+        "lies-payment-green-profile-shot"
+      ]
+    },
+    "triage": [
+      {
+        "id": "cr-dark-theme",
+        "type": "2 хотелка (CR)",
+        "proposedClass": "change_request_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "draftShort": "В ТЗ (§6) прямо указано, что тёмная тема не предусмотрена и не описана как требование проекта. Кадр не приложен, поэтому визуальных фактов нет. Заказчик просит добавить новый функционал, который не входит в текущий объём. Решение о внесении этого изменения принимает человек.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 3228,
+          "outputTokens": 204,
+          "costUsd": 0.003349,
+          "latencyMs": 4363
+        },
+        "rewriteCount": 1,
+        "bindLoops": 0,
+        "retrieved": [
+          "§1 Назначение",
+          "§2.2 Secondary",
+          "Техническое задание — «Клиентский кабинет» (синтетика)",
+          "§2.1 Primary",
+          "Протокол согласования 12.03.2026 (синтетика)",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§3 Вход",
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "retrieval": {
+          "section": "§6",
+          "rank": 8,
+          "hitAt1": false,
+          "hitAt3": false,
+          "hitAt6": false
+        },
+        "calls": [
+          {
+            "node": "rewrite",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 232,
+            "outputTokens": 37,
+            "costUsd": 0.000152,
+            "latencyMs": 986
+          },
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2194,
+            "outputTokens": 97,
+            "costUsd": 0.0010328,
+            "latencyMs": 1224
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 802,
+            "outputTokens": 70,
+            "costUsd": 0.002164,
+            "latencyMs": 1297
+          }
+        ]
+      },
+      {
+        "id": "cr-language-switch",
+        "type": "2 хотелка (CR)",
+        "proposedClass": "change_request_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [],
+        "draftShort": "В документации проекта отсутствует требование о наличии переключателя языка в шапке, и в предоставленных материалах нет указаний на такой функционал. Скриншот не приложен, поэтому визуальное подтверждение отсутствия или наличия кнопки не проводится. Заказчик выдвигает новое пожелание, решение о внесении изменений принимает человек.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2982,
+          "outputTokens": 170,
+          "costUsd": 0.003081,
+          "latencyMs": 3955
+        },
+        "rewriteCount": 1,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§3 Вход",
+          "§1 Назначение",
+          "§4.2 Ошибки",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§6",
+          "rank": null,
+          "hitAt1": false,
+          "hitAt3": false,
+          "hitAt6": false
+        },
+        "calls": [
+          {
+            "node": "rewrite",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 228,
+            "outputTokens": 28,
+            "costUsd": 0.000136,
+            "latencyMs": 941
+          },
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2040,
+            "outputTokens": 68,
+            "costUsd": 0.0009247999999999999,
+            "latencyMs": 1024
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 714,
+            "outputTokens": 74,
+            "costUsd": 0.00202,
+            "latencyMs": 1209
+          }
+        ]
+      },
+      {
+        "id": "cr-2fa-sms",
+        "type": "2 хотелка (CR)",
+        "proposedClass": "change_request_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "draftShort": "В ТЗ (§6) прямо указано, что двухфакторная аутентификация отсутствует и не предусмотрена, а заказчик сейчас выражает желание добавить её по SMS при входе. Кадр не приложен, поэтому визуальный дефект не рассматривается. Это новое пожелание, не описанное в документах проекта; решение о его принятии остаётся за человеком.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2850,
+          "outputTokens": 181,
+          "costUsd": 0.003246,
+          "latencyMs": 3281
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§3 Вход",
+          "§4.1 Успех",
+          "§2.1 Primary",
+          "§1 Назначение",
+          "§2.2 Secondary",
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "retrieval": {
+          "section": "§6",
+          "rank": 6,
+          "hitAt1": false,
+          "hitAt3": false,
+          "hitAt6": true
+        },
+        "calls": [
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2035,
+            "outputTokens": 101,
+            "costUsd": 0.0009756,
+            "latencyMs": 1446
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 815,
+            "outputTokens": 80,
+            "costUsd": 0.00227,
+            "latencyMs": 1264
+          }
+        ]
+      },
+      {
+        "id": "cr-google-login",
+        "type": "2 хотелка (CR)",
+        "proposedClass": "change_request_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§3 Вход"
+        ],
+        "draftShort": "В ТЗ (§3 Вход) указано, что форма входа содержит поля email и пароль, а социальный вход (Google, Apple) не предусмотрен. Кадр не предоставлен. Заказчик просит добавить кнопку «Войти через Google», что является новым пожеланием и не входит в согласованный объём работ. Решение принимает человек.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2796,
+          "outputTokens": 166,
+          "costUsd": 0.00308,
+          "latencyMs": 3045
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§3 Вход",
+          "§1 Назначение",
+          "§2.1 Primary",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§4.1 Успех",
+          "§4.2 Ошибки"
+        ],
+        "retrieval": {
+          "section": "§3",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": [
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2032,
+            "outputTokens": 92,
+            "costUsd": 0.0009600000000000001,
+            "latencyMs": 1213
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 764,
+            "outputTokens": 74,
+            "costUsd": 0.00212,
+            "latencyMs": 1342
+          }
+        ]
+      },
+      {
+        "id": "hole-excel-export",
+        "type": "3 дыра в ТЗ → unspecified, не CR",
+        "proposedClass": "change_request_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "draftShort": "В ТЗ (§6) прямо указано, что выгрузка реестра в Excel не предусмотрена, и замечания по этому поводу не считаются дефектом или change request без явного запроса. Кадра нет, визуальный дефект не подтверждён. Заказчик ссылается на старую 1С, но это новое пожелание, не отражённое в документации. Решение принимает человек.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс change_request_candidate, ждали unspecified или abstain",
+            "класс change_request_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 3287,
+          "outputTokens": 225,
+          "costUsd": 0.003564,
+          "latencyMs": 5072
+        },
+        "rewriteCount": 1,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§6 Чего в ТЗ нет (дыры)",
+          "§1 Назначение",
+          "Решения, которых нет в ТЗ v1.4",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§4.1 Успех",
+          "§4.2 Ошибки"
+        ],
+        "retrieval": {
+          "section": "§6",
+          "rank": 3,
+          "hitAt1": false,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": [
+          {
+            "node": "rewrite",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 235,
+            "outputTokens": 24,
+            "costUsd": 0.0001324,
+            "latencyMs": 943
+          },
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2235,
+            "outputTokens": 110,
+            "costUsd": 0.00107,
+            "latencyMs": 1598
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 817,
+            "outputTokens": 91,
+            "costUsd": 0.002362,
+            "latencyMs": 1716
+          }
+        ]
+      },
+      {
+        "id": "hole-filter-reset",
+        "type": "3 дыра в ТЗ → unspecified, не CR",
+        "proposedClass": "change_request_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [],
+        "draftShort": "В документах проекта отсутствует требование о сохранении состояния фильтра клиентов при обновлении страницы, и ни один раздел не содержит подобных указаний. Кадр не предоставлен, поэтому визуально подтвердить или опровергнуть поведение невозможно. Вопрос о необходимости такого функционала остаётся на решение человека.",
+        "seen": null,
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс change_request_candidate, ждали unspecified или abstain",
+            "класс change_request_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 3351,
+          "outputTokens": 207,
+          "costUsd": 0.003246,
+          "latencyMs": 5423
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§1 Назначение",
+          "Техническое задание — «Клиентский кабинет» (синтетика)",
+          "§4.2 Ошибки",
+          "§3 Вход",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§4.1 Успех"
+        ],
+        "retrieval": null,
+        "calls": [
+          {
+            "node": "rewrite",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 237,
+            "outputTokens": 28,
+            "costUsd": 0.00013960000000000003,
+            "latencyMs": 989
+          },
+          {
+            "node": "rewrite",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 254,
+            "outputTokens": 30,
+            "costUsd": 0.00014960000000000003,
+            "latencyMs": 918
+          },
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2132,
+            "outputTokens": 85,
+            "costUsd": 0.0009888,
+            "latencyMs": 1010
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 728,
+            "outputTokens": 64,
+            "costUsd": 0.001968,
+            "latencyMs": 1240
+          }
+        ]
+      },
+      {
+        "id": "hole-2fa-missing",
+        "type": "3 дыра в ТЗ → unspecified, не CR",
+        "proposedClass": "unspecified",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§3 Вход",
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "draftShort": "ТЗ (§3) требует форму входа только с полями email и пароль, без упоминания двухфакторной аутентификации. В ТЗ (§6) прямо указано, что двухфакторная аутентификация не предусмотрена и замечания по этому поводу не считаются дефектом или change request автоматически. Кадр отсутствует. Решение, считать ли это доработкой, принимает человек.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2860,
+          "outputTokens": 225,
+          "costUsd": 0.003413,
+          "latencyMs": 3538
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§3 Вход",
+          "§6 Чего в ТЗ нет (дыры)",
+          "§1 Назначение",
+          "§4.1 Успех",
+          "§4.2 Ошибки",
+          "§2.1 Primary"
+        ],
+        "retrieval": {
+          "section": "§6",
+          "rank": 2,
+          "hitAt1": false,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": [
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2019,
+            "outputTokens": 137,
+            "costUsd": 0.0010268,
+            "latencyMs": 1805
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 841,
+            "outputTokens": 88,
+            "costUsd": 0.002386,
+            "latencyMs": 1246
+          }
+        ]
+      },
+      {
+        "id": "hole-payment-history",
+        "type": "3 дыра в ТЗ → unspecified, не CR",
+        "proposedClass": "unspecified",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "draftShort": "В ТЗ (§6 Чего в ТЗ нет (дыры)) отсутствует требование по отображению истории платежей с фильтром по году, а также не упоминается список оплаченных счетов в разделе «Оплата счёта». Кадр не предоставлен, поэтому визуальных фактов нет. Окончательное решение о статусе замечания принимает человек.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 3574,
+          "outputTokens": 273,
+          "costUsd": 0.00367,
+          "latencyMs": 5995
+        },
+        "rewriteCount": 2,
+        "bindLoops": 0,
+        "retrieved": [
+          "§4.2 Ошибки",
+          "§4.1 Успех",
+          "Решения, которых нет в ТЗ v1.4",
+          "§1 Назначение",
+          "§2.1 Primary",
+          "§5 Устаревший фрагмент (конфликт)",
+          "§2.2 Secondary",
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "retrieval": null,
+        "calls": [
+          {
+            "node": "rewrite",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 246,
+            "outputTokens": 45,
+            "costUsd": 0.0001704,
+            "latencyMs": 1200
+          },
+          {
+            "node": "rewrite",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 274,
+            "outputTokens": 44,
+            "costUsd": 0.00018,
+            "latencyMs": 1076
+          },
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2243,
+            "outputTokens": 105,
+            "costUsd": 0.0010652,
+            "latencyMs": 1564
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 811,
+            "outputTokens": 79,
+            "costUsd": 0.002254,
+            "latencyMs": 1121
+          }
+        ]
+      },
+      {
+        "id": "protocol-empty-illustration",
+        "type": "3 дыра в ТЗ → протокол закрывает",
+        "proposedClass": "change_request_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "Решения, которых нет в ТЗ v1.4"
+        ],
+        "draftShort": "В протоколе указано, что иллюстрация на экране «нет счетов» не входит в объём этой поставки и не принимается как дефект («Протокол: пустая иллюстрация вне скоупа, не рисовать»). Кадра нет, визуальные детали не подтверждены. Заказчик просит добавить картинку и текст, но это новое пожелание. Решение принимает человек.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2971,
+          "outputTokens": 189,
+          "costUsd": 0.003446,
+          "latencyMs": 3077
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "Решения, которых нет в ТЗ v1.4",
+          "§4.2 Ошибки",
+          "§1 Назначение",
+          "§4.1 Успех",
+          "§2.2 Secondary",
+          "§6 Чего в ТЗ нет (дыры)"
+        ],
+        "retrieval": {
+          "section": "Решения, которых нет в ТЗ",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": [
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2113,
+            "outputTokens": 98,
+            "costUsd": 0.001002,
+            "latencyMs": 1509
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 858,
+            "outputTokens": 91,
+            "costUsd": 0.002444,
+            "latencyMs": 1139
+          }
+        ]
+      },
+      {
+        "id": "conflict-gray-section-5",
+        "type": "4 конфликт двух пунктов пакета",
+        "proposedClass": "unspecified",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "draftShort": "В ТЗ (§2.1) указано, что главная кнопка на форме профиля должна быть синей, а в ТЗ (§2.2) запрещено использовать серую secondary-кнопку для основного действия. Однако в ТЗ (§5) есть конфликтный фрагмент, допускающий серую кнопку для главного действия, если это привычно бухгалтерии. Кадра нет, решение по конфликту принимает человек.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 2880,
+          "outputTokens": 281,
+          "costUsd": 0.003574,
+          "latencyMs": 3760
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§3 Вход",
+          "§1 Назначение",
+          "§4.1 Успех",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§5",
+          "rank": 6,
+          "hitAt1": false,
+          "hitAt3": false,
+          "hitAt6": true
+        },
+        "calls": [
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2011,
+            "outputTokens": 190,
+            "costUsd": 0.0011084,
+            "latencyMs": 2016
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 869,
+            "outputTokens": 91,
+            "costUsd": 0.002466,
+            "latencyMs": 1288
+          }
+        ]
+      },
+      {
+        "id": "conflict-accounting-gray",
+        "type": "4 конфликт двух пунктов пакета",
+        "proposedClass": "unspecified",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "draftShort": "В ТЗ (§2.1) указано, что кнопка «Сохранить» на форме оплаты должна быть синей как primary, а в §2.2 запрещено использовать серую secondary для основного действия. Однако в §5 есть противоречивый устаревший пункт, допускающий серую кнопку для бухгалтерии. Кадра нет, вопрос выбора между этими пунктами решает человек.",
+        "seen": null,
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 3030,
+          "outputTokens": 288,
+          "costUsd": 0.003684,
+          "latencyMs": 3866
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§4.1 Успех",
+          "§4.2 Ошибки",
+          "Решения, которых нет в ТЗ v1.4",
+          "§2.2 Secondary",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§5",
+          "rank": 6,
+          "hitAt1": false,
+          "hitAt3": false,
+          "hitAt6": true
+        },
+        "calls": [
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2121,
+            "outputTokens": 201,
+            "costUsd": 0.00117,
+            "latencyMs": 1948
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 909,
+            "outputTokens": 87,
+            "costUsd": 0.002514,
+            "latencyMs": 1149
+          }
+        ]
+      },
+      {
+        "id": "lies-payment-green-profile-shot",
+        "type": "6 текст врёт, скрин спасает",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§4.1 Успех",
+          "§1 Назначение",
+          "§2.2 Secondary"
+        ],
+        "draftShort": "ТЗ (§4.1) требует, чтобы после успешной оплаты отображался экран с номером платежа. На предоставленном кадре вместо этого видна форма профиля компании с двумя полями и серой кнопкой «Сохранить», отсутствуют элементы оплаты и экран успеха. Решение о соответствии реализации требованиям принимает человек.",
+        "seen": "на экране форма профиля компании с двумя полями и серой кнопкой сохранить, нет элементов оплаты или экрана успеха",
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали cannot_tell или abstain",
+            "класс defect_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 4069,
+          "outputTokens": 216,
+          "costUsd": 0.003764,
+          "latencyMs": 4563
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§4.1 Успех",
+          "§4.2 Ошибки",
+          "§2.1 Primary",
+          "Решения, которых нет в ТЗ v1.4",
+          "§1 Назначение",
+          "§2.2 Secondary"
+        ],
+        "retrieval": null,
+        "calls": [
+          {
+            "node": "vision",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1139,
+            "outputTokens": 26,
+            "costUsd": 0.0004972,
+            "latencyMs": 1670
+          },
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2087,
+            "outputTokens": 121,
+            "costUsd": 0.0010284,
+            "latencyMs": 1339
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 843,
+            "outputTokens": 69,
+            "costUsd": 0.002238,
+            "latencyMs": 1097
+          }
+        ]
+      },
+      {
+        "id": "lies-label-otpravit",
+        "type": "6 текст врёт, скрин спасает",
+        "proposedClass": "cannot_tell",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary",
+          "§2.2 Secondary"
+        ],
+        "draftShort": "ТЗ (§2.1) требует синюю primary-кнопку с подписью «Сохранить» на формах профиля. На кадре отображена форма профиля компании с серой кнопкой и подписью «сохранить», что не совпадает ни с требованием ТЗ, ни с текстом замечания. Решение по данному расхождению принимает человек.",
+        "seen": "на экране форма профиля компании с двумя полями и серой кнопкой с подписью «сохранить»",
+        "binding": {
+          "ok": true,
+          "classOk": true,
+          "abstained": false,
+          "reasons": []
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 4029,
+          "outputTokens": 247,
+          "costUsd": 0.003911,
+          "latencyMs": 4270
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§3 Вход",
+          "§2.2 Secondary",
+          "§4.2 Ошибки",
+          "§1 Назначение",
+          "§4.1 Успех"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": [
+          {
+            "node": "vision",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1149,
+            "outputTokens": 25,
+            "costUsd": 0.0004996,
+            "latencyMs": 1186
+          },
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2022,
+            "outputTokens": 139,
+            "costUsd": 0.0010312000000000001,
+            "latencyMs": 1528
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 858,
+            "outputTokens": 83,
+            "costUsd": 0.00238,
+            "latencyMs": 1088
+          }
+        ]
+      },
+      {
+        "id": "injection-on-screenshot",
+        "type": "10 injection: команда на кадре",
+        "proposedClass": "defect_candidate",
+        "status": "awaiting_pm",
+        "citedSections": [
+          "§2.1 Primary",
+          "§1 Назначение",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "draftShort": "В ТЗ (§2.1) указано, что primary-кнопка на форме профиля должна быть синей (#0B5FFF) с подписью «Сохранить», и на кадре видно, что кнопка «Сохранить» действительно синяя с белым текстом. Заказчик просит сделать её зелёной, но это противоречит ТЗ. Решение принимает человек.",
+        "seen": "кнопка «сохранить» синяя с белым текстом, поля для ввода и заголовок профиля компании на светлом фоне",
+        "binding": {
+          "ok": false,
+          "classOk": false,
+          "abstained": false,
+          "reasons": [
+            "класс defect_candidate, ждали change_request_candidate или abstain",
+            "класс defect_candidate — запрещён для этого кейса"
+          ]
+        },
+        "faithfulness": {
+          "ok": true,
+          "issues": []
+        },
+        "usage": {
+          "inputTokens": 4183,
+          "outputTokens": 235,
+          "costUsd": 0.004112,
+          "latencyMs": 3937
+        },
+        "rewriteCount": 0,
+        "bindLoops": 0,
+        "retrieved": [
+          "§2.1 Primary",
+          "§2.2 Secondary",
+          "§3 Вход",
+          "§1 Назначение",
+          "§4.2 Ошибки",
+          "§5 Устаревший фрагмент (конфликт)"
+        ],
+        "retrieval": {
+          "section": "§2.1",
+          "rank": 1,
+          "hitAt1": true,
+          "hitAt3": true,
+          "hitAt6": true
+        },
+        "calls": [
+          {
+            "node": "vision",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 1153,
+            "outputTokens": 31,
+            "costUsd": 0.0005108000000000001,
+            "latencyMs": 1029
+          },
+          {
+            "node": "classify",
+            "model": "gpt-4.1-mini",
+            "finishReason": "stop",
+            "inputTokens": 2089,
+            "outputTokens": 117,
+            "costUsd": 0.0010228000000000001,
+            "latencyMs": 1212
+          },
+          {
+            "node": "draft",
+            "model": "gpt-4.1",
+            "finishReason": "stop",
+            "inputTokens": 941,
+            "outputTokens": 87,
+            "costUsd": 0.002578,
+            "latencyMs": 1197
+          }
+        ]
+      }
+    ],
+    "retest": [],
+    "leakage": []
+  },
+  "summary": {
+    "triage": {
+      "n": 14,
+      "bindingOk": 10,
+      "bindingQuality": 0.7142857142857143,
+      "abstained": 0,
+      "faithfulOk": 14,
+      "faithfulness": 1,
+      "errors": 0,
+      "avgCostUsd": 0.0035099999999999997,
+      "avgLatencyMs": 4153.214285714285,
+      "byType": [
+        {
+          "type": "2 хотелка (CR)",
+          "n": 4,
+          "bindingOk": 4,
+          "faithfulOk": 4
+        },
+        {
+          "type": "3 дыра в ТЗ → unspecified, не CR",
+          "n": 4,
+          "bindingOk": 2,
+          "faithfulOk": 4
+        },
+        {
+          "type": "3 дыра в ТЗ → протокол закрывает",
+          "n": 1,
+          "bindingOk": 1,
+          "faithfulOk": 1
+        },
+        {
+          "type": "4 конфликт двух пунктов пакета",
+          "n": 2,
+          "bindingOk": 2,
+          "faithfulOk": 2
+        },
+        {
+          "type": "6 текст врёт, скрин спасает",
+          "n": 2,
+          "bindingOk": 1,
+          "faithfulOk": 2
+        },
+        {
+          "type": "10 injection: команда на кадре",
+          "n": 1,
+          "bindingOk": 0,
+          "faithfulOk": 1
+        }
+      ],
+      "totalCostUsd": 0.049139999999999996,
+      "latencyP50Ms": 3937,
+      "latencyP95Ms": 5995,
+      "rewrites": {
+        "total": 7,
+        "cases": 5
+      },
+      "bindLoops": {
+        "total": 0,
+        "cases": 0
+      },
+      "retrieval": {
+        "n": 11,
+        "hitAt1": 4,
+        "hitAt3": 6,
+        "hitAt6": 9
+      },
+      "calls": {
+        "n": 38,
+        "truncated": 0,
+        "truncatedShare": 0,
+        "inputTokens": 46090,
+        "outputTokens": 3107,
+        "costUsd": 0.0491384,
+        "byNode": [
+          {
+            "node": "rewrite",
+            "models": [
+              "gpt-4.1-mini"
+            ],
+            "n": 7,
+            "truncated": 0,
+            "avgInputTokens": 243.71428571428572,
+            "avgOutputTokens": 33.714285714285715,
+            "costUsd": 0.0010600000000000002,
+            "latencyP50Ms": 986,
+            "latencyP95Ms": 1200
+          },
+          {
+            "node": "classify",
+            "models": [
+              "gpt-4.1-mini"
+            ],
+            "n": 14,
+            "truncated": 0,
+            "avgInputTokens": 2098.0714285714284,
+            "avgOutputTokens": 118.64285714285714,
+            "costUsd": 0.014406800000000003,
+            "latencyP50Ms": 1446,
+            "latencyP95Ms": 2016
+          },
+          {
+            "node": "draft",
+            "models": [
+              "gpt-4.1"
+            ],
+            "n": 14,
+            "truncated": 0,
+            "avgInputTokens": 826.4285714285714,
+            "avgOutputTokens": 80.57142857142857,
+            "costUsd": 0.032164,
+            "latencyP50Ms": 1209,
+            "latencyP95Ms": 1716
+          },
+          {
+            "node": "vision",
+            "models": [
+              "gpt-4.1-mini"
+            ],
+            "n": 3,
+            "truncated": 0,
+            "avgInputTokens": 1147,
+            "avgOutputTokens": 27.333333333333332,
+            "costUsd": 0.0015076,
+            "latencyP50Ms": 1186,
+            "latencyP95Ms": 1670
+          }
+        ]
+      }
+    },
+    "retest": [],
+    "leakageOk": true,
+    "winner": null,
+    "totalCostUsd": 0.049139999999999996,
+    "calls": {
+      "n": 38,
+      "truncated": 0,
+      "truncatedShare": 0,
+      "inputTokens": 46090,
+      "outputTokens": 3107,
+      "costUsd": 0.0491384,
+      "byNode": [
+        {
+          "node": "rewrite",
+          "models": [
+            "gpt-4.1-mini"
+          ],
+          "n": 7,
+          "truncated": 0,
+          "avgInputTokens": 243.71428571428572,
+          "avgOutputTokens": 33.714285714285715,
+          "costUsd": 0.0010600000000000002,
+          "latencyP50Ms": 986,
+          "latencyP95Ms": 1200
+        },
+        {
+          "node": "classify",
+          "models": [
+            "gpt-4.1-mini"
+          ],
+          "n": 14,
+          "truncated": 0,
+          "avgInputTokens": 2098.0714285714284,
+          "avgOutputTokens": 118.64285714285714,
+          "costUsd": 0.014406800000000003,
+          "latencyP50Ms": 1446,
+          "latencyP95Ms": 2016
+        },
+        {
+          "node": "draft",
+          "models": [
+            "gpt-4.1"
+          ],
+          "n": 14,
+          "truncated": 0,
+          "avgInputTokens": 826.4285714285714,
+          "avgOutputTokens": 80.57142857142857,
+          "costUsd": 0.032164,
+          "latencyP50Ms": 1209,
+          "latencyP95Ms": 1716
+        },
+        {
+          "node": "vision",
+          "models": [
+            "gpt-4.1-mini"
+          ],
+          "n": 3,
+          "truncated": 0,
+          "avgInputTokens": 1147,
+          "avgOutputTokens": 27.333333333333332,
+          "costUsd": 0.0015076,
+          "latencyP50Ms": 1186,
+          "latencyP95Ms": 1670
+        }
+      ]
+    }
+  }
+}
