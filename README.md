@@ -61,7 +61,15 @@ docker compose up
 
 ## Как это устроено
 
-Один процесс API, одна БД, один MCP-процесс как фасад. Схема (mermaid), карта модулей, путь запроса, trade-off и что заменяемо — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Один процесс API, одна БД, один MCP-процесс как фасад. Карта модулей, путь запроса, trade-off и что заменяемо — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+![Сервисы на бою: браузер и IDE, три сервиса Railway, OpenAI, Langfuse Cloud, Sentry, GitHub Actions](docs/diagrams/system.png)
+
+*Уровень сервисов (C4). Индиго — единственный процесс, где живёт логика; пунктир — MCP-процесс, который запускает IDE на ноутбуке. Источник — [`docs/diagrams/system.svg`](docs/diagrams/system.svg).*
+
+![Путь одного замечания по дорожкам: люди, браузер, API, Postgres, граф триажа](docs/diagrams/remark-flow.png)
+
+*Путь одного замечания: транзакция → очередь в Postgres → воркер → граф из десяти нод с двумя циклами → `interrupt` до кнопки PM → решение транзакцией → resume. Циклы и лимиты — [`docs/GRAPH.md`](docs/GRAPH.md).*
 
 - **RAG** (`apps/api/src/rag`): чанк = раздел документа по заголовкам, подпись «§2.1 Primary» едет в цитату; `text-embedding-3-small`, `vector(1536)`, HNSW, фильтр проекта в самом SQL; сравнение четырёх стратегий чанкинга, «почему без reranker», «почему 3-small» и «почему поиск только векторный» — в ARCHITECTURE. Документы: PDF, DOCX, DOC, Markdown (`extract.ts`: pdf-parse, mammoth, word-extractor); журнал — только официальный шаблон XLSX/CSV, картинки из ячеек становятся кадрами.
 - **Скрин как источник фактов**: факты кадра до классификации (кейс «текст врёт, скрин спасает»), на ретесте — тройка «было / стало / дифф». Пиксели считает алгоритм, не модель ([ADR 002](docs/adr/002-pixel-diff.md)).

@@ -54,6 +54,8 @@
 
 ## Триаж
 
+Тот же граф вместе с очередью, транзакциями и решением PM по дорожкам — [`docs/diagrams/remark-flow.png`](diagrams/remark-flow.png).
+
 Схема повторяет `addNode` / `addEdge` / `addConditionalEdges` из `triage.graph.ts:230-256`.
 
 ```mermaid
