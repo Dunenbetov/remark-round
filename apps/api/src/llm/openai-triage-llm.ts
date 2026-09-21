@@ -115,12 +115,15 @@ export class OpenAiTriageLlm implements TriageLlm {
           schema: {
             type: 'object',
             additionalProperties: false,
-            required: ['proposedClass', 'hitIndexes', 'duplicateOfNumber', 'reason'],
+            // reason — первым: модель пишет поля по порядку схемы, и шаг «Сверка» из промпта (сначала выпиши (а) и (б))
+            // иначе невыполним — класс уже стоит до рассуждения. M1 20.09: в одном прогоне reason кончался «это не дефект,
+            // а запрос на изменение», а proposedClass уже был defect_candidate (docs/defense/HONEST-NOTES.md, п. 1)
+            required: ['reason', 'proposedClass', 'hitIndexes', 'duplicateOfNumber'],
             properties: {
+              reason: { type: 'string', description: 'Сначала сверка, по-русски, 1–2 фразы: что документ говорит про этот элемент и что сейчас на проде (по кадру и словам заказчика)' },
               proposedClass: { type: 'string', enum: CLASSES },
               hitIndexes: { type: 'array', items: { type: 'integer' }, description: 'Номера найденных фрагментов, которые служат опорой (0..N-1). Пусто, если опоры нет.' },
               duplicateOfNumber: { type: ['integer', 'null'], description: 'Номер оригинала в раунде, если это повтор' },
-              reason: { type: 'string', description: 'Одна фраза почему, по-русски' },
             },
           },
         },
