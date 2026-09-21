@@ -1,0 +1,63 @@
+{
+ "v": 4,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-09-21T20:32:42Z"
+ },
+ "title": "RemarkRound: защита проекта",
+ "order": [
+  "cover",
+  "problem",
+  "solution",
+  "demo",
+  "arch",
+  "flow",
+  "langgraph",
+  "rag",
+  "evals",
+  "params",
+  "ab",
+  "hypotheses",
+  "users",
+  "app-mcp",
+  "app-ops"
+ ],
+ "cover": "cover",
+ "sections": {
+  "s1": {
+   "description": "Проблема приёмки и что делает RemarkRound",
+   "start": "cover"
+  },
+  "s2": {
+   "description": "Живое демо одного цикла под тремя ролями",
+   "start": "demo"
+  },
+  "s3": {
+   "description": "Архитектура продакшена, путь замечания и выбор LangGraph",
+   "start": "arch"
+  },
+  "s4": {
+   "description": "RAG, evals, гиперпараметры, модели и A/B ретеста",
+   "start": "rag"
+  },
+  "s5": {
+   "description": "Неподтвердившиеся гипотезы, пользователи и следующий шаг",
+   "start": "hypotheses"
+  },
+  "s6": {
+   "description": "Приложение: MCP и Skill, трейсинг, защита, ограничения",
+   "start": "app-mcp"
+  }
+ },
+ "faces": {
+  "onest": {
+   "family": "Onest",
+   "href": "https://fonts.googleapis.com/css2?family=Onest:wght@400..800&display=swap"
+  },
+  "unbounded": {
+   "family": "Unbounded",
+   "href": "https://fonts.googleapis.com/css2?family=Unbounded:wght@400..800&display=swap"
+  }
+ },
+ "designSystems": []
+}
