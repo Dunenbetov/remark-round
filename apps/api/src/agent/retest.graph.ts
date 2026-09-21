@@ -7,8 +7,9 @@ import { RetestState, type RetestDecision, type RetestStateType as S, type Retes
 import type { Phase } from './run-events';
 
 /**
- * Победитель A/B фазы 9 (docs/EVALS.md «A/B»): pixel-diff + explain. `RETEST_STRATEGY=llm_only` включает
- * проигравшую ветку для сравнения, не для продукта.
+ * Стратегия по умолчанию — pixel-diff + explain (ADR 002). По замерам M1 (docs/EVALS.md, раздел 7) качество с H0
+ * «два кадра в модель» на паритете: выигрыш даёт детерминированная предпроверка кадров, H1 остаётся за неё и за
+ * картинку диффа для человека. `RETEST_STRATEGY=llm_only` включает ветку H0 для сравнения, не для продукта.
  */
 export const DEFAULT_RETEST_STRATEGY: RetestStrategy = 'diff_explain';
 
@@ -57,7 +58,7 @@ export function buildRetestGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
   const diff = async (s: S) => {
     const facts = s.facts!;
     if (!facts.originalKey) {
-      return { result: { outcome: 'cannot_tell' as const, explanation: 'Старого кадра нет — сравнить не с чем. Проверьте вручную и закройте, если исправлено.' } };
+      return { result: { outcome: 'cannot_tell' as const, explanation: 'Старого кадра нет — сравнить не с чем. Проверьте на стенде — если всё в порядке, закрывайте.' } };
     }
     const [before, after] = await Promise.all([deps.storage.read(facts.originalKey), deps.storage.read(facts.retestKey)]);
     const r = deps.diff.compare(before, after);
@@ -81,7 +82,7 @@ export function buildRetestGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
   const judge = async (s: S) => {
     const facts = s.facts!;
     if (!facts.originalKey) {
-      return { result: { outcome: 'cannot_tell' as const, explanation: 'Старого кадра нет — сравнить не с чем. Проверьте вручную и закройте, если исправлено.' } };
+      return { result: { outcome: 'cannot_tell' as const, explanation: 'Старого кадра нет — сравнить не с чем. Проверьте на стенде — если всё в порядке, закрывайте.' } };
     }
     const [before, after] = await Promise.all([loadFrame(deps.storage, facts.originalKey), loadFrame(deps.storage, facts.retestKey)]);
     if (!before || !after) {

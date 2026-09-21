@@ -218,7 +218,7 @@ export class RulesTriageLlm implements TriageLlm {
   }
 
   async retestJudge(): Promise<RetestExplainResult> {
-    return { outcome: 'cannot_tell', explanation: 'Без модели по двум кадрам не сужу: сравните сами и закройте, если исправлено.' };
+    return { outcome: 'cannot_tell', explanation: 'Без модели по двум кадрам не сужу: сравните сами на стенде — если всё в порядке, закрывайте.' };
   }
 
   takeUsage(): LlmUsage {

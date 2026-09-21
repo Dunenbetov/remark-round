@@ -24,7 +24,7 @@ import { llmParams, sampling, type ImageDetail, type LlmParams } from './llm-par
 
 /**
  * Модели по шагу (REMARKROUND.md §10): bind/classify/vision — дешёвая и быстрая, draft — сильнее.
- * Имена переопределяются через env; цифры по A/B ложатся в docs/EVALS.md (фаза 9).
+ * Имена переопределяются через env; цифры по моделям — docs/EVALS.md, раздел 5 (M1, 20.09; черновик остаётся на gpt-4.1).
  */
 export const DEFAULT_FAST_MODEL = 'gpt-4.1-mini';
 export const DEFAULT_STRONG_MODEL = 'gpt-4.1';
