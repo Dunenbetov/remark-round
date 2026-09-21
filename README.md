@@ -1,5 +1,7 @@
 # RemarkRound
 
+**Демо: https://remark-round.up.railway.app.** Вход: регистрация открыта для любого e-mail (сторона `business | pm | developer` при регистрации — подсказка для экранов, не право). В демо-проект для менторов ведёт ссылка-приглашение `/join/…` — владелец прикладывает её к форме сдачи; по ней можно и зарегистрироваться, и войти в проект уже с аккаунтом. Локальный стенд с демо-персонами и однокомандным запуском — «Быстрый старт» ниже.
+
 Слой приёмки веб-проекта: журнал замечаний заказчика превращается в **карточки с опорой** — цитата из ТЗ, скриншот, pixel-diff на ретесте — а решение «это работа или нет» принимает человек кнопкой.
 
 > Jira stores work. We decide whether it is work. The spec informs the decision; a person makes it.
@@ -15,7 +17,7 @@
 ## Быстрый старт — одна команда
 
 ```bash
-cp .env.example .env   # OPENAI_API_KEY по желанию: без него граф работает правилами по retrieve
+cp .env.example .env   # впишите OPENAI_API_KEY: без него разбор и поиск по ТЗ не работают (см. ниже)
 docker compose up
 ```
 
@@ -26,11 +28,17 @@ docker compose up
 | MCP (Streamable HTTP) | http://localhost:3002/mcp | токен из `POST /api/v1/projects/:id/mcp-token` |
 | Langfuse | http://localhost:3000 | pm@remarkround.dev / `remarkround` |
 
-Контейнер API сам применяет миграции и кладёт демо-данные (проект «Клиентский кабинет», ТЗ + протокол, раунд 2 с 13 замечаниями и кадрами). Если на машине уже занят порт 5432, поставьте `POSTGRES_PORT=5434` и тот же порт в `DATABASE_URL`. Сюжет демо на 10 минут — [`docs/DEMO.md`](docs/DEMO.md).
+Контейнер API сам применяет миграции и кладёт демо-данные (проект «Клиентский кабинет», ТЗ + протокол, закрытый раунд 1 и раунд 2 с 14 замечаниями и кадрами). Если на машине уже занят порт 5432, поставьте `POSTGRES_PORT=5434` и тот же порт в `DATABASE_URL`. Сюжет демо на 10 минут — [`docs/DEMO.md`](docs/DEMO.md).
+
+**Без `OPENAI_API_KEY`** стенд поднимается, но полезен только для интерфейса: эмбеддинги отвечают 503 (`apps/api/src/llm/embeddings.service.ts`), seed оставляет документы непроиндексированными, поиск по ТЗ и разбор замечаний не работают, `/health` показывает `llm: rules`. Режим правил без модели (`LLM_MODE=rules`) тоже ходит за эмбеддингами в OpenAI, поэтому ключ нужен в любом случае. Без ключа работают только тесты и `pnpm evals -- --offline` (фейковые эмбеддинги, как в CI).
+
+**Что поднимает compose:** десять контейнеров — приложение (`postgres` с pgvector, `api`, `web`, `mcp`) и self-hosted Langfuse (`langfuse-web`, `langfuse-worker`, ClickHouse, MinIO, Redis, второй Postgres). Памяти это просит много: в прод-оверлее у приложения ≈ 4,3 ГБ лимитов и столько же у Langfuse-стека, на сервере 8 ГБ стек не помещался ([`docs/PROD.md`](docs/PROD.md)). Если Docker Desktop ограничен по памяти — поднимайте без трейсов: `LANGFUSE_TRACING_ENABLED=false` в `.env` и `docker compose up postgres api web mcp`.
 
 ## Прод
 
-Тот же compose плюс override: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` — Caddy с TLS наружу, `NODE_ENV=production` (API не стартует без настоящего `JWT_SECRET`), без seed и демо-входов, ежедневный `pg_dump` в том, кадры и документы в томе `api-storage`. Регистрация — только по ссылке приглашения (или с домена компании), первым входит администратор из `ADMIN_EMAILS`, он выдаёт руководителю приёмки право создавать проекты, тот приглашает участников ссылкой; отключить уволенного везде — одна кнопка ([ADR 006](docs/adr/006-access-contour.md)). Пошагово, бэкап и восстановление — [`docs/PROD.md`](docs/PROD.md). Второй вариант — **Railway** (Hobby): три сервиса из ветки `main`, деплой после зелёного CI, те же образы и `/health` — [`docs/PROD-RAILWAY.md`](docs/PROD-RAILWAY.md). Порты Postgres, ClickHouse, MinIO и Langfuse и в демо опубликованы только на `127.0.0.1`. В проде self-hosted Langfuse-стек спрятан за профиль `observability`, трейсы идут в Langfuse Cloud (R-B1 в [`docs/BETA-REVIEW.md`](docs/BETA-REVIEW.md)).
+**Основной прод — Railway** (регион Амстердам): три сервиса из ветки `main` — `postgres` (pgvector), `api` (один инстанс), `web`. Деплой запускает push в `main`, но только после зелёного CI («Wait for CI»); коммит только в `docs/` сервисы не пересобирает (Watch Paths). Трейсы — **Langfuse Cloud (EU)**, ошибки API и SPA — **Sentry (EU)**; `/health` показывает `db`, `vectorIndex`, `llm`, `jobs`, `tracing: on | degraded | off`, `sentry`. Регистрация открыта (`REGISTRATION_MODE=open`), но аккаунт — это ещё не проект: право создавать проекты выдаёт единственный администратор инстанса — скрытая роль без стороны, он видит только `/admin` и в проекты не входит ([ADR 006](docs/adr/006-access-contour.md)); участников PM зовёт ссылкой `/join/…`, писем нет ([ADR 013](docs/adr/013-no-mail.md)). Файлы кадров и документов — на томе `api`; копия базы — еженедельный дамп на ноутбук владельца (`scripts/prod-db-dump.sh`), восстановление отрепетировано. Сервиса MCP на Railway нет: он нужен только из IDE и ходит в REST с ноутбука. Runbook — [`docs/PROD-RAILWAY.md`](docs/PROD-RAILWAY.md), зеркало настроек — `.railway/railway.ts`. С 21.09 прод — рабочий инструмент команды владельца: merge в `main` — вечером, миграции — только добавляющие.
+
+**Второй вариант — один сервер с compose:** `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` — Caddy с TLS наружу, `NODE_ENV=production` (без настоящего `JWT_SECRET` и без `OPENAI_API_KEY` API не стартует), без seed и демо-входов, регистрация по умолчанию только по приглашению (`invite_only`), ежедневный `pg_dump` в том. Self-hosted Langfuse-стек спрятан за профиль `observability` и требует сервер 16 ГБ; без него трейсы идут в Langfuse Cloud. Runbook, бэкап и восстановление — [`docs/PROD.md`](docs/PROD.md). Порты Postgres, ClickHouse, MinIO и Langfuse и в демо опубликованы только на `127.0.0.1`.
 
 ## Что внутри
 
@@ -47,27 +55,27 @@ docker compose up
 2. **Граф LangGraph.js** (`apps/api/src/agent`): retrieve → факты кадра → привязка к пункту с переписыванием запроса ≤ 2 → класс → черновик → ворота faithfulness ≤ 2 → interrupt PM. «Не та цитата из ТЗ» продолжает тот же прогон из чекпоинта в Postgres. Ретест: pixel-diff → пояснение → interrupt бизнеса.
 3. **Модель обязана уметь «не знаю».** `cannot_tell` (мало данных) и `unspecified` (в бумагах пусто или конфликт) — доменные исходы, не ошибки; `unspecified` ≠ change request. Визуальный дефект без скрина не утверждается.
 4. **Один путь записи.** `RemarksService` — единственный, кто меняет статусы; граф, REST, WebSocket и MCP зовут его. Закрыть замечание может только роль `business` кнопкой.
-5. **Измерено, не «на глаз».** Golden 30 + 13 кейсов, две метрики, A/B ретеста с победителем в коде, стоимость каждого прогона в БД и в Langfuse — [`docs/EVALS.md`](docs/EVALS.md).
+5. **Измерено, не «на глаз».** Golden 49 кейсов (33 разбора, 15 ретеста, 1 утечка), метрики binding и faithfulness плюс hit@k поиска; сессия живых замеров 20–21.09 с датой и git sha — базовые уровни, разброс, гиперпараметры, модели, абляции Skill и картинки, A/B ретеста — [`docs/EVALS.md`](docs/EVALS.md). Стоимость каждого прогона — в БД и в Langfuse.
 
-Стек: Angular · NestJS · PostgreSQL + pgvector · Prisma · LangGraph.js in-process · MCP TypeScript SDK · Langfuse (OpenTelemetry) · OpenAI `gpt-4.1-mini` / `gpt-4.1` · pixelmatch · Docker Compose.
+Стек: Angular · NestJS · PostgreSQL + pgvector · Prisma · LangGraph.js in-process · MCP TypeScript SDK · Langfuse (OpenTelemetry) · Sentry · OpenAI `gpt-4.1-mini` / `gpt-4.1` · pixelmatch · Docker Compose · Railway.
 
 ## Как это устроено
 
-Один процесс API, одна БД, один MCP-процесс как фасад. Схема, карта модулей, путь запроса, trade-off и что заменяемо — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Один процесс API, одна БД, один MCP-процесс как фасад. Схема (mermaid), карта модулей, путь запроса, trade-off и что заменяемо — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-- **RAG** (`apps/api/src/rag`): чанк = раздел документа по заголовкам, подпись «§2.1 Primary» едет в цитату; `text-embedding-3-small`, `vector(1536)`, HNSW; сравнение четырёх стратегий чанкинга — в ARCHITECTURE. Документы: PDF, DOCX, Markdown; журнал — только официальный шаблон XLSX/CSV, картинки из ячеек становятся кадрами.
+- **RAG** (`apps/api/src/rag`): чанк = раздел документа по заголовкам, подпись «§2.1 Primary» едет в цитату; `text-embedding-3-small`, `vector(1536)`, HNSW, фильтр проекта в самом SQL; сравнение четырёх стратегий чанкинга, «почему без reranker», «почему 3-small» и «почему поиск только векторный» — в ARCHITECTURE. Документы: PDF, DOCX, DOC, Markdown (`extract.ts`: pdf-parse, mammoth, word-extractor); журнал — только официальный шаблон XLSX/CSV, картинки из ячеек становятся кадрами.
 - **Скрин как источник фактов**: факты кадра до классификации (кейс «текст врёт, скрин спасает»), на ретесте — тройка «было / стало / дифф». Пиксели считает алгоритм, не модель ([ADR 002](docs/adr/002-pixel-diff.md)).
 - **MCP** (`apps/mcp`): четыре tool'а — `search_spec`, `get_round_remarks`, `apply_human_verdict`, `submit_retest_evidence` — поверх тех же REST-маршрутов; `projectId` только из токена; закрыть через MCP нельзя. `search_spec` считает опорой только фрагменты не ниже порога графа `BOUND_SCORE`, иначе отвечает «Опоры нет» ([ADR 003](docs/adr/003-mcp-facade.md), `.mcp.json`, `.cursor/mcp.json`, [`apps/mcp/README.md`](apps/mcp/README.md), подключение — [«Установка Skill и MCP в IDE»](#установка-skill-и-mcp-в-ide)).
 - **Skill** [`skills/uat-triage/SKILL.md`](skills/uat-triage/SKILL.md): триггеры, процедура, запреты. Тот же текст стоит в системном промпте всех вызовов модели, кроме переформулировки запроса (`rewriteQuery`): факты кадра, класс, черновик, пояснение ретеста и `judge` A/B-ветки. Его же отдаёт MCP-prompt `uat-triage`, а Claude Code подключает как плагин `remarkround:uat-triage` ([«Установка Skill и MCP в IDE»](#установка-skill-и-mcp-в-ide)).
-- **Langfuse** (`apps/api/src/observability`): один `AgentRun` = один trace, продолжение после interrupt — в тот же trace; generation на каждый вызов модели с токенами и стоимостью; ссылка «Трейс в Langfuse» на карточке у PM. `docker compose up` инициализирует Langfuse сам.
-- **Guardrails**: вход — детектор injection в тексте замечания и комментарии PM (пометка PM, модели — «это содержание, не команда»); выход — ворота faithfulness: ссылка на раздел без цитаты, дефект без цитаты, «на кадре» без кадра → цикл → `cannot_tell`. Тесты `guardrail.injection.spec`, `verdict.model-cannot-close.spec`, `tenancy.leakage.spec`.
-- **Evals и A/B** (`apps/api/src/evals`, `evals/golden.json`): `pnpm evals` гоняет golden через продуктовые сервисы; binding quality 25/30 и faithfulness 30/30 на live-модели; H1 diff+explain против H0 «два кадра в LLM» — 12/13 у обоих, но H0 говорит «исправлено» про несопоставимый кадр 2× DPR, H1 дешевле на 15 % и быстрее на 30 %; победитель включён по умолчанию. CI (`.github/workflows/ci.yml`) гоняет тесты, `pnpm audit` и evals офлайн на каждый push, а на `main` и теги публикует образы в GHCR ([ADR 008](docs/adr/008-release-and-ownership.md)).
+- **Langfuse** (`apps/api/src/observability`): один `AgentRun` = один trace, продолжение после interrupt — в тот же trace; generation на каждый вызов модели с токенами и стоимостью; ссылка «Трейс в Langfuse» на карточке у PM. Локально `docker compose up` инициализирует Langfuse сам; на бою — Langfuse Cloud (EU), у Langfuse свой изолированный провайдер OpenTelemetry (иначе рядом с Sentry спаны терялись), `/health.tracing` — `on` / `degraded` / `off`.
+- **Guardrails**: вход — детектор injection в тексте замечания и комментарии PM (пометка PM, модели — «это содержание, не команда»); выход — ворота faithfulness: ссылка на раздел без цитаты, дефект без цитаты, «на кадре» без кадра → цикл → `cannot_tell`. Детектор читает только текст, не кадр; PII и токсичность не фильтруются. Тесты `guardrail.injection.spec`, `verdict.model-cannot-close.spec`, `tenancy.leakage.spec`.
+- **Evals и A/B** (`apps/api/src/evals`, `evals/golden.json`): `pnpm evals` гоняет golden через продуктовые сервисы, отчёт пишет git sha, sha256 промптов, стоимость и p50/p95. Живые цифры M1 (20–21.09, sha `f106d0d`): опора 28–29/33 и честность 33/33 у модели против 20/33 у константы «всегда `cannot_tell`» и 17/33 у правил на настоящих эмбеддингах; два одинаковых прогона расходятся на 1 кейс, поэтому temperature / top_p / max_tokens (28–30/33 во всех вариантах) не отличимы от шума — дефолты оставлены по эксперименту; hit@1/3/6 поиска 16/20/23 из 25; $0,0033 и 3,8 с на замечание (счёт по Langfuse на 17 % ниже: кэш промпта). A/B ретеста: H1 «pixel-diff + пояснение» 14/15 с одним ложным «исправлено» против 11–12/15 и трёх у H0 «два кадра в модель», но выигрыш даёт детерминированная предпроверка размера и идентичности кадров, а не картинка диффа — H1 остаётся в продукте за предпроверку и объяснимость. A/B моделей: черновик остаётся на `gpt-4.1` — mini по метрикам не хуже и вдвое дешевле, но в 4 черновиках из 33 фактические ошибки; `gpt-4.1-nano` отвергнута (22/33). A/B «желание против дефекта» 21.09: три починки промпта и Skill, по 70 прогонов на вариант, — все хуже исходного, откачены. Подробно — [`docs/EVALS.md`](docs/EVALS.md), что говорить на защите самим — [`docs/defense/HONEST-NOTES.md`](docs/defense/HONEST-NOTES.md). CI (`.github/workflows/ci.yml`) на каждый push гоняет тесты, `pnpm audit` и evals офлайн с порогом binding 0,65 (выше константы «всегда `cannot_tell`»), а на `main` и теги публикует образы в GHCR ([ADR 008](docs/adr/008-release-and-ownership.md)).
 
 ## Установка Skill и MCP в IDE
 
 Skill `uat-triage` и MCP-сервер `remarkround` работают и вне веб-интерфейса — в ИИ-ассистенте редактора. Корень репозитория устроен как плагин Claude Code: манифест [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json), Skill — [`skills/uat-triage/`](skills/uat-triage/), MCP-сервер — [`.mcp.json`](.mcp.json). Для Cursor тот же сервер описан в [`.cursor/mcp.json`](.cursor/mcp.json), а тот же Skill подключён ссылкой `.cursor/skills/uat-triage` — копии файла нет.
 
-Рядом с `SKILL.md` лежат справочники [`references/`](skills/uat-triage/references/): классы, примеры из golden, инструменты по шагам. Тело `SKILL.md` на них не ссылается: оно без изменений идёт в системный промпт графа, а промпт заморожен до замеров M1.
+Рядом с `SKILL.md` лежат справочники [`references/`](skills/uat-triage/references/): классы, примеры из golden, инструменты по шагам. Тело `SKILL.md` на них не ссылается: оно без изменений идёт в системный промпт графа, а правки промпта и Skill — только через замер: 21.09 три «очевидные» правки по A/B откатили (EVALS, раздел 9).
 
 **Перед запуском** — одинаково для всех вариантов:
 
@@ -116,29 +124,52 @@ Skill в Cursor подключён ссылкой [`.cursor/skills/uat-triage`](
 
 ## Соответствие требованиям курса nFactorial
 
-| Требование | Где | Проверка |
+Обязательные пункты (раздел 3 ТЗ курса) — где доказательство в репозитории:
+
+| Требование | Где | Чем проверено |
 |---|---|---|
-| LangGraph: ветки, циклы, HITL | `apps/api/src/agent/triage.graph.ts`, `retest.graph.ts`, [`docs/GRAPH.md`](docs/GRAPH.md) | `graph.same-run.spec` (тот же run после «не та цитата», цикл faithfulness, cancel) |
-| Свой MCP, 2–3 содержательных tool'а | `apps/mcp` — 4 tool'а; `.mcp.json`, `.cursor/mcp.json` | `mcp.facade.spec` (настоящий процесс по stdio, чужой проект пуст, «Опоры нет» ниже порога) |
-| Свой Skill с SKILL.md | `skills/uat-triage/SKILL.md` + `references/`; плагин Claude Code `.claude-plugin/plugin.json`; в промпт графа — `apps/api/src/llm/skill.ts` | `apps/api/src/mcp/mcp.facade.spec.ts` (prompt `uat-triage` отдаёт SKILL.md без шапки); `claude plugin validate .` |
-| RAG с обоснованием | `apps/api/src/rag`, ARCHITECTURE «Чанкинг» | `chunker.spec`, `rag.search.spec`, `chunking-eval.ts` |
-| Документы PDF / DOCX / XLSX | `apps/api/src/documents`, `imports` | `import.missing-description.spec` |
-| Мультимодальность осмысленно | vision-факты кадра, ретест-тройка с диффом | evals типы 6–8, `diff.cannot-compare.spec` |
-| Трейсы всех LLM-вызовов | Langfuse, `apps/api/src/observability` | `observability.spec`; живой дашборд на :3000 |
-| Golden ≥ 30, автопрогон, ≥ 2 метрики | `evals/golden.json` (30 + 13 + leakage), `pnpm evals` | `evals.spec`, отчёты `evals/results/` |
-| A/B с выводом в код | [`docs/EVALS.md`](docs/EVALS.md), `DEFAULT_RETEST_STRATEGY` | три живых прогона 4 сентября 2026 |
-| Выбор LLM и гиперпараметров | EVALS «Выбор модели», ARCHITECTURE «Стоимость, латентность, fallback» | стоимость в `AgentRun.costUsd` |
-| Веб-фронт | `apps/web` (Angular) | скриншоты выше |
-| README, ARCHITECTURE, EVALS, презентация, запуск | этот файл, `docs/ARCHITECTURE.md`, `docs/EVALS.md`, [`docs/archive/presentation/`](docs/archive/presentation/), `docker compose up` | — |
-| Рекомендованное | guardrails, Docker Compose, auth + роли, CI с evals, fallback на правила без модели, свой eval-раннер | — |
+| **3.1 LangGraph**: ветвления, циклы, человек в цикле | `apps/api/src/agent/triage.graph.ts` — `addConditionalEdges`: после retrieve → факты кадра или сразу привязка; `rewrite_query` ≤ 2 → снова retrieve; `faithfulness_gate` ≤ 2 → снова привязка; `interrupt` на решение PM. `retest.graph.ts` — `interrupt` на заказчика. Чекпоинты в Postgres — `prisma-checkpointer.ts`. Схемы обоих графов — [`docs/GRAPH.md`](docs/GRAPH.md). Почему LangGraph, а не CrewAI / Parlant / свой цикл — [`docs/adr/014-orchestration-langgraph.md`](docs/adr/014-orchestration-langgraph.md) | `graph.same-run.spec.ts` (тот же run после «Не та цитата», цикл faithfulness, отмена), `run-deadline.spec.ts` |
+| **3.1 Свой MCP-сервер**, 2–3 tool'а | `apps/mcp/src/server.ts` — 4 tool'а (`search_spec`, `get_round_remarks`, `apply_human_verdict`, `submit_retest_evidence`) и prompt `uat-triage`; конфиги `.mcp.json`, `.cursor/mcp.json`; почему MCP, а не REST — [`docs/adr/003-mcp-facade.md`](docs/adr/003-mcp-facade.md); [`apps/mcp/README.md`](apps/mcp/README.md) | `apps/api/src/mcp/mcp.facade.spec.ts` — настоящий процесс по stdio: чужой проект пуст, «Опоры нет» ниже порога, tool'а закрытия нет |
+| **3.1 Свой Skill** с SKILL.md и триггерами | [`skills/uat-triage/SKILL.md`](skills/uat-triage/SKILL.md) — frontmatter `name` / `description`, разделы «Триггеры», «Процедура», «Запрещено»; справочники `references/`; плагин Claude Code `.claude-plugin/plugin.json`; в системный промпт графа — `apps/api/src/llm/skill.ts`. Вклад замерен: без Skill 6 ответов из 33 меняют класс, честность 32/33 (EVALS, раздел 6) | `mcp.facade.spec.ts` (prompt отдаёт SKILL.md), `claude plugin validate .`, скриншот `docs/screenshots/claude-code-skill-mcp.png` |
+| **3.2 RAG**: чанкинг, эмбеддинги, векторная БД, reranker | чанк = раздел по заголовкам — `apps/api/src/rag/chunker.ts`; `text-embedding-3-small`, `vector(1536)` + HNSW — `apps/api/src/llm/embeddings.service.ts`, миграция `packages/db/prisma/migrations/20260903000000_chunk_embedding_vector_1536`; поиск с `WHERE projectId` — `rag.service.ts`; сравнение четырёх стратегий чанкинга — `chunking-eval.ts` и EVALS, раздел 8 (hit@1/3/6 16/20/23 из 25); «Почему без reranker», «Почему text-embedding-3-small», «Почему поиск только векторный» — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | `chunker.spec.ts`, `rag.search.spec.ts`, `rag:eval` |
+| **3.2 Парсинг документов** | PDF (pdf-parse), DOCX (mammoth), DOC (word-extractor), Markdown — `apps/api/src/rag/extract.ts`; журнал XLSX/CSV с картинками из ячеек — `apps/api/src/imports/journal-parser.ts`; настоящие документы из Word и Google Docs — `fixtures/spec`, `fixtures/protocol` | `extract.spec.ts` (разделы PDF совпадают с Markdown-эталоном), `import.missing-description.spec.ts`, `uploads.hygiene.spec.ts` |
+| **3.2 Мультимодальность** | vision-факты кадра до классификации — `visionFacts` в `apps/api/src/llm/openai-triage-llm.ts`; ретест — pixel-diff кодом (`apps/api/src/diff/diff.service.ts`, [ADR 002](docs/adr/002-pixel-diff.md)) и модель на тройке «было / стало / дифф». Что потеряли бы без неё: без картинки система верит тексту там, где скрин с ним расходится (EVALS, раздел 6, абляция `VISION_DISABLED`) | `diff.cannot-compare.spec.ts`, evals типы 6–8 |
+| **3.3 Трейсинг** всех LLM-вызовов | Langfuse SDK v5 поверх OpenTelemetry — `apps/api/src/observability/observability.service.ts`: один `AgentRun` = один трейс, продолжение после решения PM — в тот же; на бою Langfuse Cloud (EU); `/health.tracing` — `apps/api/src/health/health.controller.ts`; ссылка «Трейс в Langfuse» на карточке у PM; почему Langfuse, а не LangSmith — ARCHITECTURE | `observability.spec.ts`, `observability-sentry.spec.ts` (рядом с Sentry спаны не теряются); живой дашборд — на защите |
+| **3.3 Golden ≥ 30**, автопрогон, ≥ 2 метрики | [`evals/golden.json`](evals/golden.json) — 49 кейсов (33 разбора, 15 ретеста, 1 утечка), 12 типов трудных ситуаций; метрики binding, faithfulness, hit@k, ретест — `apps/api/src/evals/metrics.ts`; раннер `runner.ts`; отчёты с sha — `evals/results/2026-09-20-*`; [`docs/EVALS.md`](docs/EVALS.md), разделы 1–3 | `evals.spec.ts` офлайн на каждом `pnpm test`; CI на каждый push |
+| **3.3 A/B-эксперимент** | ретест H0 против H1 — EVALS, раздел 7, победитель `DEFAULT_RETEST_STRATEGY` в `apps/api/src/agent/retest.graph.ts`, перепроверка в ADR 002; модели — раздел 5; «желание против дефекта» — раздел 9 и `evals/results/2026-09-21-wish-ab.md` | 6 прогонов ретеста; в A/B промпта — 70 прогонов на вариант |
+| **3.4 Выбор LLM**: цена, скорость, качество | [`docs/adr/015-llm-choice.md`](docs/adr/015-llm-choice.md) — OpenAI против Claude / Gemini / локальной модели, дополнение 21.09 «черновик остаётся на `gpt-4.1`»; таблица моделей — EVALS, раздел 5; прайс — `apps/api/src/llm/pricing.ts`; стоимость сценариев и сверка с Langfuse — раздел 10 | `pricing.spec.ts`, `run-cost.spec.ts` |
+| **3.4 temperature, top_p, max_tokens** экспериментом | EVALS, раздел 4 — семь прогонов по одному параметру на sha `f106d0d`, все в пределах разброса, дефолты обоснованы; параметры и переключатели — `apps/api/src/llm/llm-params.ts`; отчёты `evals/results/2026-09-20-tclassify-*`, `tdraft-*`, `topp-0.8`, `maxtok-draft-*`; [HONEST-NOTES](docs/defense/HONEST-NOTES.md), п. 3 | `llm-params.spec.ts` |
+| Веб-фронтенд | `apps/web` (Angular): журнал, карточка, ретест, документы, очередь разработчика | скриншоты выше |
+| Артефакты сдачи | этот README, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/EVALS.md`](docs/EVALS.md), презентация — [`docs/archive/presentation/`](docs/archive/presentation/), однокомандный запуск `docker compose up` | — |
+
+Рекомендуемые пункты (раздел 4 ТЗ курса):
+
+| Пункт | Статус | Честно |
+|---|---|---|
+| Guardrails | есть, частично | вход — детектор инъекций по тексту замечания и комментария PM (`apps/api/src/agent/guardrails.ts`), выход — ворота faithfulness (`faithfulness.ts`), утечка между проектами — `tenancy.leakage.spec.ts` и evals тип 9. Только текст: кадр детектор не читает, PII и токсичность не фильтруются (HONEST-NOTES, п. 8) |
+| Кэширование | частично | prompt cache OpenAI работает сам: счёт по Langfuse на 17 % ниже нашего прайса (EVALS, раздел 10). Semantic cache сознательно нет — каждое замечание уникально, а ошибка кэша показала бы PM чужое обоснование (ARCHITECTURE, «Почему нет кэша») |
+| Fallback между моделями | частично | второй модели и поставщика нет (ADR 015). Есть: повторы на уровне SDK (60 с, 2 повтора) и очереди (30 с / 2 мин / 8 мин, 4 попытки), суточный потолок на проект `GRAPH_DAILY_USD_PER_PROJECT` → `409 llm_budget`, кончился баланс → код `llm_quota` без повторов, и явный режим правил `LLM_MODE=rules` (17/33 на настоящих эмбеддингах, EVALS, раздел 2). Переход на правила — руками и виден на карточке, молча не подменяем |
+| Docker и docker-compose | есть | `docker-compose.yml`, `docker-compose.prod.yml`, `apps/*/Dockerfile`; образы в GHCR |
+| CI/CD с evals | есть | `.github/workflows/ci.yml`: на каждый push и PR — тесты, `pnpm audit`, evals офлайн с порогом binding 0,65, отчёт в артефакт `evals-report`; Railway деплоит `main` только после зелёного CI |
+| Публичный URL | есть | https://remark-round.up.railway.app |
+| Аутентификация и роли | есть | JWT; роли проекта `business | pm | developer` и администратор инстанса без стороны ([ADR 006](docs/adr/006-access-contour.md)); `apps/api/src/{auth,tenancy,admin}`, спеки `accounts.spec`, `members.spec`, `admin.spec` |
+| Голосовой интерфейс | нет | не делали: замечания приходят строками журнала и скринами, голос задачу приёмки не решает |
+| Fine-tuning / LoRA | нет | не делали: 49 кейсов — не датасет для дообучения, а поведение держат промпт, Skill и ворота кодом. Честное ограничение дороже недоделанной фичи |
+| Свой eval-фреймворк | есть | свой раннер `apps/api/src/evals` через продуктовые сервисы; метрики binding, структурная faithfulness, hit@k, leakage; отчёт с sha, хешами промптов, $ и p50/p95 |
+| Внешние API | нет | кнопки Telegram / WhatsApp на «Участниках» — просто ссылка `/join/…`, не интеграция; Jira сознательно нет ([ADR 001](docs/adr/001-not-jira.md)) |
+| Реальные пользователи | в процессе | команда владельца (бизнес, PM, три разработчика) заводит свои проекты на бою с 21.09; отзывы собираем до 25.09, цифр пока нет |
 
 ## Ограничения, честно
 
-- Дыру в ТЗ модель трижды из четырёх называет change request вместо `unspecified`, ложную цитату заказчика — дефектом (при верной цитате в черновике). Обе ошибки уходят PM, а не разработчику, но это ярлык, который человек поправит кнопкой.
-- `gpt-4.1-mini` при `temperature: 0` не детерминирован между прогонами; цифры — из полного прогона golden.
-- Не открывает стенд заказчика, не кликает UI, не сравнивает «исправлено ли» силами LLM по двум кадрам. Не парсер любого Excel. Не Jira.
-- Синтетические фикстуры: боевые скрины и персональные данные в облачную модель без договора не слать.
-- Один инстанс API. Очередь задач и чекпоинты графа уже в Postgres, но шина событий WebSocket, отмена прогона и лимиты параллельности живут в памяти процесса, а файлы — на томе одного сервиса. Второму инстансу нужны Redis-адаптер socket.io, отмена и лимиты через базу и общее хранилище файлов — отдельный этап после пилота ([ARCHITECTURE, «Один инстанс API»](docs/ARCHITECTURE.md#один-инстанс-api)).
+- **Что путает модель.** Дыру в ТЗ три раза из четырёх называет `unspecified` верно, четвёртый — новым желанием; ложную цитату заказчика в одном случае из двух ставит дефектом; «желание, расходящееся с ТЗ» в половине прогонов путает с дефектом — три починки промпта по A/B ухудшили соседние кейсы и откачены (EVALS, раздел 9). Ярлык — предложение, решает человек кнопкой.
+- **Разброс.** `gpt-4.1-mini` при `temperature: 0` не детерминирована: два одинаковых прогона расходятся на 1 кейс из 33, эффекты мельче на этом наборе не различить.
+- **Метрики.** Faithfulness структурная — та же функция стоит воротами в графе, поэтому близка к 100 % по построению; качество текста черновика не меряется вовсе (ошибки mini нашли чтением). Golden синтетический и написан авторами промпта, отложенной выборки нет; корпус поиска — 11 чанков. Офлайн-цифры CI — защита от регрессий, не качество.
+- **Кадры.** Pixel-diff сравнивает только кадры одного размера ([ADR 002](docs/adr/002-pixel-diff.md)): система подсказывает размер заранее и даёт «закрыть без кадра» ([ADR 010](docs/adr/010-close-without-frame.md)); поиск кадра внутри кадра не делали. Оттенок синего (#1E6FDF вместо #0B5FFF) по кадру не отличает ни одна стратегия ретеста.
+- **Guardrails.** Детектор инъекций в коде читает только текст; от команды на картинке защищает то, что шаг фактов кадра не переписывает надписи-команды — в 17 прогонах устояло, гарантии нет.
+- **Документы.** Автоматическое оглавление Word чанкер принимает за разделы — ошибка открыта; в старом `.doc` теряется автонумерация заголовков. Журнал — только официальный шаблон, не парсер любого Excel.
+- **Данные.** Тексты замечаний, фрагменты ТЗ и кадры уходят в OpenAI и Langfuse Cloud (EU); маскирования персональных данных нет — решение владельца для своей команды ([ADR 015](docs/adr/015-llm-choice.md)). Демо и защита — на обезличенных документах.
+- **Стенд.** Один инстанс API: очередь задач и чекпоинты графа уже в Postgres, но шина событий WebSocket, отмена прогона и лимиты параллельности живут в памяти процесса, а файлы — на томе одного сервиса ([ARCHITECTURE, «Один инстанс API»](docs/ARCHITECTURE.md#один-инстанс-api)). Бэкапы на тарифе Hobby — еженедельный дамп с ноутбука владельца, не встроенные. Стоимость в приложении — верхняя граница: кэш промпта не учитывается.
+- Не открывает стенд заказчика, не кликает UI, не сравнивает «исправлено ли» силами модели по двум кадрам. Не Jira.
 
 ## Разработка
 
@@ -152,17 +183,17 @@ pnpm --filter @remarkround/api seed          # демо-данные с хост
 pnpm api:dev && pnpm web:dev                 # :3001 и :4200 без Docker
 ```
 
-Полезное с хоста: `GET /api/v1/projects/:id/search?q=какого цвета primary-кнопка` (retrieve с цитатой); скрипты `pnpm --filter @remarkround/api rag:eval` (стратегии чанкинга), `make:fixtures` (xlsx-фикстуры и шаблон журнала), `make:frames` (кадры из SVG), `make:screenshots` (скриншоты для README).
+Как воспроизвести сессию замеров целиком — [`docs/EVALS.md`](docs/EVALS.md), раздел 12. Полезное с хоста: `GET /api/v1/projects/:id/search?q=какого цвета primary-кнопка` (retrieve с цитатой); скрипты `pnpm --filter @remarkround/api rag:eval` (стратегии чанкинга), `make:fixtures` (xlsx-фикстуры и шаблон журнала), `make:frames` (кадры из SVG), `make:screenshots` (скриншоты для README).
 
 ```
 apps/web          Angular: журнал, карточка, импорт, документы, очередь разработчика
-apps/api          NestJS: auth, tenancy, documents, rag, imports, remarks, media, diff, llm, agent, gateway, observability, evals
+apps/api          NestJS: auth, tenancy, documents, rag, imports, remarks, media, diff, llm, agent, jobs, gateway, observability, evals
 apps/mcp          MCP-фасад домена (stdio для Cursor / Claude Code / Claude Desktop, http в compose :3002)
 packages/db       Prisma schema + клиент
 evals/            golden.json и отчёты pnpm evals
 fixtures/         ТЗ, протокол, шаблон журнала, кадры
 skills/           uat-triage/SKILL.md и references/ (корень репозитория — плагин Claude Code)
-docs/             ARCHITECTURE, EVALS, GRAPH, API, WS, STATUS, DEMO, ADR, UI-канон, презентация
+docs/             ARCHITECTURE, EVALS, GRAPH, API, WS, STATUS, DEMO, PROD, ADR, UI-канон, defense (план защиты, HONEST-NOTES)
 ```
 
 ## Карта документации
@@ -171,13 +202,15 @@ docs/             ARCHITECTURE, EVALS, GRAPH, API, WS, STATUS, DEMO, ADR, UI-к�
 |---|---|
 | [`REMARKROUND.md`](REMARKROUND.md) | Канон продукта: доктрина, запреты, требования курса |
 | [`AGENTS.md`](AGENTS.md) | Вход для Cursor / агентов |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Один лист системы, путь запроса, trade-off |
-| [`docs/EVALS.md`](docs/EVALS.md) | Метрики, три итерации, A/B, выбор моделей |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Один лист системы (mermaid), путь запроса, trade-off, почему без reranker и кэша |
+| [`docs/EVALS.md`](docs/EVALS.md) | Замеры M1: базовые уровни, разброс, гиперпараметры, модели, абляции, A/B, эволюция промпта, что метрики не показывают |
+| [`docs/defense/HONEST-NOTES.md`](docs/defense/HONEST-NOTES.md) | Ограничения и неподтвердившиеся гипотезы с доказательствами — что говорим на защите сами |
 | [`docs/archive/presentation/`](docs/archive/presentation/) | Презентация защиты (PDF и исходник) — артефакт курса в прежнем дизайне |
 | [`docs/DEMO.md`](docs/DEMO.md) | Сюжет защиты 10 мин |
 | [`docs/GRAPH.md`](docs/GRAPH.md) · [`docs/WS.md`](docs/WS.md) · [`docs/API.md`](docs/API.md) · [`docs/STATUS.md`](docs/STATUS.md) | Контракты |
+| [`docs/PROD-RAILWAY.md`](docs/PROD-RAILWAY.md) · [`docs/PROD.md`](docs/PROD.md) | Прод: Railway (основной) и один сервер с compose |
 | [`docs/ENGINEERING.md`](docs/ENGINEERING.md) | Паттерны Nest, тесты-ворота |
-| [`docs/BETA-REVIEW.md`](docs/BETA-REVIEW.md) | Ревью перед бетой и ход работ (что делается сейчас) |
+| [`docs/BETA-REVIEW.md`](docs/BETA-REVIEW.md) | Ревью перед бетой 17.09 и ход работ по нему |
 | [`docs/archive/PHASES.md`](docs/archive/PHASES.md) | История фаз 0–11 (закрыты 5 сентября 2026) |
-| [`docs/adr/`](docs/adr/) | Не Jira · pixel-diff · MCP-фасад · совет разработчика · аккаунты · контур доступа · что видит заказчик · релизы и права |
+| [`docs/adr/`](docs/adr/) | Не Jira · pixel-diff · MCP-фасад · совет разработчика · аккаунты · контур доступа · что видит заказчик · релизы и права · закрыть без кадра · история только дописывается · без почты · оркестратор LangGraph · выбор LLM |
 | [`docs/ui/`](docs/ui/) | COPY, эталон, антипаттерны |
