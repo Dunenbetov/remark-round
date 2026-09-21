@@ -8,6 +8,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PNG } from 'pngjs';
 import { createHarness, Harness } from '../../test/harness';
+import { cannotCompareText } from '../agent/retest.graph';
+import { scoreRetest } from '../evals/metrics';
 import { DiffService, describeRegion } from './diff.service';
 
 const SHOTS = resolve(__dirname, '../../../../fixtures/screenshots');
@@ -81,6 +83,19 @@ describe('DiffService', () => {
     const result = diff.compare(GRAY_SVG, BLUE);
     expect(result.kind).toBe('cannot_compare');
     if (result.kind === 'cannot_compare') expect(result.reason).toMatch(/PNG или JPG/);
+  });
+});
+
+describe('пояснение «сравнить нельзя»', () => {
+  // Слово «исправлено» система не произносит — это решение человека; та же проверка, что у evals (RETEST_CLOSING)
+  it('ни в одной ветке не говорит «исправлено» и не закрывает замечание, но даёт выход', () => {
+    const size = cannotCompareText({ reason: 'кадры разного размера', before: { width: 1278, height: 535 }, after: { width: 1598, height: 840 } });
+    const scattered = cannotCompareText({ reason: 'изменения разбросаны по 81% кадра — другой экран, масштаб или сдвиг вёрстки', before: { width: 800, height: 400 }, after: { width: 800, height: 400 } });
+    for (const text of [size, scattered]) {
+      expect(scoreRetest({ gold: { expect: ['cannot_tell'] } }, { outcome: 'cannot_tell', explanation: text, status: 'awaiting_business_close' }).issues).toEqual([]);
+      expect(text).toMatch(/закройте без кадра/);
+    }
+    expect(size).toMatch(/1278×535/);
   });
 });
 
