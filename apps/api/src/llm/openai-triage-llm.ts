@@ -120,7 +120,9 @@ export class OpenAiTriageLlm implements TriageLlm {
             // а запрос на изменение», а proposedClass уже был defect_candidate (docs/defense/HONEST-NOTES.md, п. 1)
             required: ['reason', 'proposedClass', 'hitIndexes', 'duplicateOfNumber'],
             properties: {
-              reason: { type: 'string', description: 'Сначала сверка, по-русски, 1–2 фразы: что документ говорит про этот элемент и что сейчас на проде (по кадру и словам заказчика)' },
+              // Описание проходит ВСЕ шаги задания: версия «только сверка» (0cccdeb) починила зелёную кнопку, но сломала
+              // дыры и «кадр не про то» — +10 запрещённых классов на 5 прогонах (evals/results/2026-09-21-wish-reason-first-*)
+              reason: { type: 'string', description: 'Сначала — короткий разбор по шагам задания, до выбора класса: (1) повтор? (2) кадр про тот же экран и не противоречит тексту? (3) что документ говорит про элемент и что сейчас на проде; (4) какой класс по правилам шага 4. 2–3 фразы по-русски' },
               proposedClass: { type: 'string', enum: CLASSES },
               hitIndexes: { type: 'array', items: { type: 'integer' }, description: 'Номера найденных фрагментов, которые служат опорой (0..N-1). Пусто, если опоры нет.' },
               duplicateOfNumber: { type: ['integer', 'null'], description: 'Номер оригинала в раунде, если это повтор' },
