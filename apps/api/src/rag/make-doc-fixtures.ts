@@ -9,6 +9,8 @@
  *                                    (numbering.xml → w:pStyle), таблица, маркированный и нумерованный списки
  *   fixtures/protocol/PROTOCOL.doc — старый Word 97-2003. Номера заголовков в нём набраны текстом: автонумерацию
  *                                    word-extractor не видит (она хранится в таблицах списков, а не в тексте), см. fixtures/README.md
+ *   fixtures/spec/TZ_TOC.docx|pdf|doc — то же ТЗ с автоматическим оглавлением Word после титула (поле TOC: «номер ⇥ заголовок ⇥
+ *                                    страница», в PDF — отточие). Разделы после чанкинга обязаны совпасть с TZ.md: оглавление — не текст ТЗ
  *
  * В ТЗ специально есть строки, которые раньше чанкер принимал за заголовки: «14 января 2026 года», перенос
  * «10 рабочих дней …», «5000 рублей за этап», список «1. Открыть форму оплаты», «2 кнопки primary …».
@@ -37,6 +39,7 @@ type Block =
   | { t: 'h'; level: 1 | 2; text: string; pageBreakBefore?: boolean }
   | { t: 'ol'; items: string[] }
   | { t: 'ul'; items: string[] }
+  | { t: 'toc'; title: string }
   | { t: 'table'; widths: number[]; rows: string[][] };
 
 interface DocSpec {
@@ -103,6 +106,17 @@ const TZ: DocSpec = {
   ],
 };
 
+/**
+ * ТЗ с автооглавлением Word: оглавление после титула и даты, первый раздел — с новой страницы.
+ * Строки оглавления начинаются с номера раздела и кончаются номером страницы — чанкер принимал их за разделы.
+ */
+function tzWithToc(headingNumbering: DocSpec['headingNumbering']): DocSpec {
+  const first = TZ.blocks.findIndex((b) => b.t === 'h');
+  const blocks = TZ.blocks.map((b, i): Block => (i === first && b.t === 'h' ? { ...b, pageBreakBefore: true } : b));
+  blocks.splice(first, 0, { t: 'toc', title: 'Оглавление' });
+  return { ...TZ, headingNumbering, blocks };
+}
+
 function protocol(headingNumbering: DocSpec['headingNumbering']): DocSpec {
   return {
     header: 'Протокол 12.03.2026 · Клиентский кабинет',
@@ -157,9 +171,57 @@ function numPr(numId: number, ilvl: number): string {
   return `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr>`;
 }
 
+interface TocEntry {
+  level: 1 | 2;
+  number: string;
+  text: string;
+  page: number;
+  anchor: string;
+}
+
+/** Строки оглавления: номера — тем же счётом, что у заголовков; страница — по разрывам (оглавление на первой). */
+function tocEntries(spec: DocSpec): TocEntry[] {
+  const counters: number[] = [];
+  const out: TocEntry[] = [];
+  let page = 1;
+  for (const b of spec.blocks) {
+    if (b.t !== 'h') continue;
+    if (b.pageBreakBefore) page += 1;
+    counters.length = b.level;
+    counters[b.level - 1] = (counters[b.level - 1] ?? 0) + 1;
+    out.push({ level: b.level, number: counters.map((n) => n ?? 1).join('.'), text: b.text, page, anchor: `_Toc${String(out.length + 1).padStart(8, '0')}` });
+  }
+  return out;
+}
+
+/**
+ * Оглавление, как его хранит Word: блок sdt «Table of Contents», поле TOC, в каждой строке — ссылка на закладку
+ * заголовка, «номер ⇥ заголовок ⇥ PAGEREF». Номер страницы — сохранённый результат поля: LibreOffice при
+ * конвертации поле не пересчитывает, и в PDF и DOC уходит то же число.
+ */
+function tocXml(spec: DocSpec, title: string): string {
+  const fld = (type: string): string => `<w:r><w:fldChar w:fldCharType="${type}"/></w:r>`;
+  const instr = (code: string): string => `<w:r><w:instrText xml:space="preserve"> ${esc(code)} </w:instrText></w:r>`;
+  const tab = '<w:r><w:tab/></w:r>';
+  const lines = tocEntries(spec).map((e, i) => {
+    const label = spec.headingNumbering === 'typed' ? run(`${e.number} ${e.text}`) : `${run(e.number)}${tab}${run(e.text)}`;
+    const pageRef = `${fld('begin')}${instr(`PAGEREF ${e.anchor} \\h`)}${fld('separate')}${run(String(e.page))}${fld('end')}`;
+    const open = i === 0 ? `${fld('begin')}${instr('TOC \\o "1-2" \\h \\z \\u')}${fld('separate')}` : '';
+    return `<w:p><w:pPr><w:pStyle w:val="TOC${e.level}"/></w:pPr>${open}<w:hyperlink w:anchor="${e.anchor}" w:history="1">${label}${tab}${pageRef}</w:hyperlink></w:p>`;
+  });
+  return `<w:sdt><w:sdtPr><w:docPartObj><w:docPartGallery w:val="Table of Contents"/><w:docPartUnique/></w:docPartObj></w:sdtPr><w:sdtContent>
+<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr>${run(title)}</w:p>
+${lines.join('\n')}
+<w:p>${fld('end')}</w:p>
+</w:sdtContent></w:sdt>`;
+}
+
 function renderBlocks(spec: DocSpec): string {
   const counters: number[] = [];
   const out: string[] = [];
+  // Закладки _Toc… у заголовков Word ставит только вместе с оглавлением; без него XML остаётся прежним побайтно
+  const anchors = spec.blocks.some((b) => b.t === 'toc') ? tocEntries(spec).map((e) => e.anchor) : [];
+  let headingIndex = 0;
   for (const b of spec.blocks) {
     switch (b.t) {
       case 'title':
@@ -182,9 +244,14 @@ function renderBlocks(spec: DocSpec): string {
           spec.headingNumbering === 'paragraph' ? numPr(NUM_HEADINGS, ilvl) : '',
         ].join('');
         const text = spec.headingNumbering === 'typed' ? `${number} ${b.text}` : b.text;
-        out.push(`<w:p><w:pPr>${pPr}</w:pPr>${run(text)}</w:p>`);
+        const anchor = anchors[headingIndex++];
+        const content = anchor ? `<w:bookmarkStart w:id="${headingIndex}" w:name="${anchor}"/>${run(text)}<w:bookmarkEnd w:id="${headingIndex}"/>` : run(text);
+        out.push(`<w:p><w:pPr>${pPr}</w:pPr>${content}</w:p>`);
         break;
       }
+      case 'toc':
+        out.push(tocXml(spec, b.title));
+        break;
       case 'ol':
       case 'ul':
         for (const item of b.items) {
@@ -221,6 +288,14 @@ ${renderBlocks(spec)}
 </w:body></w:document>`;
 }
 
+/** Стили строк оглавления: правая табуляция с отточием у поля — отсюда «......» в PDF. Только для документа с оглавлением. */
+function tocStyles(spec: DocSpec): string {
+  if (!spec.blocks.some((b) => b.t === 'toc')) return '';
+  const toc = (level: number, indent: number): string =>
+    `<w:style w:type="paragraph" w:styleId="TOC${level}"><w:name w:val="toc ${level}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:pPr><w:tabs><w:tab w:val="left" w:pos="${indent + 480}"/><w:tab w:val="right" w:leader="dot" w:pos="9345"/></w:tabs><w:spacing w:after="100"/><w:ind w:left="${indent}"/></w:pPr></w:style>\n`;
+  return `<w:style w:type="paragraph" w:styleId="TOCHeading"><w:name w:val="TOC Heading"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="30"/><w:szCs w:val="30"/></w:rPr></w:style>\n${toc(1, 0)}${toc(2, 220)}`;
+}
+
 function stylesXml(spec: DocSpec): string {
   // Word: автонумерация заголовков живёт в самом стиле («Многоуровневый список» → «Связать уровень со стилем»)
   const styleNum = (ilvl: number): string => (spec.headingNumbering === 'style' ? numPr(NUM_HEADINGS, ilvl) : '');
@@ -231,7 +306,7 @@ function stylesXml(spec: DocSpec): string {
 <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/>${styleNum(0)}<w:spacing w:before="360" w:after="120"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="30"/><w:szCs w:val="30"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/>${styleNum(1)}<w:spacing w:before="240" w:after="80"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:sz w:val="26"/><w:szCs w:val="26"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="60"/><w:ind w:left="720"/><w:contextualSpacing/></w:pPr></w:style>
-<w:style w:type="paragraph" w:styleId="Header"><w:name w:val="header"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
+${tocStyles(spec)}<w:style w:type="paragraph" w:styleId="Header"><w:name w:val="header"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
 </w:styles>`;
 }
@@ -323,7 +398,10 @@ async function main(): Promise<void> {
   const protocolDocx = resolve(ROOT, 'fixtures/protocol/PROTOCOL.docx');
   writeFileSync(tzDocx, await buildDocx(TZ));
   writeFileSync(protocolDocx, await buildDocx(protocol('style')));
-  console.log(`DOCX: ${tzDocx}\n      ${protocolDocx}`);
+  // Оглавление — в документе со стилями Word: автонумерация в стиле заголовка, в строках оглавления номер уже текстом
+  const tocDocx = resolve(ROOT, 'fixtures/spec/TZ_TOC.docx');
+  writeFileSync(tocDocx, await buildDocx(tzWithToc('style')));
+  console.log(`DOCX: ${tzDocx}\n      ${protocolDocx}\n      ${tocDocx}`);
   if (!convert) return;
 
   ensureSofficeImage();
@@ -336,10 +414,17 @@ async function main(): Promise<void> {
     writeFileSync(resolve(dir, 'PROTOCOL.docx'), await buildDocx(protocol('typed')));
     soffice(dir, 'PROTOCOL.docx', 'doc:MS Word 97');
     copyFileSync(resolve(dir, 'PROTOCOL.doc'), resolve(ROOT, 'fixtures/protocol/PROTOCOL.doc'));
+    copyFileSync(tocDocx, resolve(dir, 'TZ_TOC.docx'));
+    soffice(dir, 'TZ_TOC.docx', 'pdf');
+    copyFileSync(resolve(dir, 'TZ_TOC.pdf'), resolve(ROOT, 'fixtures/spec/TZ_TOC.pdf'));
+    // .doc — снова из варианта с номерами, набранными текстом (см. PROTOCOL.doc)
+    writeFileSync(resolve(dir, 'TZ_TOC.docx'), await buildDocx(tzWithToc('typed')));
+    soffice(dir, 'TZ_TOC.docx', 'doc:MS Word 97');
+    copyFileSync(resolve(dir, 'TZ_TOC.doc'), resolve(ROOT, 'fixtures/spec/TZ_TOC.doc'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  console.log('PDF:  fixtures/spec/TZ.pdf\nDOC:  fixtures/protocol/PROTOCOL.doc');
+  console.log('PDF:  fixtures/spec/TZ.pdf, fixtures/spec/TZ_TOC.pdf\nDOC:  fixtures/protocol/PROTOCOL.doc, fixtures/spec/TZ_TOC.doc');
 }
 
 void main().catch((e: unknown) => {

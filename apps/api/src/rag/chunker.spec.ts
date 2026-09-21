@@ -109,6 +109,128 @@ describe('chunkByHeadings', () => {
     expect(chunkByHeadings(text).map((c) => c.section)).toEqual(['§5 Устаревший фрагмент (конфликт)', '§6.1 Кнопки']);
   });
 
+  describe('автоматическое оглавление Word — не разделы и не текст ТЗ', () => {
+    const PREAMBLE = ['Техническое задание на «Клиентский кабинет»', '', 'Версия 2 от 14 января 2026 года', ''];
+    const BODY = [
+      '1 ОБЩИЕ СВЕДЕНИЯ',
+      '',
+      'Веб-кабинет клиента: вход, профиль, оплата счетов.',
+      '',
+      '1.1 Основания для разработки',
+      '',
+      'Договор и протокол согласования.',
+      '',
+      '2 НАЗНАЧЕНИЕ И ЦЕЛИ СОЗДАНИЯ СИСТЕМЫ',
+      '',
+      '2.1 Назначение системы',
+      '',
+      'Клиент оплачивает счета без звонка менеджеру.',
+      '',
+      '2.2 Цели создания системы',
+      '',
+      'Сократить срок оплаты счёта до 3 рабочих дней.',
+      '',
+      '3 ТРЕБОВАНИЯ К СИСТЕМЕ',
+      '',
+      'Primary-кнопка — синяя #0B5FFF.',
+    ];
+    const ENTRIES: Array<[string, string, number]> = [
+      ['1', 'ОБЩИЕ СВЕДЕНИЯ', 3],
+      ['1.1', 'Основания для разработки', 3],
+      ['2', 'НАЗНАЧЕНИЕ И ЦЕЛИ СОЗДАНИЯ СИСТЕМЫ', 6],
+      ['2.1', 'Назначение системы', 6],
+      ['2.2', 'Цели создания системы', 7],
+      ['3', 'ТРЕБОВАНИЯ К СИСТЕМЕ', 8],
+    ];
+    const BODY_SECTIONS = ['§1 ОБЩИЕ СВЕДЕНИЯ', '§1.1 Основания для разработки', '§2.1 Назначение системы', '§2.2 Цели создания системы', '§3 ТРЕБОВАНИЯ К СИСТЕМЕ'];
+    const plain = chunkByHeadings([...PREAMBLE, ...BODY].join('\n'));
+
+    /** Документ с оглавлением между титулом и первым разделом; `gap` — пустая строка между записями (абзацы DOCX). */
+    function withToc(entry: (n: string, title: string, page: number) => string[], opts: { title?: string | null; gap?: boolean } = {}): string {
+      const rows = ENTRIES.flatMap(([n, title, page]) => [...entry(n, title, page), ...(opts.gap === false ? [] : [''])]);
+      const title = opts.title === null ? [] : [opts.title ?? 'Оглавление', ''];
+      return [...PREAMBLE, ...title, ...rows, '', ...BODY].join('\n');
+    }
+
+    it('без оглавления: пять разделов и титул', () => {
+      expect(plain.map((c) => c.section)).toEqual([null, ...BODY_SECTIONS]);
+    });
+
+    it('табуляция, как отдаёт mammoth из DOCX: «2 ⇥ НАЗНАЧЕНИЕ… ⇥ 6» и «2 НАЗНАЧЕНИЕ… ⇥ 6»', () => {
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n}\t${t}\t${p}`]))).toEqual(plain);
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n} ${t}\t${p}`]))).toEqual(plain);
+    });
+
+    it('отточие, как в PDF из Word: вплотную, через пробелы, «. . . .», «…», строки подряд без пустых', () => {
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n} ${t}${'.'.repeat(60)}${p}`]))).toEqual(plain);
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n} ${t} ${'.'.repeat(40)} ${p}`], { gap: false, title: 'СОДЕРЖАНИЕ' }))).toEqual(plain);
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n} ${t} ${'. '.repeat(20)}${p}`], { gap: false }))).toEqual(plain);
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n} ${t} ………… ${p}`], { title: 'Table of Contents' }))).toEqual(plain);
+    });
+
+    it('два пробела и больше перед номером страницы (текстовый файл)', () => {
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n} ${t}    ${p}`], { gap: false }))).toEqual(plain);
+    });
+
+    it('номер страницы отдельной строкой', () => {
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n} ${t}`, String(p)]))).toEqual(plain);
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n} ${t}`, '', String(p)], { title: null }))).toEqual(plain);
+    });
+
+    it('длинный заголовок оглавления перенесён на вторую строку — уходит вместе с записью', () => {
+      const wrap = (n: string, t: string, p: number): string[] => {
+        const words = t.split(' ');
+        return words.length > 3 ? [`${n} ${words.slice(0, 3).join(' ')}`, `${words.slice(3).join(' ')} ${'.'.repeat(30)} ${p}`] : [`${n} ${t} ${'.'.repeat(30)} ${p}`];
+      };
+      expect(chunkByHeadings(withToc(wrap))).toEqual(plain);
+      expect(chunkByHeadings(withToc(wrap, { gap: false }))).toEqual(plain);
+    });
+
+    it('слова «Оглавление» нет — серия всё равно уходит; настоящий раздел берётся из тела', () => {
+      const out = chunkByHeadings(withToc((n, t, p) => [`${n}\t${t}\t${p}`], { title: null }));
+      expect(out).toEqual(plain);
+      expect(out.filter((c) => c.section === '§2.1 Назначение системы')).toHaveLength(1);
+      expect(out.some((c) => /Оглавление|\t\d+$/m.test(c.content) || /\t/.test(c.section ?? ''))).toBe(false);
+    });
+
+    it('« | » вместо табуляции (старый .doc): под словом «Оглавление» — оглавление, без него — строки таблицы', () => {
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n} ${t} | ${p}`]))).toEqual(plain);
+      expect(chunkByHeadings(withToc((n, t, p) => [`${n} | ${t} | ${p}`]))).toEqual(plain);
+      const table = ['3 ТРЕБОВАНИЯ К СИСТЕМЕ', '', 'Этап | Что сдаём | Экранов', '1 | Вход и профиль | 3', '2 | Оплата счетов | 4', '3 | Отчёты | 6'].join('\n');
+      const out = chunkByHeadings(table);
+      expect(out.map((c) => c.section)).toEqual(['§3 ТРЕБОВАНИЯ К СИСТЕМЕ']);
+      expect(out[0]!.content).toContain('1 | Вход и профиль | 3');
+      expect(out[0]!.content).toContain('3 | Отчёты | 6');
+    });
+
+    it('одиночный заголовок с числом в конце остаётся заголовком — и с пробелом, и с табуляцией; две строки — ещё не серия', () => {
+      for (const heading of ['3 Требования к версии 2', '3 Требования к версии\t2', '3 Требования к версии  2']) {
+        const text = ['1 Назначение', '', 'Веб-кабинет клиента.', '', heading, '', 'Версия 2 открывается в тех же браузерах.'].join('\n');
+        const out = chunkByHeadings(text);
+        expect(out.map((c) => c.section)).toEqual(['§1 Назначение', `§${heading}`]);
+        expect(out[1]!.content).toBe('Версия 2 открывается в тех же браузерах.');
+      }
+      const sections = chunkByHeadings(['1 Назначение', '', 'Текст.', '', '3 Требования к версии\t2', '', 'Текст.', '', '5 Требования к версии\t3', '', 'Текст.'].join('\n')).map((c) => c.section);
+      expect(sections).toEqual(['§1 Назначение', '§3 Требования к версии\t2', '§5 Требования к версии\t3']);
+    });
+
+    it('список «параметр ⇥ значение» с растущими числами — не оглавление: записи не начинаются как заголовки', () => {
+      const text = ['3 ТРЕБОВАНИЯ К СИСТЕМЕ', '', 'Попыток входа\t3', 'Срок хранения, лет\t5', 'Время отклика, мс\t200', 'Число пользователей\t1000'].join('\n');
+      const out = chunkByHeadings(text);
+      expect(out).toHaveLength(1);
+      expect(out[0]!.content).toContain('Попыток входа\t3');
+      expect(out[0]!.content).toContain('Число пользователей\t1000');
+    });
+
+    it('строки с числом после табуляции, где числа убывают, — не оглавление, текст остаётся', () => {
+      const text = ['3 ТРЕБОВАНИЯ К СИСТЕМЕ', '', 'Время отклика, мс\t200', 'Срок хранения, лет\t5', 'Число пользователей\t1000', 'Попыток входа\t3'].join('\n');
+      const out = chunkByHeadings(text);
+      expect(out).toHaveLength(1);
+      expect(out[0]!.content).toContain('Срок хранения, лет\t5');
+      expect(out[0]!.content).toContain('Попыток входа\t3');
+    });
+  });
+
   it('режет длинный раздел на окна с перекрытием, сохраняя подпись раздела', () => {
     const long = `## 7. Длинный\n\n${Array.from({ length: 500 }, (_, i) => `слово${i}`).join(' ')}`;
     const out = chunkByHeadings(long, { maxWords: 200, overlapWords: 50 });

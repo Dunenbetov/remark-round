@@ -46,6 +46,31 @@ const UNIT_WORDS = new Set(
   ).split(' '),
 );
 
+/**
+ * Хвост строки оглавления: номер страницы после отточия («.....», «. . . .», «…», «-----»), табуляции или двух
+ * и более пробелов. « | » — та же табуляция после extractText (DOC всегда, PDF без отточия), но так же выглядит
+ * последняя ячейка таблицы: такой хвост «слабый», ему верим только под словом «Оглавление».
+ */
+const TOC_PAGE = /\d{1,4}$/;
+const TOC_LEADER_CHARS = ' \t.…·_|-';
+const TOC_DOTS = /[.…·_-]{3,}|(?:\.[ \t]){3,}/;
+const TOC_TITLE = /^#{0,6}\s*(оглавление|содержание|table of contents|contents)\s*:?$/i;
+/** Начало нумерованного заголовка — с него может начинаться запись оглавления, у которой номер страницы ушёл на свою строку. */
+const HEADING_START = /^§?\s*\d{1,2}(?:\.\d{1,2}){0,3}\.?\s+[«"„“(]?\p{Lu}/u;
+const BARE_PAGE = /^\d{1,4}$/;
+/** Одна строка с числом в конце — ещё не оглавление («3 Требования к версии 2»); оглавление — серия. */
+const TOC_MIN_ENTRIES = 3;
+/** Длинный заголовок в оглавлении PDF переносится: до двух строк без хвоста перед строкой с номером страницы. */
+const TOC_WRAP_LINES = 2;
+
+interface TocEntry {
+  from: number;
+  to: number;
+  page: number;
+  weak: boolean;
+  dots: boolean;
+}
+
 interface Heading {
   level: number;
   title: string;
@@ -92,12 +117,95 @@ function parseNumberedHeading(lines: string[], i: number, ctx: { prevIsHeading: 
   return { level: number.split('.').length + 1, title: line.replace(/^§\s*/, ''), number };
 }
 
-function nearestText(lines: string[], i: number, step: 1 | -1): string {
+function nearestIndex(lines: string[], i: number, step: 1 | -1): number {
   for (let j = i + step; j >= 0 && j < lines.length; j += step) {
-    const t = lines[j]!.trim();
-    if (t) return t;
+    if (lines[j]!.trim()) return j;
   }
-  return '';
+  return -1;
+}
+
+function nearestText(lines: string[], i: number, step: 1 | -1): string {
+  const j = nearestIndex(lines, i, step);
+  return j < 0 ? '' : lines[j]!.trim();
+}
+
+/** Хвост записи оглавления: номер страницы и то, насколько хвосту можно верить; одиночный пробел перед числом — не хвост. */
+function tocTail(line: string): { page: number; weak: boolean; dots: boolean } | null {
+  const m = TOC_PAGE.exec(line);
+  if (!m) return null;
+  // Хвост снимаем с конца посимвольно: регулярка с поиском слева на строке из одних точек шла бы квадратично
+  let start = m.index;
+  while (start > 0 && TOC_LEADER_CHARS.includes(line[start - 1]!)) start--;
+  const leader = line.slice(start, m.index);
+  if (!/\p{L}/u.test(line.slice(0, start))) return null;
+  const dots = TOC_DOTS.test(leader);
+  const weak = leader.includes('|') && !dots;
+  if (!weak && !dots && !/\t| {2,}/.test(leader)) return null;
+  return { page: Number(m[0]), weak, dots };
+}
+
+/**
+ * Строки автоматического оглавления Word (и PDF из Word) — не текст ТЗ: «2 НАЗНАЧЕНИЕ И ЦЕЛИ СОЗДАНИЯ СИСТЕМЫ ⇥ 6»
+ * становилась разделом «§2», текстом которого были соседние строки оглавления, и всплывала в поиске выше настоящего
+ * раздела. Запись оглавления — строка с хвостом (tocTail) либо нумерованный заголовок и номер страницы отдельной
+ * строкой; оглавление — три записи подряд и больше (пустые строки не в счёт), страницы в серии не убывают. Внутри
+ * серии до двух строк без хвоста — перенос длинного заголовка; у первой записи перенос признаём только сразу под
+ * словом «Оглавление». Одиночная строка с числом в конце — не серия, она остаётся заголовком. Серия без слова
+ * «Оглавление» и без отточия считается оглавлением, только если две трети записей начинаются как нумерованный заголовок.
+ * Возвращает номера строк серии и слова «Оглавление» над ней.
+ */
+function tocLines(lines: string[]): Set<number> {
+  const drop = new Set<number>();
+  const text = (i: number): string => lines[i]!.trim();
+  let series: TocEntry[] = [];
+  let pending: number[] = [];
+
+  const close = (): void => {
+    const entries = series;
+    series = [];
+    if (entries.length < TOC_MIN_ENTRIES) return;
+    const first = entries[0]!.from;
+    const before = nearestIndex(lines, first, -1);
+    const titled = before >= 0 && TOC_TITLE.test(text(before));
+    if (!titled && entries.some((e) => e.weak)) return;
+    // Без слова «Оглавление» и без отточия серию выдаёт только нумерация заголовков: иначе это список
+    // «параметр ⇥ значение» с растущими числами, и его текст терять нельзя
+    if (!titled && !entries.every((e) => e.dots)) {
+      const numbered = entries.filter((e) => HEADING_START.test(text(e.from))).length;
+      if (numbered * 3 < entries.length * 2) return;
+    }
+    for (let i = titled ? before : first; i <= entries[entries.length - 1]!.to; i++) drop.add(i);
+  };
+
+  lines.forEach((raw, i) => {
+    const line = raw.trim();
+    if (!line) return;
+    const end = tocTail(line);
+    const recent = pending.slice(-TOC_WRAP_LINES);
+    let wrapped: number[] = [];
+    if (series.length) {
+      wrapped = pending;
+    } else if (end) {
+      for (let n = 1; n <= recent.length && n < pending.length; n++) {
+        if (TOC_TITLE.test(text(pending[pending.length - n - 1]!))) wrapped = pending.slice(-n);
+      }
+    } else {
+      const k = recent.findIndex((j) => HEADING_START.test(text(j)));
+      if (k >= 0) wrapped = recent.slice(k);
+    }
+    const bare = !end && wrapped.length > 0 && BARE_PAGE.test(line);
+    if (!end && !bare) {
+      pending.push(i);
+      if (pending.length > TOC_WRAP_LINES) close();
+      return;
+    }
+    const page = end ? end.page : Number(line);
+    if (series.length && page < series[series.length - 1]!.page) close();
+    series.push({ from: wrapped[0] ?? i, to: i, page, weak: end?.weak ?? false, dots: end?.dots ?? false });
+    pending = [];
+  });
+  close();
+  return drop;
 }
 
 /** «1. Открыть» рядом с «2. Ввести» — пункты одного списка, а не два раздела подряд без текста. */
@@ -134,6 +242,8 @@ function windows(words: string[], maxWords: number, overlap: number): string[][]
 export function chunkByHeadings(text: string, options: ChunkOptions = {}): Chunk[] {
   const opts = { ...DEFAULTS, ...options };
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  // Оглавление гасим до разбора: дальше его строки ведут себя как пустые и не попадают ни в заголовки, ни в текст
+  for (const i of tocLines(lines)) lines[i] = '';
   const chunks: Chunk[] = [];
   let path: Heading[] = [];
   let body: string[] = [];

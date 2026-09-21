@@ -1,7 +1,8 @@
 /**
  * extract.spec — P6/P7 плана защиты: документы, какие присылает заказчик, а не Markdown.
  * TZ.pdf — экспорт из Word/Google Docs (номер заголовка отдельным фрагментом через табуляцию, колонтитулы
- * на каждой странице, таблицы), PROTOCOL.docx — автонумерация Word в стилях заголовков, PROTOCOL.doc — Word 97-2003.
+ * на каждой странице, таблицы), PROTOCOL.docx — автонумерация Word в стилях заголовков, PROTOCOL.doc — Word 97-2003,
+ * TZ_TOC.docx / .pdf / .doc — то же ТЗ с автоматическим оглавлением Word (оглавление — не разделы и не текст ТЗ).
  * Файлы собирает `pnpm --filter @remarkround/api make:docs` (src/rag/make-doc-fixtures.ts).
  * Негатив «текст под именем .pdf → 422» — в uploads.hygiene.spec, здесь не дублируем.
  */
@@ -103,6 +104,32 @@ describe('extractText на настоящих файлах', () => {
     expect(text).toContain('Пакет документов = ТЗ + этот протокол. Созвон без записи система не знает.');
     const itog = chunkByHeadings(text).find((c) => c.section === '§3 Итог')!;
     expect(itog.content).toBe('Пакет документов = ТЗ + этот протокол. Созвон без записи система не знает.');
+  });
+
+  describe('TZ_TOC.* — то же ТЗ с автоматическим оглавлением Word после титула', () => {
+    const chunksOf = async (path: string): Promise<ReturnType<typeof chunkByHeadings>> => chunkByHeadings(await extractText(read(path), detectMime(path)));
+
+    it('DOCX: строки оглавления приходят как «номер ⇥ заголовок ⇥ страница»; чанки те же, что у TZ.docx', async () => {
+      const text = await extractText(read('spec/TZ_TOC.docx'), DOCX);
+      expect(text).toContain('Оглавление\n\n1\tНазначение\t2\n\n2\tКнопки и цвет\t2\n\n2.1\tPrimary\t2');
+      expect(chunkByHeadings(text)).toEqual(await chunksOf('spec/TZ.docx'));
+    });
+
+    it('PDF: в строках оглавления отточие и номер страницы; чанки те же, что у TZ.pdf', async () => {
+      const text = await extractText(read('spec/TZ_TOC.pdf'), 'application/pdf');
+      expect(text).toMatch(/^Оглавление$/m);
+      expect(text).toMatch(/^2\.1 Primary\.{10,}2$/m);
+      expect(chunkByHeadings(text)).toEqual(await chunksOf('spec/TZ.pdf'));
+    });
+
+    it('DOC: табуляция оглавления приходит как « | »; разделы те же, оглавления в чанках нет', async () => {
+      const text = await extractText(read('spec/TZ_TOC.doc'), detectMime('TZ_TOC.doc'));
+      expect(text).toContain('Оглавление\n\n1 Назначение | 2\n\n2 Кнопки и цвет | 2');
+      const chunks = chunkByHeadings(text);
+      expect(chunks.map((c) => c.section).filter((s) => s?.startsWith('§'))).toEqual(TZ_LABELS);
+      expect(chunks[0]!.content.endsWith('14 января 2026 года')).toBe(true);
+      expect(chunks.some((c) => /Оглавление| \| [234]$/m.test(c.content))).toBe(false);
+    });
   });
 
   it('Word-файл с чужим расширением читается по содержимому: DOCX под .doc и DOC под .docx', async () => {

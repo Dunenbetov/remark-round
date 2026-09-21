@@ -6,6 +6,7 @@
 |---|---|
 | [`spec/TZ.md`](spec/TZ.md) | ТЗ с нормой, дырой и конфликтом — эталон evals, не менять |
 | [`spec/TZ.pdf`](spec/TZ.pdf), [`spec/TZ.docx`](spec/TZ.docx) | То же ТЗ как настоящий документ: DOCX в духе Google Docs (автонумерация заголовков на абзацах, таблицы, нумерованный список, колонтитулы, разрывы страниц) и его экспорт в PDF с текстовым слоем. Внутри разделов — строки-ловушки для чанкера: «14 января 2026 года», перенос «10 рабочих дней …», «5000 рублей за этап», список «1. Открыть форму оплаты». Разделы после чанкинга совпадают с TZ.md (`extract.spec`) |
+| [`spec/TZ_TOC.docx`](spec/TZ_TOC.docx), [`spec/TZ_TOC.pdf`](spec/TZ_TOC.pdf), [`spec/TZ_TOC.doc`](spec/TZ_TOC.doc) | То же ТЗ с автоматическим оглавлением Word. Разделы после чанкинга те же, что у TZ.* (`extract.spec`) |
 | [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md) | Созвон, которого нет в ТЗ — эталон evals, не менять |
 | [`protocol/PROTOCOL.docx`](protocol/PROTOCOL.docx), [`protocol/PROTOCOL.doc`](protocol/PROTOCOL.doc) | Протокол в Word: DOCX с автонумерацией, привязанной к стилям «Заголовок 1/2» (как делает Word), таблица, списки; DOC — Word 97-2003 |
 | [`journal/template.csv`](journal/template.csv), [`template.xlsx`](journal/template.xlsx) | Официальные колонки |
