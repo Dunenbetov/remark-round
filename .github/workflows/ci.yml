@@ -54,7 +54,8 @@ jobs:
       - name: Evals офлайн — golden через продуктовые сервисы, отчёт в артефакт
         run: pnpm evals -- --offline --out evals/results/ci-offline
         env:
-          EVALS_MIN_BINDING: '0.6'
+          # Выше вырожденного «всегда cannot_tell» (20/33 = 0,61) и ниже правил офлайн (23/33 = 0,70) — docs/EVALS.md, «Базовые уровни»
+          EVALS_MIN_BINDING: '0.65'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

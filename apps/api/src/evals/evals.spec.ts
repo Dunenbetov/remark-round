@@ -113,7 +113,8 @@ describe('evals (offline)', () => {
     const summary = summarize(report);
     expect(summary.winner).toBe('diff_explain');
     expect(summary.triage.faithfulness).toBe(1);
-    // Правила без LLM: планка держит регрессии retrieve/bind, а не заменяет live-прогон.
-    expect(summary.triage.bindingQuality).toBeGreaterThanOrEqual(0.6);
+    // Правила без LLM: планка держит регрессии retrieve/bind, а не заменяет live-прогон. 0,65 — выше классификатора
+    // «всегда cannot_tell» (20/33 = 0,61, он проходил прежнюю планку 0,6) и ниже правил (23/33) — docs/EVALS.md
+    expect(summary.triage.bindingQuality).toBeGreaterThanOrEqual(0.65);
   });
 });
