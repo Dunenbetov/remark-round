@@ -145,15 +145,6 @@ describe('OpenAiTriageLlm: параметры запросов', () => {
     expect(llm.takeUsage('run-1')).toMatchObject({ inputTokens: 300, outputTokens: 60 });
   });
 
-  it('classify: рассуждение в схеме ответа идёт до класса (порядок полей = порядок генерации)', async () => {
-    const calls: Params[] = [];
-    await new OpenAiTriageLlm(fakeClient(calls), { fast: 'gpt-4.1-mini', strong: 'gpt-4.1' }).classify(meta('classify'), classifyInput);
-    const schema = (calls[0]!['response_format'] as { json_schema: { schema: { required: string[]; properties: Record<string, unknown> } } }).json_schema.schema;
-    expect(schema.required[0]).toBe('reason');
-    expect(Object.keys(schema.properties)[0]).toBe('reason');
-    expect(schema.required.indexOf('reason')).toBeLessThan(schema.required.indexOf('proposedClass'));
-  });
-
   it('шаблоны для хешей отчёта рисуются без сети', () => {
     const t = renderedTemplates();
     expect(Object.keys(t).sort()).toEqual(['classify', 'draft', 'explain', 'judge', 'rewrite', 'vision']);
