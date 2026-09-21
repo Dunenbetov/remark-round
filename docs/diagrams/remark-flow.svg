@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1760 840" width="1760" height="840" role="img"
-  aria-label="Путь одного замечания: заказчик присылает замечание, API одной транзакцией заводит прогон и кладёт задачу в очередь в Postgres, воркер запускает граф LangGraph из десяти нод с двумя циклами, граф засыпает на interrupt до кнопки PM, решение пишется транзакцией и граф продолжается до persist">
-  <!-- Схема по docs/GRAPH.md («Триаж», «Как граф запускается») и docs/ARCHITECTURE.md («Путь запроса: триаж»).
-       Источник — scratchpad gen_flow.py у агента; править удобнее в SVG напрямую. PNG печатает docs/diagrams/render.mjs. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1760 800" width="1760" height="800" role="img"
+  aria-label="Путь замечания: запрос заказчика, транзакция и очередь задач в PostgreSQL, воркер, граф триажа LangGraph с двумя циклами и паузой до решения PM, запись решения и продолжение графа">
+  <!-- Сверять с docs/GRAPH.md («Триаж», «Как граф запускается») и docs/ARCHITECTURE.md («Путь запроса: триаж»).
+       PNG: node docs/diagrams/render.mjs remark-flow. Подписи короткие, назывные. -->
   <defs>
     <linearGradient id="obj" x1="0" y1="0" x2="0.18" y2="1">
       <stop offset="0" stop-color="#2a3ea3"/><stop offset="0.58" stop-color="#1d2d80"/><stop offset="1" stop-color="#16226a"/>
@@ -22,8 +22,8 @@
       .paper { fill: #ffffff; stroke: #e1e4ef; stroke-width: 1; filter: url(#sh); }
       .ext { fill: #f4f5fa; stroke: #c9cee0; stroke-width: 1; }
       .node { fill: url(#obj); }
+      .node-code { fill: #ffffff; stroke: #1d2d80; stroke-width: 1.5; }
       .node-hitl { fill: #ffffff; stroke: #1d2d80; stroke-width: 2; stroke-dasharray: 5 4; }
-      .node-loop { fill: #e9ecfa; stroke: #1d2d80; stroke-width: 1; }
       .t { font-size: 12.5px; font-weight: 600; }
       .s { font-size: 11.5px; fill: #5c6280; }
       .n { font-size: 11px; font-weight: 600; fill: #ffffff; }
@@ -33,120 +33,107 @@
       .a { fill: none; stroke: #5c6280; stroke-width: 1.5; marker-end: url(#arr); }
       .a-dash { stroke-dasharray: 5 4; }
       .al { font-size: 11.5px; fill: #5c6280; paint-order: stroke; stroke: #eef0f6; stroke-width: 4px; stroke-linejoin: round; }
+      .lg { font-size: 12px; fill: #5c6280; }
     </style>
   </defs>
-  <rect width="1760" height="840" fill="#eef0f6"/>
-  <text class="h1" x="30" y="46">Путь одного замечания: от строки журнала до решения PM</text>
-  <text class="h2" x="30" y="68">Время идёт слева направо, дорожки — кто действует. Ноды графа — по addEdge в triage.graph.ts; циклы и лимиты — docs/GRAPH.md</text>
+  <rect width="1760" height="800" fill="#eef0f6"/>
+  <text class="h1" x="30" y="46">Путь замечания: от журнала до решения PM</text>
+  <text class="h2" x="30" y="68">Граф триажа на LangGraph, время слева направо</text>
 <rect class="lane" x="20" y="100" width="1720" height="90" rx="14"/>
-<text class="lane-t" x="34" y="124" text-anchor="start" >Люди</text>
+<text class="lane-t" x="34" y="124" text-anchor="start">Пользователи</text>
 <rect class="lane" x="20" y="200" width="1720" height="72" rx="14"/>
-<text class="lane-t" x="34" y="224" text-anchor="start" >Браузер</text>
-<text class="lane-s" x="34" y="240" text-anchor="start" >Angular + WS</text>
+<text class="lane-t" x="34" y="224" text-anchor="start">Браузер</text>
+<text class="lane-s" x="34" y="240" text-anchor="start">Angular</text>
 <rect class="lane" x="20" y="282" width="1720" height="100" rx="14"/>
-<text class="lane-t" x="34" y="306" text-anchor="start" >api · Nest</text>
-<text class="lane-s" x="34" y="322" text-anchor="start" >REST, сервисы,</text>
-<text class="lane-s" x="34" y="338" text-anchor="start" >очередь, WS-шлюз</text>
+<text class="lane-t" x="34" y="306" text-anchor="start">API</text>
+<text class="lane-s" x="34" y="322" text-anchor="start">NestJS</text>
 <rect class="lane" x="20" y="392" width="1720" height="92" rx="14"/>
-<text class="lane-t" x="34" y="416" text-anchor="start" >Postgres</text>
-<text class="lane-s" x="34" y="432" text-anchor="start" >pgvector</text>
+<text class="lane-t" x="34" y="416" text-anchor="start">PostgreSQL</text>
+<text class="lane-s" x="34" y="432" text-anchor="start">pgvector</text>
 <rect class="lane" x="20" y="494" width="1720" height="220" rx="14"/>
-<text class="lane-t" x="34" y="518" text-anchor="start" >Граф триажа</text>
-<text class="lane-s" x="34" y="534" text-anchor="start" >LangGraph</text>
-<text class="lane-s" x="34" y="550" text-anchor="start" >thread_id = runId</text>
-<rect class="paper" x="190" y="117" width="130" height="56" rx="14"/>
-<text class="t" x="255" y="142.0" text-anchor="middle" >Заказчик</text>
-<text class="s" x="255" y="158.0" text-anchor="middle" >замечание + скрин</text>
-<rect class="paper" x="1390" y="117" width="220" height="56" rx="14"/>
-<text class="t" x="1500" y="142.0" text-anchor="middle" >PM приёмки</text>
-<text class="s" x="1500" y="158.0" text-anchor="middle" >«В работу разработчикам» — одна из пяти кнопок</text>
-<rect class="paper" x="190" y="211" width="130" height="50" rx="14"/>
-<text class="t" x="255" y="233.0" text-anchor="middle" >POST …/remarks</text>
-<text class="s" x="255" y="249.0" text-anchor="middle" >строка журнала, кадр</text>
-<rect class="paper" x="335" y="211" width="120" height="50" rx="14"/>
-<text class="t" x="395" y="233.0" text-anchor="middle" >201: runId</text>
-<text class="s" x="395" y="249.0" text-anchor="middle" >карточка «Разбираем»</text>
+<text class="lane-t" x="34" y="518" text-anchor="start">Граф триажа</text>
+<text class="lane-s" x="34" y="534" text-anchor="start">LangGraph</text>
+<rect class="paper" x="180" y="117" width="150" height="56" rx="14"/>
+<text class="t" x="255" y="142" text-anchor="middle">Заказчик</text>
+<text class="s" x="255" y="158" text-anchor="middle">замечание, скриншот</text>
+<rect class="paper" x="1425" y="117" width="150" height="56" rx="14"/>
+<text class="t" x="1500" y="142" text-anchor="middle">PM</text>
+<text class="s" x="1500" y="158" text-anchor="middle">решение кнопкой</text>
+<rect class="paper" x="190" y="214" width="130" height="44" rx="14"/>
+<text class="t" x="255" y="241" text-anchor="middle">POST /remarks</text>
+<rect class="paper" x="335" y="214" width="120" height="44" rx="14"/>
+<text class="t" x="395" y="241" text-anchor="middle">201, runId</text>
 <rect class="paper" x="900" y="211" width="300" height="50" rx="14"/>
-<text class="t" x="1050" y="233.0" text-anchor="middle" >карточка: фаза, стрим черновика</text>
-<text class="s" x="1050" y="249.0" text-anchor="middle" >цитаты, кнопки «Ждём вашего решения»</text>
-<rect class="paper" x="1390" y="211" width="220" height="50" rx="14"/>
-<text class="t" x="1500" y="233.0" text-anchor="middle" >WS verdict.approve или POST …/verdict</text>
-<text class="s" x="1500" y="249.0" text-anchor="middle" >MCP зовёт тот же REST</text>
+<text class="t" x="1050" y="233" text-anchor="middle">Карточка замечания</text>
+<text class="s" x="1050" y="249" text-anchor="middle">фазы, стрим черновика, цитаты</text>
+<rect class="paper" x="1400" y="211" width="200" height="50" rx="14"/>
+<text class="t" x="1500" y="233" text-anchor="middle">Решение</text>
+<text class="s" x="1500" y="249" text-anchor="middle">WebSocket или REST</text>
 <rect class="paper" x="190" y="296" width="130" height="72" rx="14"/>
-<text class="t" x="255" y="321.0" text-anchor="middle" >RemarksService</text>
-<text class="s" x="255" y="337.0" text-anchor="middle" >.beginTriage</text>
-<text class="s" x="255" y="353.0" text-anchor="middle" >одна транзакция</text>
-<rect class="paper" x="335" y="296" width="120" height="72" rx="14"/>
-<text class="t" x="395" y="321.0" text-anchor="middle" >JobsService</text>
-<text class="s" x="395" y="337.0" text-anchor="middle" >.enqueue</text>
-<text class="s" x="395" y="353.0" text-anchor="middle" >graph start · отдельно</text>
+<text class="t" x="255" y="321" text-anchor="middle">RemarksService</text>
+<text class="s" x="255" y="337" text-anchor="middle">beginTriage</text>
+<text class="s" x="255" y="353" text-anchor="middle">транзакция</text>
+<rect class="paper" x="335" y="304" width="120" height="56" rx="14"/>
+<text class="t" x="395" y="329" text-anchor="middle">JobsService</text>
+<text class="s" x="395" y="345" text-anchor="middle">enqueue</text>
 <rect class="paper" x="470" y="296" width="180" height="72" rx="14"/>
-<text class="t" x="560" y="321.0" text-anchor="middle" >Воркер очереди</text>
-<text class="s" x="560" y="337.0" text-anchor="middle" >claim раз в 500 мс, SKIP LOCKED</text>
-<text class="s" x="560" y="353.0" text-anchor="middle" >graph.invoke, дедлайн 5 мин</text>
+<text class="t" x="560" y="321" text-anchor="middle">Воркер очереди</text>
+<text class="s" x="560" y="337" text-anchor="middle">claim раз в 500 мс</text>
+<text class="s" x="560" y="353" text-anchor="middle">graph.invoke</text>
 <rect class="paper" x="900" y="296" width="300" height="72" rx="14"/>
-<text class="t" x="1050" y="321.0" text-anchor="middle" >WS-шлюз · комната remark:{id}</text>
-<text class="s" x="1050" y="337.0" text-anchor="middle" >run.phase на каждой ноде, run.token из draft,</text>
-<text class="s" x="1050" y="353.0" text-anchor="middle" >run.proposal → «Ждём вашего решения»</text>
+<text class="t" x="1050" y="321" text-anchor="middle">WS-шлюз</text>
+<text class="s" x="1050" y="337" text-anchor="middle">run.phase, run.token,</text>
+<text class="s" x="1050" y="353" text-anchor="middle">run.proposal</text>
 <rect class="paper" x="1400" y="296" width="220" height="72" rx="14"/>
-<text class="t" x="1510" y="321.0" text-anchor="middle" >AgentService.verdict</text>
-<text class="s" x="1510" y="337.0" text-anchor="middle" >RemarksService.verdict — транзакция,</text>
-<text class="s" x="1510" y="353.0" text-anchor="middle" >потом enqueue Job resume</text>
-<rect class="ext" x="190" y="402" width="130" height="72" rx="14"/>
-<text class="t" x="255" y="427.0" text-anchor="middle" >AgentRun running</text>
-<text class="s" x="255" y="443.0" text-anchor="middle" >статус triaging</text>
-<text class="s" x="255" y="459.0" text-anchor="middle" >строка истории</text>
-<rect class="ext" x="335" y="410" width="120" height="56" rx="14"/>
-<text class="t" x="395" y="435.0" text-anchor="middle" >очередь Job</text>
-<text class="s" x="395" y="451.0" text-anchor="middle" >4 попытки, heartbeat</text>
-<rect class="ext" x="525" y="402" width="150" height="72" rx="14"/>
-<text class="t" x="600" y="427.0" text-anchor="middle" >pgvector: top-6</text>
-<text class="s" x="600" y="443.0" text-anchor="middle" >WHERE projectId в SQL</text>
-<text class="s" x="600" y="459.0" text-anchor="middle" >без отвергнутых PM</text>
-<rect class="ext" x="1225" y="402" width="140" height="72" rx="14"/>
-<text class="t" x="1295" y="427.0" text-anchor="middle" >awaiting_pm</text>
-<text class="s" x="1295" y="443.0" text-anchor="middle" >цитаты снимком</text>
-<text class="s" x="1295" y="459.0" text-anchor="middle" >GraphCheckpoint: спит</text>
-<rect class="ext" x="1400" y="402" width="190" height="72" rx="14"/>
-<text class="t" x="1495" y="427.0" text-anchor="middle" >HumanVerdict</text>
-<text class="s" x="1495" y="443.0" text-anchor="middle" >статус defect · AgentRun persisted</text>
-<text class="s" x="1495" y="459.0" text-anchor="middle" >история только дописывается</text>
-<rect class="node" x="458" y="566" width="84" height="60" rx="8"/>
-<text class="n" x="500" y="590" text-anchor="middle" >ingest</text>
-<text class="b" x="500" y="613" text-anchor="middle" >без модели</text>
+<text class="t" x="1510" y="321" text-anchor="middle">RemarksService</text>
+<text class="s" x="1510" y="337" text-anchor="middle">verdict, транзакция</text>
+<text class="s" x="1510" y="353" text-anchor="middle">enqueue resume</text>
+<rect class="ext" x="190" y="410" width="130" height="56" rx="14"/>
+<text class="t" x="255" y="435" text-anchor="middle">AgentRun</text>
+<text class="s" x="255" y="451" text-anchor="middle">статус, история</text>
+<rect class="ext" x="335" y="416" width="120" height="44" rx="14"/>
+<text class="t" x="395" y="443" text-anchor="middle">Очередь Job</text>
+<rect class="ext" x="515" y="410" width="170" height="56" rx="14"/>
+<text class="t" x="600" y="435" text-anchor="middle">pgvector</text>
+<text class="s" x="600" y="451" text-anchor="middle">top-6, WHERE projectId</text>
+<rect class="ext" x="1220" y="402" width="150" height="72" rx="14"/>
+<text class="t" x="1295" y="427" text-anchor="middle">Предложение</text>
+<text class="s" x="1295" y="443" text-anchor="middle">awaiting_pm, цитаты</text>
+<text class="s" x="1295" y="459" text-anchor="middle">GraphCheckpoint</text>
+<rect class="ext" x="1410" y="410" width="170" height="56" rx="14"/>
+<text class="t" x="1495" y="435" text-anchor="middle">HumanVerdict</text>
+<text class="s" x="1495" y="451" text-anchor="middle">статус, история</text>
+<rect class="node-code" x="458" y="566" width="84" height="60" rx="8"/>
+<text class="n-dark" x="500" y="600" text-anchor="middle">ingest</text>
 <rect class="node" x="558" y="566" width="84" height="60" rx="8"/>
-<text class="n" x="600" y="583" text-anchor="middle" >retrieve</text>
-<text class="n" x="600" y="595" text-anchor="middle" >_docs</text>
-<text class="b" x="600" y="613" text-anchor="middle" >эмбеддинг</text>
+<text class="n" x="600" y="583" text-anchor="middle">retrieve</text>
+<text class="n" x="600" y="595" text-anchor="middle">_docs</text>
+<text class="b" x="600" y="614" text-anchor="middle">embedding</text>
 <rect class="node" x="658" y="566" width="84" height="60" rx="8"/>
-<text class="n" x="700" y="583" text-anchor="middle" >maybe</text>
-<text class="n" x="700" y="595" text-anchor="middle" >_vision</text>
-<text class="b" x="700" y="613" text-anchor="middle" >mini · vision</text>
-<rect class="node" x="758" y="566" width="84" height="60" rx="8"/>
-<text class="n" x="800" y="583" text-anchor="middle" >bind_to</text>
-<text class="n" x="800" y="595" text-anchor="middle" >_clause</text>
-<text class="b" x="800" y="613" text-anchor="middle" >без модели</text>
+<text class="n" x="700" y="583" text-anchor="middle">maybe</text>
+<text class="n" x="700" y="595" text-anchor="middle">_vision</text>
+<text class="b" x="700" y="614" text-anchor="middle">mini, vision</text>
+<rect class="node-code" x="758" y="566" width="84" height="60" rx="8"/>
+<text class="n-dark" x="800" y="593" text-anchor="middle">bind_to</text>
+<text class="n-dark" x="800" y="605" text-anchor="middle">_clause</text>
 <rect class="node" x="858" y="566" width="84" height="60" rx="8"/>
-<text class="n" x="900" y="583" text-anchor="middle" >classify</text>
-<text class="n" x="900" y="595" text-anchor="middle" >_evidence</text>
-<text class="b" x="900" y="613" text-anchor="middle" >mini · JSON</text>
+<text class="n" x="900" y="583" text-anchor="middle">classify</text>
+<text class="n" x="900" y="595" text-anchor="middle">_evidence</text>
+<text class="b" x="900" y="614" text-anchor="middle">mini, JSON</text>
 <rect class="node" x="958" y="566" width="84" height="60" rx="8"/>
-<text class="n" x="1000" y="583" text-anchor="middle" >draft</text>
-<text class="n" x="1000" y="595" text-anchor="middle" >_rationale</text>
-<text class="b" x="1000" y="613" text-anchor="middle" >gpt-4.1 · стрим</text>
-<rect class="node" x="1058" y="566" width="84" height="60" rx="8"/>
-<text class="n" x="1100" y="583" text-anchor="middle" >faithfulness</text>
-<text class="n" x="1100" y="595" text-anchor="middle" >_gate</text>
-<text class="b" x="1100" y="613" text-anchor="middle" >без модели</text>
-<rect class="node" x="1158" y="566" width="84" height="60" rx="8"/>
-<text class="n" x="1200" y="590" text-anchor="middle" >propose</text>
-<text class="b" x="1200" y="613" text-anchor="middle" >без модели</text>
+<text class="n" x="1000" y="583" text-anchor="middle">draft</text>
+<text class="n" x="1000" y="595" text-anchor="middle">_rationale</text>
+<text class="b" x="1000" y="614" text-anchor="middle">gpt-4.1, stream</text>
+<rect class="node-code" x="1058" y="566" width="84" height="60" rx="8"/>
+<text class="n-dark" x="1100" y="593" text-anchor="middle">faithfulness</text>
+<text class="n-dark" x="1100" y="605" text-anchor="middle">_gate</text>
+<rect class="node-code" x="1158" y="566" width="84" height="60" rx="8"/>
+<text class="n-dark" x="1200" y="600" text-anchor="middle">propose</text>
 <rect class="node-hitl" x="1258" y="566" width="84" height="60" rx="8"/>
-<text class="n-dark" x="1300" y="590" text-anchor="middle" >hitl</text>
-<text class="b-dark" x="1300" y="613" text-anchor="middle" >interrupt</text>
-<rect class="node" x="1578" y="566" width="84" height="60" rx="8"/>
-<text class="n" x="1620" y="590" text-anchor="middle" >persist</text>
-<text class="b" x="1620" y="613" text-anchor="middle" >без модели</text>
+<text class="n-dark" x="1300" y="590" text-anchor="middle">hitl</text>
+<text class="b-dark" x="1300" y="614" text-anchor="middle">interrupt</text>
+<rect class="node-code" x="1578" y="566" width="84" height="60" rx="8"/>
+<text class="n-dark" x="1620" y="600" text-anchor="middle">persist</text>
 <polyline class="a" points="542,596 558,596"/>
 <polyline class="a" points="642,596 658,596"/>
 <polyline class="a" points="742,596 758,596"/>
@@ -156,50 +143,47 @@
 <polyline class="a" points="1142,596 1158,596"/>
 <polyline class="a" points="1242,596 1258,596"/>
 <polyline class="a" points="620,566 620,552 780,552 780,566"/>
-<text class="al" x="700" y="546" text-anchor="middle" >нет кадра или кадр уже смотрели</text>
-<rect class="node-loop" x="758" y="646" width="84" height="60" rx="8"/>
-<text class="n-dark" x="800" y="663" text-anchor="middle" >rewrite</text>
-<text class="n-dark" x="800" y="675" text-anchor="middle" >_query</text>
-<text class="b-dark" x="800" y="693" text-anchor="middle" >mini</text>
+<text class="al" x="700" y="546" text-anchor="middle">без скриншота</text>
+<rect class="node" x="758" y="646" width="84" height="60" rx="8"/>
+<text class="n" x="800" y="663" text-anchor="middle">rewrite</text>
+<text class="n" x="800" y="675" text-anchor="middle">_query</text>
+<text class="b" x="800" y="694" text-anchor="middle">mini</text>
 <polyline class="a" points="800,626 800,646"/>
-<text class="al" x="808" y="648" text-anchor="start" >близость &lt; 0,45</text>
+<text class="al" x="814" y="648" text-anchor="start">score &lt; 0,45</text>
 <polyline class="a" points="758,676 600,676 600,626"/>
-<text class="al" x="748" y="702" text-anchor="end" >цикл 1: переписать запрос словами ТЗ, до 2 раз</text>
+<text class="al" x="679" y="694" text-anchor="middle">цикл 1, до 2 раз</text>
 <polyline class="a" points="1100,566 1100,534 910,534 910,566"/>
-<text class="al" x="920" y="526" text-anchor="middle" >цикл 2: проверка не прошла → снова classify и draft с текстом ошибки, до 2 раз; третий провал — cannot_tell кодом</text>
+<text class="al" x="1005" y="526" text-anchor="middle">цикл 2: проверка не пройдена, до 2 раз</text>
 <polyline class="a" points="1342,596 1578,596"/>
-<text class="al" x="1460.0" y="588" text-anchor="middle" >resume: accept</text>
-<text class="al" x="1662" y="646" text-anchor="end" >→ WS run.persisted, карточка «В работе»</text>
-<polyline class="a" points="255,173 255,211"/>
-<polyline class="a" points="255,261 255,296"/>
-<polyline class="a" points="255,368 255,402"/>
-<text class="al" x="263" y="386" text-anchor="start" >транзакция</text>
+<text class="al" x="1460" y="588" text-anchor="middle">resume</text>
+<polyline class="a" points="255,173 255,214"/>
+<polyline class="a" points="255,258 255,296"/>
+<polyline class="a" points="255,368 255,410"/>
 <polyline class="a" points="320,332 335,332"/>
-<polyline class="a" points="395,368 395,410"/>
-<polyline class="a" points="395,296 395,261"/>
-<text class="al" x="403" y="280" text-anchor="start" >сразу 201</text>
-<polyline class="a" points="455,424 470,370"/>
-<text class="al" x="462" y="372" text-anchor="start" >claim</text>
+<polyline class="a" points="395,360 395,416"/>
+<polyline class="a" points="395,304 395,258"/>
+<polyline class="a" points="455,430 470,370"/>
+<text class="al" x="478" y="388" text-anchor="start">claim</text>
 <polyline class="a" points="500,368 500,566"/>
-<text class="al" x="508" y="522" text-anchor="start" >graph.invoke</text>
-<polyline class="a" points="600,566 600,474"/>
-<text class="al" x="608" y="488" text-anchor="start" >поиск</text>
-<polyline class="a" points="1220,566 1240,474"/>
+<text class="al" x="508" y="522" text-anchor="start">invoke</text>
+<polyline class="a" points="600,566 600,466"/>
+<text class="al" x="608" y="488" text-anchor="start">поиск</text>
+<polyline class="a" points="1220,566 1236,474"/>
 <polyline class="a" points="1300,566 1300,474"/>
-<text class="al" x="1308" y="488" text-anchor="start" >чекпоинт</text>
+<text class="al" x="1308" y="488" text-anchor="start">checkpoint</text>
 <polyline class="a a-dash" points="1190,566 1190,368"/>
 <polyline class="a a-dash" points="1050,296 1050,261"/>
-<text class="al" x="1058" y="280" text-anchor="start" >WebSocket</text>
 <polyline class="a" points="1500,173 1500,211"/>
 <polyline class="a" points="1500,261 1500,296"/>
-<polyline class="a" points="1500,368 1500,402"/>
-<text class="al" x="1508" y="386" text-anchor="start" >транзакция</text>
+<polyline class="a" points="1500,368 1500,410"/>
 <polyline class="a" points="1610,368 1610,566"/>
-<text class="al" x="1618" y="420" text-anchor="start" >Job resume →</text>
-<text class="al" x="1618" y="434" text-anchor="start" >воркер →</text>
-<text class="al" x="1618" y="448" text-anchor="start" >Command resume</text>
-<text class="lane-t" x="30" y="740" text-anchor="start" >Как читать</text>
-<text class="s" x="30" y="762" text-anchor="start" >Каждый вызов модели — generation в трейсе Langfuse; один AgentRun = один трейс, старт и продолжение вместе (traceId = sha256(runId)). Худший случай одного прохода: 1 vision + 2 rewrite + 3 classify + 3 draft = 9 вызовов, 3 поиска.</text>
-<text class="s" x="30" y="782" text-anchor="start" >Решение человека записывает RemarksService до resume — один путь записи для REST, WS и MCP; ни одна нода не вызывает verdict или close. «Не та цитата из ТЗ» продолжает тот же прогон из чекпоинта: цитаты в исключения, поиск заново.</text>
-<text class="s" x="30" y="802" text-anchor="start" >Ретест — второй граф: pixel_diff кодом → explain моделью на тройке «было / стало / дифф» → закрывает только заказчик. Схемы по addEdge — docs/GRAPH.md.</text>
+<text class="al" x="1618" y="440" text-anchor="start">resume</text>
+<rect class="node" x="34" y="744" width="26" height="16" rx="4"/>
+<text class="lg" x="68" y="757" text-anchor="start">вызов модели</text>
+<rect class="node-code" x="190" y="744" width="26" height="16" rx="4"/>
+<text class="lg" x="224" y="757" text-anchor="start">код</text>
+<rect class="node-hitl" x="280" y="744" width="26" height="16" rx="4"/>
+<text class="lg" x="314" y="757" text-anchor="start">ожидание человека</text>
+<polyline class="a a-dash" points="470,752 500,752"/>
+<text class="lg" x="510" y="757" text-anchor="start">WebSocket-события</text>
 </svg>

@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 780" width="1440" height="780" role="img"
-  aria-label="RemarkRound на бою: браузер и IDE слева, три сервиса Railway в центре (web, api, postgres), OpenAI, Langfuse Cloud и Sentry справа, GitHub Actions снизу; стрелки подписаны протоколами и тем, что по ним идёт">
-  <!-- Схема уровня сервисов (C4, контейнеры). Источник правды — docs/ARCHITECTURE.md, раздел «Схема».
-       Цвета и радиусы — apps/web/src/styles/tokens.css (Arc · Индиго). PNG печатает docs/diagrams/render.mjs. -->
+  aria-label="Архитектура продакшена RemarkRound: браузер и IDE, сервисы web, api и PostgreSQL на Railway, OpenAI, Langfuse Cloud, Sentry, деплой из GitHub после CI">
+  <!-- Уровень сервисов. Сверять с docs/ARCHITECTURE.md, раздел «Компоненты». Токены: apps/web/src/styles/tokens.css.
+       PNG: node docs/diagrams/render.mjs system. Подписи короткие, назывные. -->
   <defs>
     <linearGradient id="obj" x1="0" y1="0" x2="0.18" y2="1">
       <stop offset="0" stop-color="#2a3ea3"/>
@@ -24,11 +24,11 @@
       .ext { fill: #f4f5fa; stroke: #c9cee0; stroke-width: 1; }
       .obj { fill: url(#obj); }
       .t { font-size: 14px; font-weight: 600; }
-      .t-lg { font-size: 15px; font-weight: 700; fill: #ffffff; }
+      .t-lg { font-size: 16px; font-weight: 700; fill: #ffffff; }
       .s { font-size: 12px; fill: #5c6280; }
       .s-w { font-size: 12px; fill: rgba(255,255,255,0.82); }
       .chip { fill: rgba(255,255,255,0.14); stroke: rgba(255,255,255,0.28); stroke-width: 1; }
-      .chip-t { font-size: 12px; font-weight: 500; fill: #ffffff; }
+      .chip-t { font-size: 12.5px; font-weight: 500; fill: #ffffff; }
       .pill { fill: #e9ecfa; }
       .pill-t { font-size: 13px; font-weight: 600; fill: #1d2d80; }
       .cyl-body { fill: #ffffff; stroke: #e1e4ef; stroke-width: 1; }
@@ -36,168 +36,148 @@
       .a { fill: none; stroke: #5c6280; stroke-width: 1.5; marker-end: url(#arr); }
       .a-dash { stroke-dasharray: 5 4; }
       .al { font-size: 12px; fill: #5c6280; paint-order: stroke; stroke: #eef0f6; stroke-width: 4px; stroke-linejoin: round; }
-      .al-b { font-weight: 600; fill: #141a33; }
       .lg { font-size: 12px; fill: #5c6280; }
     </style>
   </defs>
 
   <rect width="1440" height="780" fill="#eef0f6"/>
 
-  <text class="h1" x="40" y="52">RemarkRound на бою: сервисы и потоки данных</text>
-  <text class="h2" x="40" y="74">Уровень сервисов по модели C4 · сентябрь 2026 · каждый блок есть в коде, подробности и trade-off — docs/ARCHITECTURE.md</text>
+  <text class="h1" x="40" y="52">RemarkRound: архитектура продакшена</text>
+  <text class="h2" x="40" y="74">Сервисы и потоки данных, сентябрь 2026</text>
 
-  <!-- ===== Люди ===== -->
+  <!-- ===== Пользователи ===== -->
   <rect class="bnd" x="40" y="100" width="260" height="300" rx="24"/>
-  <text class="bnd-t" x="60" y="126">Люди</text>
+  <text class="bnd-t" x="60" y="126">Пользователи</text>
   <rect class="pill" x="60" y="146" width="90" height="28" rx="999"/>
   <text class="pill-t" x="105" y="165" text-anchor="middle">Заказчик</text>
-  <rect class="pill" x="158" y="146" width="108" height="28" rx="999"/>
-  <text class="pill-t" x="212" y="165" text-anchor="middle">PM приёмки</text>
+  <rect class="pill" x="158" y="146" width="48" height="28" rx="999"/>
+  <text class="pill-t" x="182" y="165" text-anchor="middle">PM</text>
   <rect class="pill" x="60" y="182" width="118" height="28" rx="999"/>
   <text class="pill-t" x="119" y="201" text-anchor="middle">Разработчик</text>
 
   <line class="a" x1="170" y1="212" x2="170" y2="236"/>
   <rect class="paper" x="60" y="238" width="220" height="62" rx="14"/>
   <text class="t" x="76" y="262">Браузер</text>
-  <text class="s" x="76" y="282">Angular SPA + WebSocket</text>
+  <text class="s" x="76" y="282">Angular SPA</text>
 
   <rect class="paper" x="60" y="318" width="220" height="62" rx="14"/>
-  <text class="t" x="76" y="342">IDE: Cursor, Claude Code</text>
-  <text class="s" x="76" y="362">PM и разработчик, Skill uat-triage</text>
+  <text class="t" x="76" y="342">IDE</text>
+  <text class="s" x="76" y="362">Cursor, Claude Code, Skill uat-triage</text>
 
-  <!-- ===== MCP, только локально ===== -->
+  <!-- ===== MCP, локальный процесс ===== -->
   <rect class="bnd" x="40" y="420" width="260" height="110" rx="24"/>
-  <text class="bnd-t" x="60" y="446">Ноутбук · не на Railway</text>
+  <text class="bnd-t" x="60" y="446">Локально</text>
   <line class="a a-dash" x1="250" y1="382" x2="250" y2="452"/>
   <text class="al" x="240" y="422" text-anchor="end">stdio</text>
   <rect class="paper" x="60" y="454" width="220" height="62" rx="14"/>
-  <text class="t" x="76" y="478">MCP-сервер · apps/mcp</text>
-  <text class="s" x="76" y="498">4 tool + prompt, projectId из токена</text>
+  <text class="t" x="76" y="478">MCP-сервер</text>
+  <text class="s" x="76" y="498">apps/mcp, 4 tools</text>
 
   <!-- ===== GitHub ===== -->
   <rect class="bnd" x="40" y="560" width="260" height="170" rx="24"/>
   <text class="bnd-t" x="60" y="586">GitHub</text>
   <rect class="paper" x="60" y="600" width="220" height="44" rx="14"/>
-  <text class="t" x="76" y="627">ветка main <tspan class="s" font-weight="400">← merge из dev</tspan></text>
+  <text class="t" x="76" y="627">main</text>
   <line class="a" x1="170" y1="646" x2="170" y2="662"/>
   <rect class="paper" x="60" y="664" width="220" height="56" rx="14"/>
-  <text class="t" x="76" y="686">Actions · ci.yml</text>
-  <text class="s" x="76" y="704">тесты API, evals офлайн, сборка web</text>
+  <text class="t" x="76" y="686">GitHub Actions</text>
+  <text class="s" x="76" y="704">тесты, evals, сборка</text>
 
   <!-- ===== Railway ===== -->
   <rect class="bnd" x="350" y="100" width="730" height="630" rx="24"/>
-  <text class="bnd-t" x="370" y="126">Railway · Амстердам · деплой ждёт зелёный CI · Watch Paths</text>
+  <text class="bnd-t" x="370" y="126">Railway, Амстердам</text>
 
-  <rect class="paper" x="370" y="200" width="190" height="96" rx="14"/>
-  <text class="t" x="386" y="226">web</text>
-  <text class="s" x="386" y="246">nginx + Angular SPA</text>
-  <text class="s" x="386" y="264">проксирует /api и</text>
-  <text class="s" x="386" y="280">/api/v1/ws в api</text>
+  <rect class="paper" x="370" y="200" width="190" height="72" rx="14"/>
+  <text class="t" x="386" y="228">web</text>
+  <text class="s" x="386" y="250">nginx, Angular SPA</text>
 
-  <rect class="obj" x="660" y="160" width="400" height="310" rx="14" filter="url(#sh)"/>
-  <text class="t-lg" x="680" y="190">api · NestJS, один инстанс</text>
-  <text class="s-w" x="680" y="210">всё в одном процессе: REST, WebSocket, графы, воркер</text>
-  <rect class="chip" x="680" y="228" width="120" height="28" rx="8"/>
-  <text class="chip-t" x="740" y="247" text-anchor="middle">REST /api/v1</text>
-  <rect class="chip" x="808" y="228" width="232" height="28" rx="8"/>
-  <text class="chip-t" x="924" y="247" text-anchor="middle">WebSocket · комната remark:{id}</text>
-  <rect class="chip" x="680" y="264" width="226" height="28" rx="8"/>
-  <text class="chip-t" x="793" y="283" text-anchor="middle">Графы LangGraph: триаж, ретест</text>
-  <rect class="chip" x="914" y="264" width="126" height="28" rx="8"/>
-  <text class="chip-t" x="977" y="283" text-anchor="middle">Воркер очереди</text>
-  <rect class="chip" x="680" y="300" width="360" height="28" rx="8"/>
-  <text class="chip-t" x="860" y="319" text-anchor="middle">LLM-модуль: все вызовы модели, Skill в промпте</text>
-  <rect class="chip" x="680" y="336" width="360" height="28" rx="8"/>
-  <text class="chip-t" x="860" y="355" text-anchor="middle">RAG: чанки → эмбеддинги → pgvector, WHERE projectId</text>
-  <rect class="chip" x="680" y="372" width="212" height="28" rx="8"/>
-  <text class="chip-t" x="786" y="391" text-anchor="middle">Diff: pixelmatch, без модели</text>
-  <rect class="chip" x="900" y="372" width="140" height="28" rx="8"/>
-  <text class="chip-t" x="970" y="391" text-anchor="middle">Guardrails, цена</text>
-  <rect class="chip" x="680" y="408" width="360" height="28" rx="8"/>
-  <text class="chip-t" x="860" y="427" text-anchor="middle">Langfuse: свой OTel-провайдер, отдельно от Sentry</text>
+  <rect class="obj" x="660" y="160" width="400" height="270" rx="14" filter="url(#sh)"/>
+  <text class="t-lg" x="680" y="192">api</text>
+  <text class="s-w" x="680" y="212">NestJS, один процесс</text>
+  <rect class="chip" x="680" y="232" width="176" height="28" rx="8"/>
+  <text class="chip-t" x="768" y="251" text-anchor="middle">REST API</text>
+  <rect class="chip" x="864" y="232" width="176" height="28" rx="8"/>
+  <text class="chip-t" x="952" y="251" text-anchor="middle">WebSocket</text>
+  <rect class="chip" x="680" y="268" width="360" height="28" rx="8"/>
+  <text class="chip-t" x="860" y="287" text-anchor="middle">LangGraph: триаж, ретест</text>
+  <rect class="chip" x="680" y="304" width="176" height="28" rx="8"/>
+  <text class="chip-t" x="768" y="323" text-anchor="middle">Очередь задач</text>
+  <rect class="chip" x="864" y="304" width="176" height="28" rx="8"/>
+  <text class="chip-t" x="952" y="323" text-anchor="middle">RAG, pgvector</text>
+  <rect class="chip" x="680" y="340" width="176" height="28" rx="8"/>
+  <text class="chip-t" x="768" y="359" text-anchor="middle">LLM-модуль, Skill</text>
+  <rect class="chip" x="864" y="340" width="176" height="28" rx="8"/>
+  <text class="chip-t" x="952" y="359" text-anchor="middle">Pixel-diff</text>
+  <rect class="chip" x="680" y="376" width="176" height="28" rx="8"/>
+  <text class="chip-t" x="768" y="395" text-anchor="middle">Guardrails</text>
+  <rect class="chip" x="864" y="376" width="176" height="28" rx="8"/>
+  <text class="chip-t" x="952" y="395" text-anchor="middle">Трейсинг</text>
 
-  <!-- том api -->
-  <path class="cyl-body" d="M 620 550 v 80 a 80 10 0 0 0 160 0 v -80"/>
-  <ellipse class="cyl-top" cx="700" cy="550" rx="80" ry="10"/>
-  <text class="t" x="700" y="586" text-anchor="middle">том api</text>
-  <text class="s" x="700" y="604" text-anchor="middle">кадры и документы</text>
+  <!-- том -->
+  <path class="cyl-body" d="M 650 530 v 76 a 80 10 0 0 0 160 0 v -76"/>
+  <ellipse class="cyl-top" cx="730" cy="530" rx="80" ry="10"/>
+  <text class="t" x="730" y="568" text-anchor="middle">Том</text>
+  <text class="s" x="730" y="588" text-anchor="middle">кадры, документы</text>
 
   <!-- postgres -->
-  <path class="cyl-body" d="M 880 550 v 130 a 80 10 0 0 0 160 0 v -130"/>
-  <ellipse class="cyl-top" cx="960" cy="550" rx="80" ry="10"/>
-  <text class="t" x="960" y="584" text-anchor="middle">postgres · pgvector</text>
-  <text class="s" x="960" y="604" text-anchor="middle">данные проектов</text>
-  <text class="s" x="960" y="620" text-anchor="middle">векторы чанков, HNSW</text>
-  <text class="s" x="960" y="636" text-anchor="middle">очередь задач Job</text>
-  <text class="s" x="960" y="652" text-anchor="middle">чекпоинты графа</text>
+  <path class="cyl-body" d="M 885 530 v 110 a 80 10 0 0 0 160 0 v -110"/>
+  <ellipse class="cyl-top" cx="965" cy="530" rx="80" ry="10"/>
+  <text class="t" x="965" y="568" text-anchor="middle">PostgreSQL</text>
+  <text class="s" x="965" y="588" text-anchor="middle">pgvector, данные,</text>
+  <text class="s" x="965" y="604" text-anchor="middle">очередь задач,</text>
+  <text class="s" x="965" y="620" text-anchor="middle">чекпоинты графа</text>
 
   <!-- ===== Внешние сервисы ===== -->
-  <rect class="bnd" x="1130" y="100" width="270" height="460" rx="24"/>
+  <rect class="bnd" x="1130" y="100" width="270" height="380" rx="24"/>
   <text class="bnd-t" x="1150" y="126">Внешние сервисы</text>
 
-  <rect class="ext" x="1160" y="160" width="210" height="110" rx="14"/>
-  <text class="t" x="1176" y="186">OpenAI</text>
-  <text class="s" x="1176" y="206">gpt-4.1 — черновик</text>
-  <text class="s" x="1176" y="222">gpt-4.1-mini — класс, кадр, запрос</text>
+  <rect class="ext" x="1160" y="160" width="210" height="94" rx="14"/>
+  <text class="t" x="1176" y="186">OpenAI API</text>
+  <text class="s" x="1176" y="206">gpt-4.1: черновик</text>
+  <text class="s" x="1176" y="222">gpt-4.1-mini: класс, кадр</text>
   <text class="s" x="1176" y="238">text-embedding-3-small</text>
-  <text class="s" x="1176" y="254">официальный SDK, JSON-схемы</text>
 
-  <rect class="ext" x="1160" y="300" width="210" height="90" rx="14"/>
-  <text class="t" x="1176" y="326">Langfuse Cloud · EU</text>
-  <text class="s" x="1176" y="346">один прогон графа = один трейс</text>
-  <text class="s" x="1176" y="362">generation на каждый вызов</text>
-  <text class="s" x="1176" y="378">токены, цена, Skill в промпте</text>
+  <rect class="ext" x="1160" y="290" width="210" height="72" rx="14"/>
+  <text class="t" x="1176" y="316">Langfuse Cloud</text>
+  <text class="s" x="1176" y="336">трейсы LLM-вызовов,</text>
+  <text class="s" x="1176" y="352">токены, стоимость</text>
 
-  <rect class="ext" x="1160" y="420" width="210" height="90" rx="14"/>
-  <text class="t" x="1176" y="446">Sentry · EU</text>
-  <text class="s" x="1176" y="466">только ошибки, без трейсинга</text>
-  <text class="s" x="1176" y="482">api — из процесса,</text>
-  <text class="s" x="1176" y="498">SPA — из браузера напрямую</text>
+  <rect class="ext" x="1160" y="396" width="210" height="56" rx="14"/>
+  <text class="t" x="1176" y="422">Sentry</text>
+  <text class="s" x="1176" y="440">ошибки api и web</text>
 
   <!-- ===== Стрелки ===== -->
-  <!-- браузер → web -->
-  <line class="a" x1="282" y1="262" x2="368" y2="248"/>
-  <text class="al" x="325" y="244" text-anchor="middle">https</text>
-  <!-- web → api -->
+  <line class="a" x1="282" y1="262" x2="368" y2="240"/>
+  <text class="al" x="325" y="238" text-anchor="middle">HTTPS</text>
   <line class="a" x1="562" y1="236" x2="658" y2="236"/>
-  <text class="al" x="610" y="226" text-anchor="middle">приватная сеть</text>
-  <text class="al" x="610" y="254" text-anchor="middle">REST + WS</text>
-  <!-- api → OpenAI -->
-  <line class="a" x1="1062" y1="215" x2="1158" y2="215"/>
-  <text class="al" x="1110" y="205" text-anchor="middle">чат, vision,</text>
-  <text class="al" x="1110" y="233" text-anchor="middle">эмбеддинги</text>
-  <!-- api → Langfuse -->
-  <line class="a" x1="1062" y1="345" x2="1158" y2="345"/>
-  <text class="al" x="1110" y="335" text-anchor="middle">спаны пачками</text>
-  <!-- api → Sentry -->
-  <line class="a" x1="1062" y1="440" x2="1158" y2="465"/>
-  <text class="al" x="1110" y="440" text-anchor="middle">ошибки api</text>
-  <!-- api → том -->
-  <line class="a" x1="730" y1="472" x2="730" y2="538"/>
-  <text class="al" x="720" y="510" text-anchor="end">кадры, документы</text>
-  <!-- api → postgres -->
-  <line class="a" x1="965" y1="472" x2="965" y2="538"/>
-  <text class="al" x="955" y="500" text-anchor="end">SQL, pgvector</text>
-  <text class="al" x="955" y="518" text-anchor="end">очередь: FOR UPDATE SKIP LOCKED</text>
-  <!-- MCP → api -->
+  <text class="al" x="610" y="226" text-anchor="middle">REST, WS</text>
+  <line class="a" x1="1062" y1="207" x2="1158" y2="207"/>
+  <text class="al" x="1110" y="197" text-anchor="middle">LLM, vision</text>
+  <text class="al" x="1110" y="225" text-anchor="middle">embeddings</text>
+  <line class="a" x1="1062" y1="326" x2="1158" y2="326"/>
+  <text class="al" x="1110" y="316" text-anchor="middle">трейсы</text>
+  <line class="a" x1="1062" y1="416" x2="1158" y2="424"/>
+  <text class="al" x="1110" y="408" text-anchor="middle">ошибки</text>
+  <line class="a" x1="730" y1="432" x2="730" y2="518"/>
+  <text class="al" x="720" y="480" text-anchor="end">файлы</text>
+  <line class="a" x1="965" y1="432" x2="965" y2="518"/>
+  <text class="al" x="955" y="480" text-anchor="end">SQL</text>
   <polyline class="a a-dash" points="282,485 620,485 620,300 658,300"/>
-  <text class="al" x="460" y="473" text-anchor="middle">те же REST-маршруты, токен проекта на 30 дней</text>
-  <!-- CI → Railway -->
+  <text class="al" x="450" y="473" text-anchor="middle">REST, токен проекта</text>
   <line class="a" x1="282" y1="692" x2="348" y2="692"/>
-  <text class="al al-b" x="362" y="680">зелёный CI → Railway собирает web и api из main</text>
-  <text class="al" x="362" y="698">коммит только в docs/ сервисы не пересобирает (Watch Paths)</text>
+  <text class="al" x="362" y="696">деплой после CI</text>
 
-  <!-- ===== Легенда ===== -->
-  <text class="bnd-t" x="1150" y="606">Обозначения</text>
-  <rect class="obj" x="1150" y="622" width="26" height="16" rx="4"/>
-  <text class="lg" x="1186" y="635">один процесс, где живёт вся логика</text>
-  <rect x="1150" y="648" width="26" height="16" rx="4" fill="#ffffff" stroke="#e1e4ef"/>
-  <text class="lg" x="1186" y="661">наш сервис на Railway или ноутбуке</text>
-  <rect x="1150" y="674" width="26" height="16" rx="4" fill="#f4f5fa" stroke="#c9cee0"/>
-  <text class="lg" x="1186" y="687">внешний сервис по API</text>
-  <path class="cyl-body" d="M 1150 704 v 10 a 13 3 0 0 0 26 0 v -10"/>
-  <ellipse class="cyl-top" cx="1163" cy="704" rx="13" ry="3"/>
-  <text class="lg" x="1186" y="713">хранилище: том или база</text>
-  <line class="a a-dash" x1="1150" y1="736" x2="1176" y2="736"/>
-  <text class="lg" x="1186" y="740">процесс только на ноутбуке, в IDE</text>
+  <!-- ===== Обозначения ===== -->
+  <text class="bnd-t" x="1150" y="536">Обозначения</text>
+  <rect class="obj" x="1150" y="552" width="26" height="16" rx="4"/>
+  <text class="lg" x="1186" y="565">основной сервис</text>
+  <rect x="1150" y="578" width="26" height="16" rx="4" fill="#ffffff" stroke="#e1e4ef"/>
+  <text class="lg" x="1186" y="591">сервис</text>
+  <rect x="1150" y="604" width="26" height="16" rx="4" fill="#f4f5fa" stroke="#c9cee0"/>
+  <text class="lg" x="1186" y="617">внешний сервис</text>
+  <path class="cyl-body" d="M 1150 634 v 10 a 13 3 0 0 0 26 0 v -10"/>
+  <ellipse class="cyl-top" cx="1163" cy="634" rx="13" ry="3"/>
+  <text class="lg" x="1186" y="643">хранилище</text>
+  <line class="a a-dash" x1="1150" y1="666" x2="1176" y2="666"/>
+  <text class="lg" x="1186" y="670">локальный процесс</text>
 </svg>
