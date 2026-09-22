@@ -11,7 +11,8 @@ on:
 
 jobs:
   api:
-    runs-on: ubuntu-latest
+    # Версия раннера закреплена: ubuntu-latest с 19.10.2026 переезжает на Ubuntu 26 (actions/runner-images#14748)
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       postgres:
@@ -94,7 +95,8 @@ jobs:
   images:
     needs: api
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-latest
+    # Версия раннера закреплена: ubuntu-latest с 19.10.2026 переезжает на Ubuntu 26 (actions/runner-images#14748)
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
