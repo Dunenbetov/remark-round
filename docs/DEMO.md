@@ -24,7 +24,7 @@ curl -s http://localhost:3001/api/v1/health                              # llm: 
 
 - баланс OpenAI, ноутбук на зарядке, уведомления выключены;
 - три окна с раздельными сессиями (профиль Chrome, инкогнито, второй браузер): Business, PM, Developer. Вход карточками ролей на экране входа, пароль `remarkround`;
-- светлая тема, тур «Как это работает» и подсказки первого захода закрыты во всех трёх окнах;
+- светлая тема, тур «Как это работает» (три шага, свой у каждой роли) закрыт во всех трёх окнах;
 - вкладка Langfuse `http://localhost:3000` (pm@remarkround.dev / `remarkround`) и вкладка Langfuse Cloud с трейсами замеров;
 - на рабочем столе файл `fixtures/screenshots/after-save-blue.png` (кадр «стало» для №12);
 - вкладка прода https://remark-round.up.railway.app и `/api/v1/health`;

@@ -128,9 +128,9 @@ async function main(): Promise<void> {
       await sleep(300);
       const session = shot.as ? `localStorage.setItem('rr.session', ${JSON.stringify(JSON.stringify(sessions[shot.as]))}); localStorage.setItem('rr.project', ${JSON.stringify(pm.projectId)});` : `localStorage.removeItem('rr.session');`;
       const theme = shot.dark ? `localStorage.setItem('rr.theme', 'dark');` : `localStorage.removeItem('rr.theme');`;
-      // подсказки первого захода закрываем, чтобы скрины были «рабочими» (ключи — на пользователя: rr.hint.<userId>.<key>)
+      // тур первого захода закрываем, чтобы скрины были «рабочими» (ключ — на пользователя и версию: rr.hint.<userId>.tour.v2.<role>)
       const userId = shot.as ? (sessions[shot.as] as { user: { id: string } }).user.id : '';
-      const hints = ['journal.pm', 'journal.business', 'card.pm', 'card.business', 'card.developer', 'tour.pm', 'tour.business'].map((k) => `localStorage.setItem('rr.hint.${userId}.${k}', '1');`).join('');
+      const hints = ['tour.v2.pm', 'tour.v2.business', 'tour.v2.developer'].map((k) => `localStorage.setItem('rr.hint.${userId}.${k}', '1');`).join('');
       // очередь «Ждут вас»: все awaiting_pm по убыванию номера, как в журнале
       const waiting = remarks.filter((r) => r.status === 'awaiting_pm').sort((a, b) => b.number - a.number).map((r) => r.id);
       const queue = shot.queue ? `sessionStorage.setItem('rr.queue', ${JSON.stringify(JSON.stringify({ ids: waiting, label: 'Ждут вас', backLink: ['/', pm.slug, 'round-2'] }))});` : `sessionStorage.removeItem('rr.queue');`;
