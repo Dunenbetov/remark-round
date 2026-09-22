@@ -120,7 +120,6 @@
   --rr-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --rr-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
   --undo-ms: 5000ms;
-  --rr-strip-cycle: 12s;         /* цикл схемы «Как идёт замечание» */
 
   /* ---------- слои ---------- */
   --z-bar: 10; --z-sheet: 15; --z-menu: 20; --z-undo: 30; --z-modal: 40;

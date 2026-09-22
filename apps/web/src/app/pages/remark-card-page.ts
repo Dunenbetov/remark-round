@@ -76,7 +76,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                 <article class="paper card" [attr.data-status]="r.status">
                   <rr-card-header [number]="r.number" [title]="r.title" [status]="showPill() ? r.status : null" [role]="role()" [meta]="metaLine()" [presence]="presence()" [stamp]="headerStamp()" />
                   @if (role() === 'business' || role() === 'pm') {
-                    <rr-process-strip class="card__strip" mode="static" [current]="r.status" [role]="role()" [compact]="true" />
+                    <rr-process-strip class="card__strip" [current]="r.status" [role]="role()" [compact]="true" />
                   }
 
                   <div class="grid" [class.grid--retest]="twoCols()" [class.grid--noshot]="!original() && !twoCols()">

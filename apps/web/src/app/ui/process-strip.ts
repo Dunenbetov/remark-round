@@ -2,8 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import type { RemarkStatus, Role } from '../core/models';
 import { PROCESS } from '../core/copy';
 
-type StripMode = 'loop' | 'static';
-
 /** Узел схемы по статусу замечания (docs/STATUS.md): 0 Замечание · 1 Разбор · 2 Решение · 3 В работе · 4 Проверка · 5 Закрыто. */
 const NODE_BY_STATUS: Record<RemarkStatus, number> = {
   imported: 0,
@@ -32,21 +30,17 @@ interface Node {
 }
 
 /**
- * Схема пути замечания в шесть узлов. Вся подсветка считается от одного числа --rr-p (зарегистрированное
- * свойство, styles/motion.css): в режиме loop его крутит анимация rr-strip-progress (токен «№» едет от узла
- * к узлу, пройденные остаются залитыми, подпись под схемой меняется), в режиме static оно равно узлу
- * текущего статуса — «где сейчас это замечание». Hover/фокус ставят цикл на паузу; reduced-motion —
- * статичный кадр, где все узлы пройдены.
+ * Схема пути замечания в шесть узлов: «где сейчас это замечание» (кольцо у узла текущего статуса) и «здесь
+ * действуете вы» (полоса под узлами роли). Вся подсветка считается от одного числа --rr-p (зарегистрированное
+ * свойство, styles/motion.css), равного узлу текущего статуса: пройденные узлы и связки залиты.
  */
 @Component({
   selector: 'rr-process-strip',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'strip',
-    '[class.strip--loop]': "mode() === 'loop'",
-    '[class.strip--static]': "mode() === 'static'",
     '[class.strip--compact]': 'compact()',
-    '[style.--rr-p]': "mode() === 'static' ? currentNode() : null",
+    '[style.--rr-p]': 'currentNode()',
   },
   template: `
     <ol class="nodes" [attr.aria-label]="copy.title">
@@ -67,29 +61,13 @@ interface Node {
         </li>
       }
     </ol>
-    @if (mode() === 'loop') {
-      <span class="token n-serif" aria-hidden="true">№</span>
-      <div class="captions" aria-hidden="true">
-        @for (c of copy.captions; track $index) {
-          <span class="caption" [style.--k]="$index">{{ c }}</span>
-        }
-      </div>
-    }
   `,
   styles: `
     :host {
       --strip-dot: 20px;
-      --strip-n: 6;
       position: relative;
       display: block;
       padding: var(--sp-2) 0 0;
-    }
-    :host(.strip--loop) {
-      animation: rr-strip-progress var(--rr-strip-cycle) var(--rr-ease-in-out) infinite forwards;
-    }
-    :host(.strip--loop:hover),
-    :host(.strip--loop:focus-within) {
-      animation-play-state: paused;
     }
     .nodes {
       list-style: none;
@@ -161,8 +139,8 @@ interface Node {
     .node--now .node__label {
       font-weight: var(--fw-semibold);
     }
-    /* текущий статус в static-режиме — кольцо вокруг узла */
-    :host(.strip--static) .node--now .node__dot {
+    /* текущий статус — кольцо вокруг узла */
+    .node--now .node__dot {
       border-color: var(--rr-accent);
       box-shadow: 0 0 0 4px var(--rr-accent-soft);
     }
@@ -176,43 +154,6 @@ interface Node {
       margin-left: -14px;
       border-radius: 2px;
       background: var(--rr-accent);
-    }
-    /* токен «№» едет по центрам узлов */
-    .token {
-      position: absolute;
-      top: calc(var(--sp-2) + var(--strip-dot) / 2);
-      left: calc((var(--rr-p, 0) + 0.5) * 100% / var(--strip-n));
-      transform: translate(-50%, -50%);
-      z-index: 2;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: var(--rr-surface-raised);
-      color: var(--rr-accent-text);
-      border: 1px solid var(--rr-line-strong);
-      box-shadow: var(--rr-shadow-2);
-      font-size: var(--fs-13);
-      font-weight: 600;
-      line-height: 1;
-    }
-    /* подписи-этапы: видна та, у которой токен (±полшага — crossfade) */
-    .captions {
-      position: relative;
-      height: var(--lh-14);
-      margin-top: var(--sp-1);
-      text-align: center;
-    }
-    .caption {
-      position: absolute;
-      left: 0;
-      right: 0;
-      font-size: var(--fs-14);
-      line-height: var(--lh-14);
-      color: var(--rr-ink-2);
-      opacity: clamp(0, calc(1 - abs(var(--rr-p, 0) - var(--k)) * 2), 1);
     }
     /* компактный вариант — в шапке карточки: «где сейчас это замечание» */
     :host(.strip--compact) {
@@ -242,42 +183,35 @@ interface Node {
       line-height: var(--lh-13);
       letter-spacing: 0;
     }
-    :host(.strip--compact.strip--static) .node--now .node__dot {
+    :host(.strip--compact) .node--now .node__dot {
       border-color: var(--rr-accent);
       box-shadow: 0 0 0 3px var(--rr-accent-2-soft);
     }
-    :host(.strip--compact.strip--static) .node--now .node__core {
+    :host(.strip--compact) .node--now .node__core {
       background: var(--rr-accent-2-text);
       opacity: 1;
     }
     :host(.strip--compact) .node--now .node__label {
       color: var(--rr-accent-text);
     }
-    @media (prefers-reduced-motion: reduce) {
-      /* цикл гасится глобально; токен прячем — остаётся схема с пройденными узлами */
-      .token {
-        display: none;
-      }
-    }
     @media (max-width: 900px) {
-      /* шесть подписей в 330px не помещаются: в цикле этап называет подпись под схемой, в static — только текущий узел */
+      /* шесть подписей в 330px не помещаются: остаётся только текущий узел */
       .node__label {
         font-size: var(--fs-12);
         line-height: var(--lh-12);
       }
-      :host(.strip--loop) .node__label,
-      :host(.strip--static) .node:not(.node--now) .node__label {
+      .node:not(.node--now) .node__label {
         display: none;
       }
-      .caption {
-        font-size: var(--fs-13);
+      .node--now .node__label {
+        max-width: none;
+        overflow: visible;
       }
     }
   `,
 })
 export class ProcessStrip {
-  readonly mode = input<StripMode>('static');
-  /** Статус замечания для static-режима; null — ничего не подсвечено. */
+  /** Статус замечания; null — ничего не подсвечено. */
   readonly current = input<RemarkStatus | null>(null);
   /** Роль — подчёркиваем узлы, где действует человек. */
   readonly role = input<Role | null>(null);
@@ -292,7 +226,7 @@ export class ProcessStrip {
 
   protected readonly nodes = computed<Node[]>(() => {
     const you = new Set(this.role() ? (NODES_BY_ROLE[this.role()!] ?? []) : []);
-    const now = this.mode() === 'static' ? this.currentNode() : -1;
+    const now = this.currentNode();
     return this.copy.nodes.map((label, index) => ({ index, label, you: you.has(index), now: index === now }));
   });
 }
