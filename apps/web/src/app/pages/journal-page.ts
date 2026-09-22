@@ -438,7 +438,7 @@ export class JournalPage {
       const n = this.store.roundNumber();
       this.title.setTitle(`${TITLE.journal(n)} — ${APP_NAME}`);
     });
-    // Первый заход бизнеса или PM — тур «Как это работает» один раз.
+    // Первый заход заказчика или руководителя приёмки — тур «Как это работает» один раз.
     effect(() => {
       const role = this.role();
       untracked(() => this.onboarding.maybeAutoOpen(role));

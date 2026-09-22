@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { Router, RouterLink } from '@angular/router';
 import type { Remark, Screenshot } from '../core/models';
 import { CARD, DECISION, DEV_QUEUE, EMPTY, QUEUE, ROLE_TITLE, STAMP_LABEL } from '../core/copy';
+import { OnboardingService } from '../core/onboarding.service';
 import { SessionService } from '../core/session.service';
 import { PendingActionService } from '../core/pending-action.service';
 import { QueueService } from '../core/queue.service';
@@ -388,6 +389,7 @@ export class DevQueuePage {
   private readonly router = inject(Router);
   private readonly shortcuts = inject(ShortcutsService);
   private readonly session = inject(SessionService);
+  private readonly onboarding = inject(OnboardingService);
 
   protected readonly copy = DEV_QUEUE;
   protected readonly roleTitle = ROLE_TITLE.developer;
@@ -414,6 +416,11 @@ export class DevQueuePage {
         void this.store.loadDevQueue(projectId);
         void this.store.loadAdvisoryQueue(projectId);
       });
+    });
+    // Первый заход разработчика — тур «Как это работает» один раз.
+    effect(() => {
+      const role = this.session.roleIn(this.projectId());
+      untracked(() => this.onboarding.maybeAutoOpen(role));
     });
     const unbind = this.shortcuts.bind({
       ArrowDown: () => this.move(1),

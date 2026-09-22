@@ -9,7 +9,7 @@ import { links, sectionOf, type Section } from '../core/links';
 import { filterRemarks } from '../core/journal-filter';
 import type { Role } from '../core/models';
 import { AccountService } from '../core/account.service';
-import { OnboardingService } from '../core/onboarding.service';
+import { OnboardingService, hasTour } from '../core/onboarding.service';
 import { ApiService } from '../core/api.service';
 import { errorMessage } from '../core/errors';
 import { RemarksStore } from '../core/remarks.store';
@@ -343,11 +343,11 @@ export class AppBar {
     return items;
   });
 
-  /** Меню аватара: «Профиль», «Как это работает» (бизнес и PM) и «Выйти» — тема живёт тумблером в шапке. */
+  /** Меню аватара: «Профиль», «Как это работает» (роли с туром) и «Выйти» — тема живёт тумблером в шапке. */
   protected readonly userItems = computed<MenuItem[]>(() => {
     const role = this.role();
     const items: MenuItem[] = [{ id: 'profile', label: NAV.profile, separatorBefore: true }];
-    if (role === 'business' || role === 'pm') items.push({ id: 'how', label: NAV.howItWorks });
+    if (hasTour(role)) items.push({ id: 'how', label: NAV.howItWorks });
     items.push({ id: 'logout', label: NAV.logout, separatorBefore: true });
     return items;
   });
@@ -411,7 +411,7 @@ export class AppBar {
   protected onUserPick(id: string): void {
     if (id === 'how') {
       const role = this.role();
-      if (role === 'business' || role === 'pm') this.onboarding.open(role);
+      if (hasTour(role)) this.onboarding.open(role);
       return;
     }
     if (id === 'profile') {

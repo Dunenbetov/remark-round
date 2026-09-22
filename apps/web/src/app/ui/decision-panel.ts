@@ -1,7 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, afterNextRender, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import type { Advice, VerdictCode } from '../core/models';
-import { COMMON, DECISION, PM_VERDICTS, PillTone, VERDICT_LABEL } from '../core/copy';
+import { COMMON, DECISION, PM_VERDICTS, PillTone, VERDICT_LABEL, pmVerdictGroups } from '../core/copy';
 import { ShortcutsService } from '../core/shortcuts.service';
 import { Icon } from './icons';
 import { Stamp } from './stamp';
@@ -41,14 +41,6 @@ export interface DecisionNext {
   n: number;
   title: string;
 }
-
-type Group = { key: 'work' | 'notWork' | 'needData'; title: string; codes: VerdictCode[] };
-
-const GROUPS: Group[] = [
-  { key: 'work', title: DECISION.groups.work, codes: ['defect'] },
-  { key: 'notWork', title: DECISION.groups.notWork, codes: ['change_request', 'unspecified'] },
-  { key: 'needData', title: DECISION.groups.needData, codes: ['cannot_tell', 'rejected_binding'] },
-];
 
 const UNDO_SECONDS = 5;
 
@@ -731,15 +723,9 @@ export class DecisionPanel {
 
   protected readonly visibleGroups = computed(() => {
     const two = this.mode() === 'pm-two';
-    return GROUPS.map((g) => ({
-      ...g,
-      verdicts: g.codes
-        .filter((code) => !two || code === 'defect' || code === 'change_request')
-        .map((code) => {
-          const v = PM_VERDICTS.find((x) => x.code === code)!;
-          return { ...v, key: PM_VERDICTS.indexOf(v) + 1 };
-        }),
-    })).filter((g) => g.verdicts.length);
+    return pmVerdictGroups()
+      .map((g) => ({ ...g, verdicts: g.verdicts.filter((v) => !two || v.code === 'defect' || v.code === 'change_request') }))
+      .filter((g) => g.verdicts.length);
   });
   private readonly retestMode = computed(() => this.mode() === 'retest' || this.mode() === 'retest-check');
   protected readonly commentLabel = computed(() => (this.retestMode() ? DECISION.closeCommentLabel : this.mode() === 'pm-two' ? DECISION.commentLabelShort : DECISION.commentLabel));
