@@ -13,8 +13,6 @@ describe('run deadline and budget', () => {
   const url = (path: string): string => `/api/v1/projects/${h.projectId}${path}`;
 
   beforeAll(async () => {
-    process.env['GRAPH_RUN_TIMEOUT_MS'] = '300';
-    resetConfig();
     h = await createHarness();
   });
 
@@ -32,10 +30,17 @@ describe('run deadline and budget', () => {
   }
 
   it('прогон дольше дедлайна — failed с кодом timeout без повторов, карточка вернулась в imported и стартует снова', async () => {
+    // Дедлайн 300 мс — только на медленный прогон: обычный граф на загруженном раннере CI в него не укладывается.
+    // Прогон читает дедлайн при старте, поэтому вернуть дефолт можно, как только карточка вернулась в imported
+    process.env['GRAPH_RUN_TIMEOUT_MS'] = '300';
+    resetConfig();
     h.llm.delayMs = 1500;
     const remarkId = await imported('Нет кнопки «Сохранить» — модель отвечает медленно');
     const res = await h.http.post(url(`/remarks/${remarkId}/triage`)).set(h.auth('pm')).expect(200);
-    const back = await h.waitFor(remarkId, ['imported']);
+    const back = await h.waitFor(remarkId, ['imported']).finally(() => {
+      delete process.env['GRAPH_RUN_TIMEOUT_MS'];
+      resetConfig();
+    });
     expect(back.runStatus).toBe('failed');
     expect(back.runFailure).toMatch(/не уложился/);
     const run = await h.prisma.agentRun.findUniqueOrThrow({ where: { id: res.body.runId } });
