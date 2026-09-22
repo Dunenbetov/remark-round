@@ -26,6 +26,12 @@ type StoredWrites = Record<string, [taskId: string, channel: string, value: Stor
  * «на дни» переживает рестарт API, а «Не та цитата» продолжает тот же run из его последнего чекпоинта.
  */
 export class PrismaCheckpointSaver extends BaseCheckpointSaver {
+  /**
+   * Записи в полёте по runId. По abort LangGraph сразу отклоняет invoke, не дожидаясь начатых put/putWrites:
+   * без учёта запоздалая запись прерванного графа переживёт deleteThread (run.cancel) и останется сиротой.
+   */
+  private readonly inflight = new Map<string, Set<Promise<unknown>>>();
+
   constructor(private readonly prisma: PrismaService) {
     super();
   }
@@ -61,6 +67,10 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
   async put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions: ChannelVersions): Promise<RunnableConfig> {
     const runId = config.configurable?.['thread_id'] as string | undefined;
     if (!runId) throw new Error('PrismaCheckpointSaver.put: нет thread_id (runId)');
+    return this.track(runId, this.savePut(runId, config, checkpoint, metadata));
+  }
+
+  private async savePut(runId: string, config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata): Promise<RunnableConfig> {
     const ns = (config.configurable?.['checkpoint_ns'] as string | undefined) ?? '';
     const parentId = (config.configurable?.['checkpoint_id'] as string | undefined) ?? null;
     const [blob, meta] = await Promise.all([this.dump(copyCheckpoint(checkpoint)), this.dump(metadata)]);
@@ -77,6 +87,10 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
     const ns = (config.configurable?.['checkpoint_ns'] as string | undefined) ?? '';
     const checkpointId = config.configurable?.['checkpoint_id'] as string | undefined;
     if (!runId || !checkpointId) throw new Error('PrismaCheckpointSaver.putWrites: нет thread_id или checkpoint_id');
+    await this.track(runId, this.saveWrites(runId, ns, checkpointId, writes, taskId));
+  }
+
+  private async saveWrites(runId: string, ns: string, checkpointId: string, writes: PendingWrite[], taskId: string): Promise<void> {
     const patch: StoredWrites = {};
     for (const [idx, [channel, value]] of writes.entries()) {
       const key = `${taskId},${WRITES_IDX_MAP[channel] ?? idx}`;
@@ -90,7 +104,20 @@ export class PrismaCheckpointSaver extends BaseCheckpointSaver {
   }
 
   async deleteThread(runId: string): Promise<void> {
+    for (let pending = this.inflight.get(runId); pending; pending = this.inflight.get(runId)) await Promise.allSettled([...pending]);
     await this.prisma.graphCheckpoint.deleteMany({ where: { runId } });
+  }
+
+  private track<T>(runId: string, work: Promise<T>): Promise<T> {
+    const pending = this.inflight.get(runId) ?? new Set<Promise<unknown>>();
+    this.inflight.set(runId, pending);
+    pending.add(work);
+    const done = (): void => {
+      pending.delete(work);
+      if (!pending.size && this.inflight.get(runId) === pending) this.inflight.delete(runId);
+    };
+    work.then(done, done);
+    return work;
   }
 
   private async toTuple(row: { runId: string; ns: string; checkpointId: string; parentId: string | null; blob: unknown; metadata: unknown; writes: unknown }): Promise<CheckpointTuple> {

@@ -41,6 +41,8 @@ const GRAPH_MAX_ATTEMPTS = 4;
 /** Чекпоинты завершённых прогонов старше недели удаляются (R-M2): продолжать их некому, а полное состояние графа в каждом — мегабайты. */
 const CHECKPOINT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const PRUNE_EVERY_MS = 24 * 60 * 60 * 1000;
+/** run.cancel ждёт остановки прерванного графа не дольше этого: нода, которая не слушает signal, не держит ответ REST. */
+const CANCEL_SETTLE_MS = 5_000;
 
 type GraphKind = 'triage' | 'retest';
 
@@ -73,7 +75,8 @@ export class AgentService implements OnModuleInit {
   private triage!: TriageGraph;
   private retestGraph!: RetestGraph;
   private checkpointer!: PrismaCheckpointSaver;
-  private readonly running = new Map<string, AbortController>();
+  /** Вызовы графа в этом процессе: чем прервать и когда граф действительно остановился (ждут resume и cancel — settled). */
+  private readonly running = new Map<string, { ac: AbortController; stopped: Promise<void> }>();
   /**
    * Лимит параллельных прогонов (фаза 11): глобальный и на проект — импорт на 200 строк не съедает всё, REST уже ответил `triaging`.
    * Для задач очереди те же лимиты держит сам claim (JobsService, R-B2): ждущий прогон остаётся `queued`, а не занимает слот воркера.
@@ -184,8 +187,11 @@ export class AgentService implements OnModuleInit {
   /** run.cancel: вердикта нет, run = cancelled; бегущий граф прерывается, задача в очереди снимается, чекпоинты удаляются. */
   async cancel(ctx: ProjectContext, remarkId: string, runId: string): Promise<RemarkView> {
     if (ctx.role !== 'pm' && ctx.role !== 'business') throw new ForbiddenException();
-    this.running.get(runId)?.abort();
+    this.running.get(runId)?.ac.abort();
     await this.jobs.cancelByRun(runId);
+    // abort не останавливает граф мгновенно: шаг, который уже пишет чекпоинт, допишет его. Удалить чекпоинты раньше —
+    // оставить сироту у отменённого прогона (её снял бы только pruneCheckpoints через неделю)
+    await this.settled(runId, CANCEL_SETTLE_MS);
     const before = await this.remarks.get(ctx, remarkId);
     const view = await this.remarks.cancelRun(ctx, remarkId, runId);
     if (before.runId === runId && (before.runStatus === 'running' || before.runStatus === 'awaiting_human')) {
@@ -311,7 +317,9 @@ export class AgentService implements OnModuleInit {
     const ac = new AbortController();
     const onOuterAbort = () => ac.abort();
     exec.signal?.addEventListener('abort', onOuterAbort, { once: true });
-    this.running.set(runId, ac);
+    let markStopped!: () => void;
+    const stopped = new Promise<void>((r) => (markStopped = r));
+    this.running.set(runId, { ac, stopped });
     // Сначала слот проекта, потом общий: ожидание в очереди проекта не занимает общий слот.
     // Задачи из очереди сюда приходят уже в пределах лимитов (claim их не берёт сверх), ждут здесь только прогоны с `wait: true`
     const project = this.projectSlots.get(trace.projectId) ?? new Semaphore(this.perProject);
@@ -331,6 +339,9 @@ export class AgentService implements OnModuleInit {
           configurable: { thread_id: runId },
           signal,
           recursionLimit: 80,
+          // Чекпоинт шага пишется до следующего шага. В режиме async LangGraph копит записи цепочкой в фоне, а по abort
+          // отклоняет invoke, не дожидаясь её: чекпоинты отменённого прогона дописывались бы уже после deleteThread
+          durability: 'sync',
           callbacks: this.observability.callbacks(trace),
         });
         span.update({ output: summarize(trace.mode, state as Record<string, unknown>) });
@@ -364,7 +375,8 @@ export class AgentService implements OnModuleInit {
       return {};
     } finally {
       exec.signal?.removeEventListener('abort', onOuterAbort);
-      this.running.delete(runId);
+      if (this.running.get(runId)?.ac === ac) this.running.delete(runId);
+      markStopped();
       releaseGlobal();
       releaseProject();
       if (project.idle) this.projectSlots.delete(trace.projectId);
@@ -373,6 +385,7 @@ export class AgentService implements OnModuleInit {
 
   /** Продолжить run из чекпоинта; если чекпоинта нет (seed, старые прогоны) — начать заново тем же runId. */
   private async resume(graph: TriageGraph | RetestGraph, remarkId: string, runId: string, decision: HumanDecision | RetestDecision, trace: RunTrace, fallback: TriageInput | undefined, exec: RunExec): Promise<RunOutcome> {
+    await this.settled(runId);
     const config = { configurable: { thread_id: runId } };
     let pending = false;
     try {
@@ -384,6 +397,20 @@ export class AgentService implements OnModuleInit {
     if (pending) return this.run(graph, remarkId, runId, new Command({ resume: decision }), trace, exec);
     if (fallback) return this.run(graph, remarkId, runId, fallback, { ...trace, resume: false }, exec);
     return {};
+  }
+
+  /**
+   * Дождаться, пока вызов графа этого прогона в этом процессе остановится. Нода propose переводит замечание в awaiting_pm
+   * раньше, чем граф запишет чекпоинт паузы (interrupt): решение человека в это окно не должно застать граф на ходу —
+   * иначе продолжение не видит паузы и повторяет propose со старым предложением, а отмена удаляет чекпоинты до последнего.
+   * Прод — один процесс API; при нескольких репликах прошлый вызов мог идти в другом процессе, и окно остаётся.
+   */
+  private async settled(runId: string, maxMs = config().GRAPH_RUN_TIMEOUT_MS): Promise<void> {
+    const active = this.running.get(runId);
+    if (!active) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([active.stopped, new Promise<void>((r) => (timer = setTimeout(r, maxMs)).unref())]);
+    clearTimeout(timer);
   }
 
   private async emitPersisted(ctx: ProjectContext, remarkId: string, runId: string): Promise<void> {
