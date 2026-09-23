@@ -28,3 +28,38 @@ export function dateTimeRu(iso: string | null | undefined): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : dropYearSuffix(DATE_TIME.format(d));
 }
+
+const REL_SHORT = new Intl.RelativeTimeFormat('ru', { numeric: 'auto', style: 'short' });
+const REL_LONG = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+
+/**
+ * Давность события в колокольчике: «только что», «5 мин назад», «2 ч назад», «вчера», «3 дня назад»,
+ * старше недели — «10 сентября». Дни — по календарю читателя, а не по 24 часам: вчерашний вечер — «вчера».
+ */
+export function relTimeRu(iso: string | null | undefined, now: number = Date.now()): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const t = d.getTime();
+  if (Number.isNaN(t)) return '';
+  const diff = now - t;
+  // Часы сервера и браузера расходятся на секунды — событие «из будущего» тоже только что
+  if (diff < MINUTE) return 'только что';
+  if (diff < HOUR) return REL_SHORT.format(-Math.floor(diff / MINUTE), 'minute').replace('мин.', 'мин');
+  const today = new Date(now);
+  const days = Math.round((startOfDay(today) - startOfDay(d)) / (24 * HOUR));
+  if (days === 0) return REL_SHORT.format(-Math.floor(diff / HOUR), 'hour');
+  if (days < 7) return REL_LONG.format(-days, 'day');
+  return dayMonthRu(iso);
+}
+
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/** Тот же календарный день у читателя — группа «Сегодня» в колокольчике. */
+export function isTodayRu(iso: string, now: number = Date.now()): boolean {
+  const d = new Date(iso);
+  return !Number.isNaN(d.getTime()) && startOfDay(d) === startOfDay(new Date(now));
+}

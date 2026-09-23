@@ -3,8 +3,10 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { Title } from '@angular/platform-browser';
 import { Router, RouterLink } from '@angular/router';
 import type { JoinAck, Phase, Presence, Remark, RemarkHistoryEntry, Role, Screenshot, ServerEvent, VerdictCode } from '../core/models';
-import { APP_NAME, CARD, DECISION, DEV_QUEUE, EMPTY, HISTORY_ACTION, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, PillTone, QUEUE, ROLE_SHORT, ROUND, STAMP_LABEL, STATUS_LABEL, TITLE, VERDICT_LABEL, statusLabelFor } from '../core/copy';
+import { APP_NAME, CARD, DECISION, DEV_QUEUE, EMPTY, NEW_REMARK, PHASE_EXTRA, PHASE_TEXT, PillTone, QUEUE, ROLE_SHORT, ROUND, STAMP_LABEL, STATUS_LABEL, TITLE, VERDICT_LABEL, statusLabelFor } from '../core/copy';
+import { historyLabel } from '../core/history-label';
 import { filterRemarks } from '../core/journal-filter';
+import { NotificationsStore } from '../core/notifications.store';
 import { PendingActionService } from '../core/pending-action.service';
 import { QueueService } from '../core/queue.service';
 import { RemarksStore } from '../core/remarks.store';
@@ -801,6 +803,7 @@ export class RemarkCardPage {
   private readonly session = inject(SessionService);
   private readonly triage = inject(TriageService);
   private readonly ws = inject(WsService);
+  private readonly notifications = inject(NotificationsStore);
   private readonly actions = inject(PendingActionService);
   private readonly queue = inject(QueueService);
   private readonly ui = inject(UiStateService);
@@ -862,6 +865,8 @@ export class RemarkCardPage {
         }
         void this.store.loadRemark(projectId, id);
         this.joinRoom(projectId, id);
+        // Открытая карточка — её уведомления прочитаны, новые по ней приходят без звука
+        this.notifications.viewing(id);
         // та же страница, другая карточка: локальное состояние не переезжает
         this.viewer.set(null);
         this.fixWhat.set('');
@@ -925,6 +930,8 @@ export class RemarkCardPage {
       this.pollFallback(false);
       this.leaveRoom?.();
       this.leaveRoom = null;
+      // Следующая карточка могла уже объявить себя открытой — снимаем только свою
+      this.notifications.stopViewing(this.remarkId());
     });
   }
 
@@ -1558,13 +1565,7 @@ export class RemarkCardPage {
   }
 
   protected actionLabel(e: RemarkHistoryEntry): string {
-    // Закрытие сразу после «Готово» — без нового кадра, заказчик проверил сам (ADR 010)
-    if (e.action === 'close' && e.fromStatus === 'ready_for_retest') return HISTORY_ACTION['close_checked']!;
-    // Отмена ретеста (в том числе «Заменить кадр «Стало»») — не остановка разбора
-    if (e.action === 'cancel' && (e.fromStatus === 'ready_for_retest' || e.fromStatus === 'awaiting_business_close')) return HISTORY_ACTION['cancel_retest']!;
-    // «Кто кому направил»: решение PM называет вариант — «В работу разработчикам», «Новое желание…»
-    if (e.action === 'verdict' && e.toStatus in VERDICT_LABEL) return `${HISTORY_ACTION['verdict']}: ${VERDICT_LABEL[e.toStatus as VerdictCode]}`;
-    return HISTORY_ACTION[e.action] ?? e.action;
+    return historyLabel(e);
   }
 
   /** Дата с годом и время в поясе читателя (ADR 011): через год по истории должно быть видно, какой это был сентябрь. */

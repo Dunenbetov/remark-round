@@ -423,8 +423,44 @@ export interface Presence {
   name: string;
 }
 
+/**
+ * Уведомление колокольчика (GET /auth/notifications, WS `notification.new`): событие из неизменяемой истории, статус и кто.
+ * Комментариев, деталей модели, совета и черновика нет ни для одной роли (ADR 007).
+ */
+export interface NotificationView {
+  id: string;
+  /** `action` — ждёт вас (звук, системное уведомление); `info` — к сведению. */
+  kind: 'action' | 'info';
+  /** ISO 8601 — время события в истории. */
+  at: string;
+  readAt: string | null;
+  project: { id: string; name: string; slug: string };
+  /** status — текущий; readable: false — карточку сейчас открыть нельзя (разработчик и ушедшее замечание), тогда title: null. */
+  remark: { id: string; number: number; roundNumber: number; title: string | null; status: RemarkStatus; readable: boolean };
+  event: { action: string; fromStatus: RemarkStatus | null; toStatus: RemarkStatus };
+  /** null — действие системы (RemarkRound); имя — на момент события, как в истории. */
+  by: { name: string; role: Role | null } | null;
+}
+
+/** Ответ GET /auth/notifications: новые сверху, `unread` — по всем, не только по странице. */
+export interface NotificationsPage {
+  items: NotificationView[];
+  unread: number;
+  hasMore: boolean;
+}
+
+/** Тело POST /auth/notifications/read — ровно одно из трёх. */
+export type NotificationsReadBody = { ids: string[] } | { remarkId: string } | { all: true };
+
+/** Личная комната `user:{id}` (docs/WS.md): сокет — только толчок, правда — в GET /auth/notifications. */
+export type NotificationEvent =
+  | { type: 'notification.new'; items: NotificationView[]; unread: number }
+  | { type: 'notification.read'; unread: number; ids?: string[]; remarkId?: string; all?: true }
+  | { type: 'notification.sync' };
+
 /** docs/WS.md сервер → клиент (apps/api/src/agent/run-events.ts). */
 export type ServerEvent =
+  | NotificationEvent
   | { type: 'run.phase'; runId: string; phase: Phase }
   | { type: 'run.token'; runId: string; delta: string }
   | { type: 'run.citations'; runId: string; citations: Citation[] }

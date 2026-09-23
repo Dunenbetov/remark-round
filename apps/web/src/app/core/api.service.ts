@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse, HttpInterceptorFn, HttpParams } from '@a
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, firstValueFrom } from 'rxjs';
-import type { AddMemberResult, AdminInviteResult, AdminProject, AdminUser, AuthOptions, DocumentKind, ImportJob, InboxInvitation, InvitationLink, InvitationPeek, InvitationSummary, MeResult, MemberSummary, MembersView, ProjectSummary, Remark, RemarkHistoryEntry, Role, Round, SearchHit, Session, Side, User, VerdictCode } from './models';
+import type { AddMemberResult, AdminInviteResult, AdminProject, AdminUser, AuthOptions, DocumentKind, ImportJob, InboxInvitation, InvitationLink, InvitationPeek, InvitationSummary, MeResult, MemberSummary, MembersView, NotificationsPage, NotificationsReadBody, ProjectSummary, Remark, RemarkHistoryEntry, Role, Round, SearchHit, Session, Side, User, VerdictCode } from './models';
 import { SessionService } from './session.service';
 
 const API_BASE = '/api/v1';
@@ -88,6 +88,20 @@ export class ApiService {
 
   declineInboxInvitation(id: string): Promise<void> {
     return this.run(this.http.post<void>(`${API_BASE}/auth/invitations/${encodeURIComponent(id)}/decline`, {}));
+  }
+
+  // Уведомления о замечаниях (ADR 016): только свои строки, MCP-токен получает 404
+
+  notifications(q: { limit?: number; before?: string } = {}): Promise<NotificationsPage> {
+    let params = new HttpParams();
+    if (q.limit) params = params.set('limit', q.limit);
+    if (q.before) params = params.set('before', q.before);
+    return this.run(this.http.get<NotificationsPage>(`${API_BASE}/auth/notifications`, { params }));
+  }
+
+  /** Прочитать по id, по замечанию или все; ответ — сколько непрочитанных осталось. */
+  readNotifications(body: NotificationsReadBody): Promise<{ unread: number }> {
+    return this.run(this.http.post<{ unread: number }>(`${API_BASE}/auth/notifications/read`, body));
   }
 
   createProject(name: string): Promise<ProjectSummary> {

@@ -903,6 +903,34 @@ export const INBOX = {
   expires: (date: string) => `до ${date}`,
 };
 
+/**
+ * Уведомления о замечаниях в том же колокольчике (ADR 016). Фраза события — подпись истории карточки (core/history-label.ts),
+ * кроме `proposal`: человеку важно, что разбор готов, а не что предложила модель. Без глаголов прошедшего времени с родом.
+ */
+export const NOTIFY = {
+  title: 'Уведомления',
+  /** Кнопка колокольчика: уведомления и приглашения одним числом. */
+  bell: (n: number) => (n ? `Уведомления: ${n} ${plural(n, 'новое', 'новых', 'новых')}` : 'Уведомления: новых нет'),
+  proposal: 'Разбор готов',
+  readAll: 'Прочитать все',
+  today: 'Сегодня',
+  earlier: 'Раньше',
+  more: 'Показать ещё',
+  empty: 'Новых событий нет',
+  emptyHint: 'Сюда приходят замечания, которые ждут вас, и смены их статуса.',
+  sound: 'Звук',
+  desktop: 'На рабочем столе',
+  desktopDenied: 'Браузер запретил уведомления — разрешите их в настройках сайта',
+  unreadSr: 'Новое.',
+  /** Действие без человека (сравнение кадров, разбор) — как в истории. */
+  system: APP_NAME,
+  remark: (number: number, title: string | null, round: number) => `№ ${number} · ${title ?? `Раунд ${round}`}`,
+  /** Живая область для экранного диктора: только «ждёт вас». */
+  live: (headline: string, number: number) => `${headline}, № ${number}`,
+  /** Текст системного уведомления: без сути замечания — его видно на экране блокировки. */
+  desktopBody: (number: number, round: number, project: string) => `№ ${number} · Раунд ${round} · ${project}`,
+};
+
 export const JOIN = {
   title: 'Приглашение в проект',
   lead: (project: string, role: string) => `Вас зовут в проект «${project}» — ${role.toLowerCase()}`,

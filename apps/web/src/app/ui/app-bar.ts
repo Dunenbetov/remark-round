@@ -16,23 +16,24 @@ import { RemarksStore } from '../core/remarks.store';
 import { SessionService } from '../core/session.service';
 import { BrandMark } from './brand-mark';
 import { Icon } from './icons';
-import { InvitationsBell } from './invitations-bell';
+import { Bell } from './bell';
 import { Menu, MenuItem } from './menu';
 import { SegmentItem, Segmented } from './segmented';
+import { TONE_BY_ROLE } from './role-tone';
 import { ThemeToggle } from './theme-toggle';
 
 /** Цвет буквы в кружке аватара по роли; профиль берёт тот же тон по стороне. */
-export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'accent', admin: 'accent', business: 'wait', developer: 'work' };
+export { TONE_BY_ROLE };
 
 /**
  * Верхняя панель — плавающая белая полоса со скруглением: бренд-знак + RemarkRound + контекст «Проект · Раунд ▾» | сегменты |
- * «Добавить замечание» (бизнес) · колокольчик приглашений (ADR 013) · тумблер темы · аватар. Роль человека — в заголовке страницы и в меню аватара.
+ * «Добавить замечание» (бизнес) · колокольчик: уведомления и приглашения (ADR 013, 016) · тумблер темы · аватар. Роль человека — в заголовке страницы и в меню аватара.
  * На узком экране разделы уезжают в нижний таб-бар.
  */
 @Component({
   selector: 'rr-app-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Menu, Segmented, ThemeToggle, BrandMark, Icon, InvitationsBell],
+  imports: [RouterLink, Menu, Segmented, ThemeToggle, BrandMark, Icon, Bell],
   template: `
     <a class="skip" href="#main" (click)="skipToMain($event)">{{ nav.skip }}</a>
     <header class="bar">
@@ -66,9 +67,9 @@ export const TONE_BY_ROLE: Record<Role, 'accent' | 'wait' | 'work'> = { pm: 'acc
               {{ nav.addRemark }}
             </a>
           }
-          <!-- Администратор инстанса в проектах не участвует — приглашений у него нет (20.09) -->
+          <!-- Администратор инстанса в проектах не участвует — ни приглашений, ни уведомлений у него нет (20.09) -->
           @if (user() && !session.isInstanceAdmin()) {
-            <rr-invitations-bell />
+            <rr-bell />
           }
           <rr-theme-toggle />
           @if (user(); as u) {
