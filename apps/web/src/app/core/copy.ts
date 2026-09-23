@@ -269,6 +269,9 @@ export const CARD = {
   pasteHint: 'перетащите, нажмите или Ctrl+V',
   toJournal: 'К журналу',
   attachNewFrameLong: 'Прикрепите новый кадр этого экрана',
+  /** Ошиблись кадром ретеста: новый кадр вместо прежнего, сравнение заново; прежний остаётся в истории (ADR 011). */
+  replaceAfter: 'Заменить кадр «Стало»',
+  replaceAfterHint: 'Прежний кадр останется в истории, кадры сравним заново',
   /** Кадры сравниваются попиксельно (ADR 002): другой размер — сравнить не выйдет, говорим это до загрузки. */
   sameSizeHint: (w: number, h: number) => `Того же размера, что первый кадр (${w}×${h}), иначе сравнить не выйдет`,
   attachShotLong: 'Прикрепите скрин этого экрана',
@@ -657,7 +660,6 @@ export const DOCUMENTS = {
   },
   moreTitle: 'Ещё в пакете',
   searchTitle: 'Проверить, что найдётся',
-  searchPlaceholder: 'Например: цвет кнопки «Сохранить»',
   searchEmpty: 'Ничего похожего в документах нет',
   searchDisabled: 'Поиск заработает, когда появится ТЗ',
   retryUpload: 'Загрузите файл ещё раз',
@@ -680,7 +682,6 @@ export const DOC_STATUS_TONE: Record<DocumentStatus, PillTone> = {
 export const NEW_REMARK = {
   title: 'Новое замечание',
   what: 'Что не так',
-  whatPlaceholder: 'Например: на странице «Профиль компании» кнопка «Сохранить» серая, хотя поля заполнены',
   where: 'Где',
   wherePlaceholder: 'Страница или экран',
   expected: 'Как должно быть',
@@ -689,7 +690,6 @@ export const NEW_REMARK = {
   replace: 'Заменить',
   cancel: 'Отмена',
   save: 'Сохранить',
-  shotMeta: 'profil-kompanii.png · 1440×900',
   subtitle: 'Опишите, что не так, и приложите скрин — мы найдём место в ТЗ.',
   nextTitle: 'Что будет дальше',
   nextText: 'Найдём место в ТЗ → посмотрим скрин → подготовим черновик → решение примет руководитель приёмки',
@@ -777,7 +777,6 @@ export const PROJECTS = {
   refresh: 'Проверить сейчас',
   createTitle: 'Создать проект',
   nameLabel: 'Название проекта',
-  namePlaceholder: 'Например: Клиентский кабинет',
   create: 'Создать проект',
   createHint: 'Вы станете руководителем приёмки этого проекта. Участников добавите на странице «Участники».',
   onlyPm: 'Право создавать проекты выдаёт администратор.',
@@ -958,5 +957,7 @@ export const HISTORY_ACTION: Record<string, string> = {
   link_duplicate: 'Связано с оригиналом',
   reopened_as: 'Претензию предъявили снова',
   cancel: 'Разбор остановлен',
+  /** Строка `cancel` ретеста (из ready_for_retest или awaiting_business_close): кадр «Стало» и дифф помечены заменёнными. */
+  cancel_retest: 'Ретест отменён: кадр «Стало» снят',
   run_failed: 'Разбор не удался',
 };

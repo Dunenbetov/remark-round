@@ -83,6 +83,9 @@ export const HISTORY_ACTION_RU: Record<string, string> = {
 /** Закрытие сразу после «Готово» (ADR 010): подпись строки `close` зависит от того, откуда закрыли. */
 export const CLOSE_CHECKED_RU = 'Закрыто без нового кадра: заказчик проверил сам';
 
+/** Отмена ретеста (строка `cancel` из ready_for_retest / awaiting_business_close): кадр «Стало» снят, в истории остался. */
+export const CANCEL_RETEST_RU = 'Ретест отменён: кадр «Стало» снят';
+
 export const ROUND_EVENT_RU: Record<string, string> = {
   open: 'Раунд открыт',
   close: 'Раунд закрыт',

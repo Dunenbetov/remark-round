@@ -34,7 +34,7 @@ import { ProcessStrip } from '../ui/process-strip';
 
 /** fix — строка журнала без описания: человек дописывает её прямо на карточке. */
 type Layout = 'running' | 'draft' | 'refuse' | 'retest-wait' | 'retest' | 'fix';
-type FileAction = 'attach' | 'retest';
+type FileAction = 'attach' | 'retest' | 'replace';
 
 /** Без сокета (сеть, прокси) карточка перечитывает замечание, пока прогон идёт. С сокетом — только события. */
 const FALLBACK_POLL_MS = 3000;
@@ -86,6 +86,12 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                       @switch (layout()) {
                         @case ('retest') {
                           <rr-compare-stage [frames]="stageFrames()" [busy]="running()" [hint]="copy.diffHint" (open)="openViewer($event)" />
+                          @if (canReplaceAfter()) {
+                            <!-- ошиблись кадром «Стало»: новый кадр вместо прежнего, прежний остаётся в истории (ADR 011) -->
+                            <button type="button" class="btn btn--text replace-after" [class.btn--busy]="busy()" [disabled]="busy() || locked()" [attr.title]="copy.replaceAfterHint" (click)="pickFile('replace')">
+                              <rr-icon name="upload" [size]="16" /> {{ copy.replaceAfter }}
+                            </button>
+                          }
                         }
                         @case ('retest-wait') {
                           <div class="pair" [class.pair--two]="role() === 'business' || frames().length > 1">
@@ -281,7 +287,7 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
                         <form class="fix" (submit)="onFix($event)" novalidate>
                           <label class="field">
                             <span class="field__label">{{ newRemark.what }}</span>
-                            <textarea class="textarea" rows="4" name="what" [placeholder]="newRemark.whatPlaceholder" [value]="fixWhat()" [disabled]="store.loading()" (input)="fixWhat.set(value($event))"></textarea>
+                            <textarea class="textarea" rows="4" name="what" [value]="fixWhat()" [disabled]="store.loading()" (input)="fixWhat.set(value($event))"></textarea>
                           </label>
                           <label class="field">
                             <span class="field__label">{{ newRemark.where }}</span>
@@ -443,6 +449,10 @@ const STAMP_TONE: Record<VerdictCode, PillTone> = { defect: 'work', change_reque
     }
     .grid--retest {
       grid-template-columns: 2.1fr 0.9fr;
+    }
+    .replace-after {
+      align-self: flex-start;
+      gap: var(--sp-2);
     }
     .col {
       display: flex;
@@ -1195,6 +1205,12 @@ export class RemarkCardPage {
 
   protected readonly canFix = computed(() => this.role() === 'business' || this.role() === 'pm');
 
+  /** Заменить кадр «Стало» может только заказчик и только пока не решил: после «Не исправлено» или закрытия кадр — уже доказательство. */
+  protected readonly canReplaceAfter = computed(() => {
+    const r = this.remark()!;
+    return this.role() === 'business' && r.status === 'awaiting_business_close' && r.runMode === 'retest' && !this.running();
+  });
+
   /** Запись решения; разработчику, который советовал, — тихая строка «Совет совпал ✓» / «Ваш совет был: …». */
   /** Заказчик на закрытом замечании: повтор претензии уходит в последний открытый раунд. */
   protected readonly reopenTarget = computed(() => {
@@ -1500,6 +1516,7 @@ export class RemarkCardPage {
     run.busy.set(true);
     try {
       if (action === 'attach') await this.store.attachShot(remark.id, file);
+      else if (action === 'replace') await this.store.replaceRetest(remark.id, file);
       else await this.store.retest(remark.id, file);
     } finally {
       run.busy.set(false);
@@ -1543,6 +1560,8 @@ export class RemarkCardPage {
   protected actionLabel(e: RemarkHistoryEntry): string {
     // Закрытие сразу после «Готово» — без нового кадра, заказчик проверил сам (ADR 010)
     if (e.action === 'close' && e.fromStatus === 'ready_for_retest') return HISTORY_ACTION['close_checked']!;
+    // Отмена ретеста (в том числе «Заменить кадр «Стало»») — не остановка разбора
+    if (e.action === 'cancel' && (e.fromStatus === 'ready_for_retest' || e.fromStatus === 'awaiting_business_close')) return HISTORY_ACTION['cancel_retest']!;
     // «Кто кому направил»: решение PM называет вариант — «В работу разработчикам», «Новое желание…»
     if (e.action === 'verdict' && e.toStatus in VERDICT_LABEL) return `${HISTORY_ACTION['verdict']}: ${VERDICT_LABEL[e.toStatus as VerdictCode]}`;
     return HISTORY_ACTION[e.action] ?? e.action;

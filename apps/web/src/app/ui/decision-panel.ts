@@ -292,6 +292,12 @@ const UNDO_SECONDS = 5;
       border-color: rgba(255, 255, 255, 0.35);
       color: var(--rr-accent-ink);
     }
+    /* карточка отсчёта: светлая подложка .kbd днём сливалась с белой подписью «Esc» */
+    :host(.ink-card) .kbd {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: var(--rr-ink-surface-line);
+      color: var(--rr-ink-surface-text);
+    }
     :host(.panel--record) {
       background: var(--rr-surface-2);
       border-radius: var(--rr-r-md);

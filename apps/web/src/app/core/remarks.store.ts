@@ -275,6 +275,21 @@ export class RemarksStore {
     });
   }
 
+  /**
+   * Ошиблись кадром «Стало»: сначала загружаем новый файл (сбой загрузки ничего не меняет), затем run.cancel
+   * возвращает замечание в ready_for_retest и помечает прежний кадр и дифф заменёнными (ADR 011), и тот же путь, что retest().
+   */
+  async replaceRetest(remarkId: string, file: File): Promise<void> {
+    const remark = this.byId(remarkId);
+    if (!remark?.runId || remark.runMode !== 'retest' || remark.status !== 'awaiting_business_close') return;
+    const runId = remark.runId;
+    await this.mutate(remarkId, async () => {
+      const media = await this.api.uploadMedia(remark.projectId, file);
+      await this.api.cancelRun(remark.projectId, remarkId, { runId, idempotencyKey: crypto.randomUUID() });
+      return this.api.retest(remark.projectId, remarkId, media.storageKey);
+    });
+  }
+
   /** «Закрыть: исправлено» — после ретеста или сразу, если заказчик проверил сам (ADR 010); комментарий по желанию. */
   async close(remarkId: string, comment?: string): Promise<void> {
     const remark = this.byId(remarkId);

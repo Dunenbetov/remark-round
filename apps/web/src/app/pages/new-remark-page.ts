@@ -38,7 +38,6 @@ import { PageHeader } from '../ui/page-header';
                 class="textarea"
                 rows="4"
                 name="what"
-                [placeholder]="copy.whatPlaceholder"
                 [value]="what()"
                 [disabled]="closed()"
                 (input)="what.set(value($event))"

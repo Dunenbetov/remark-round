@@ -1,6 +1,6 @@
 import type { RemarkStatus, RetestOutcome, Role, VerdictCode } from '@remarkround/db';
 import ExcelJS from 'exceljs';
-import { CLOSE_CHECKED_RU, HISTORY_ACTION_RU, RETEST_OUTCOME_RU, ROLE_LABEL_RU, ROUND_EVENT_RU, STATUS_LABEL_RU, VERDICT_LABEL_RU } from '../remarks/labels';
+import { CANCEL_RETEST_RU, CLOSE_CHECKED_RU, HISTORY_ACTION_RU, RETEST_OUTCOME_RU, ROLE_LABEL_RU, ROUND_EVENT_RU, STATUS_LABEL_RU, VERDICT_LABEL_RU } from '../remarks/labels';
 import type { ClosedVia } from '../remarks/remark.dto';
 
 export const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -242,6 +242,7 @@ function closedViaLabel(r: JournalRemark): string {
 function actionLabel(e: JournalEvent): string {
   if (e.number === null) return ROUND_EVENT_RU[e.action] ?? e.action;
   if (e.action === 'close' && e.fromStatus === 'ready_for_retest') return CLOSE_CHECKED_RU;
+  if (e.action === 'cancel' && (e.fromStatus === 'ready_for_retest' || e.fromStatus === 'awaiting_business_close')) return CANCEL_RETEST_RU;
   if (e.action === 'verdict' && e.toStatus && e.toStatus in VERDICT_LABEL_RU) return `${HISTORY_ACTION_RU['verdict']}: ${VERDICT_LABEL_RU[e.toStatus as VerdictCode]}`;
   return HISTORY_ACTION_RU[e.action] ?? e.action;
 }

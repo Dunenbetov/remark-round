@@ -41,7 +41,7 @@ stateDiagram-v2
   ready_for_retest --> closed: только business, проверил сам без нового кадра (ADR 010)
   awaiting_business_close --> closed: только business
   awaiting_business_close --> defect: business «не исправлено» (только после кадра)
-  awaiting_business_close --> ready_for_retest: run.cancel, кадр ретеста помечается заменённым
+  awaiting_business_close --> ready_for_retest: run.cancel (заказчик заменил кадр «Стало»), кадр ретеста помечается заменённым
 
   closed --> reopened: новый раунд претензии
   reopened --> triaging: новый run

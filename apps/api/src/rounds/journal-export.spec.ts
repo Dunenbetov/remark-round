@@ -53,6 +53,7 @@ const input: JournalInput = {
     { roundNumber: 2, number: 13, at: at('2026-09-02T06:30:00Z'), by: dana, action: 'verdict', fromStatus: 'awaiting_pm', toStatus: 'defect', comment: null, detail: null },
     { roundNumber: 2, number: 13, at: at('2026-09-10T10:05:00Z'), by: aigerim, action: 'close', fromStatus: 'ready_for_retest', toStatus: 'closed', comment: 'Проверила на стенде', detail: null },
     { roundNumber: 2, number: 14, at: at('2026-09-10T10:06:00Z'), by: null, action: 'retest_result', fromStatus: 'ready_for_retest', toStatus: 'awaiting_business_close', comment: null, detail: 'Похоже, исправлено' },
+    { roundNumber: 2, number: 14, at: at('2026-09-10T10:07:00Z'), by: aigerim, action: 'cancel', fromStatus: 'awaiting_business_close', toStatus: 'ready_for_retest', comment: null, detail: null },
     { roundNumber: 2, number: null, at: at('2026-09-11T09:00:00Z'), by: dana, action: 'close', fromStatus: null, toStatus: null, comment: null, detail: null },
   ],
 };
@@ -115,12 +116,13 @@ describe('journal xlsx (ADR 011)', () => {
     expect(list[0]!['Карточка']).toMatchObject({ text: 'Открыть', hyperlink: 'https://rr.example/klientskiy-kabinet/round-2/13' });
   });
 
-  it('«История»: решение с подписью варианта, закрытие без кадра, действие системы и событие раунда', async () => {
+  it('«История»: решение с подписью варианта, закрытие без кадра, отмена ретеста, действие системы и событие раунда', async () => {
     const events = rows((await load()).getWorksheet('История')!);
     expect(events.map((e) => [e['№'], e['Кто'], e['Роль'], e['Действие']])).toEqual([
       [13, 'Дана', 'руководитель приёмки', 'Решение: В работу разработчикам'],
       [13, 'Айгерим', 'заказчик', 'Закрыто без нового кадра: заказчик проверил сам'],
       [14, 'RemarkRound', '', 'Кадры сравнили'],
+      [14, 'Айгерим', 'заказчик', 'Ретест отменён: кадр «Стало» снят'],
       ['', 'Дана', 'руководитель приёмки', 'Раунд закрыт'],
     ]);
     expect(events[1]).toMatchObject({ 'Из статуса': 'Можно смотреть снова', 'В статус': 'Закрыто', Комментарий: 'Проверила на стенде' });

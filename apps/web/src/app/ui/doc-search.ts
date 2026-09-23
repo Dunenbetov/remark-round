@@ -28,7 +28,6 @@ const TOP_K = 5;
         type="search"
         autocomplete="off"
         spellcheck="false"
-        [placeholder]="copy.searchPlaceholder"
         [attr.aria-label]="copy.searchTitle"
         [disabled]="!enabled()"
         [value]="q()"

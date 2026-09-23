@@ -36,7 +36,7 @@ const POLL_MS = 25_000;
               <form class="pr__form" (submit)="create($event)" novalidate>
                 <label class="field">
                   <span class="field__label field__label--soft">{{ copy.nameLabel }}</span>
-                  <input class="input" type="text" name="name" [placeholder]="copy.namePlaceholder" [value]="name()" (input)="name.set(value($event))" [attr.aria-invalid]="error() ? 'true' : null" />
+                  <input class="input" type="text" name="name" [value]="name()" (input)="name.set(value($event))" [attr.aria-invalid]="error() ? 'true' : null" />
                 </label>
                 @if (error(); as err) {
                   <div class="pr__error" role="alert">{{ err }}</div>
@@ -70,7 +70,7 @@ const POLL_MS = 25_000;
                 <h2 class="pr__title pr__title--sm">{{ copy.createTitle }}</h2>
                 <label class="field">
                   <span class="field__label field__label--soft">{{ copy.nameLabel }}</span>
-                  <input class="input" type="text" name="name" [placeholder]="copy.namePlaceholder" [value]="name()" (input)="name.set(value($event))" />
+                  <input class="input" type="text" name="name" [value]="name()" (input)="name.set(value($event))" />
                 </label>
                 @if (error(); as err) {
                   <div class="pr__error" role="alert">{{ err }}</div>
