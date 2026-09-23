@@ -21,6 +21,8 @@
 | GET | `/auth/invitations` | any | Колокольчик (ADR 013): живые приглашения в проекты на e-mail вошедшего, старые сверху — `[{ id, projectId, projectName, projectSlug, role, inviterName, createdAt, expiresAt }]`. Приглашения руководителя без проекта сюда не попадают. MCP-токен — 404 |
 | POST | `/auth/invitations/:invitationId/accept` | any | Принять → 200 `{ user, memberships }` (как `/invitations/:token/accept`); не на мой e-mail, неизвестное или истёкшее — 404, уже принятое — 410 |
 | POST | `/auth/invitations/:invitationId/decline` | any | Отклонить → 204, строка приглашения удаляется; те же 404 и 410 |
+| GET | `/auth/notifications?limit=30&before=<id>` | any | Колокольчик о замечаниях (ADR 016): `{ items: NotificationView[], unread, hasMore }`, от новых к старым; `limit` 1…50 (по умолчанию 30), `before` — id последней строки предыдущей страницы. Только свои строки в текущей роли в проекте. MCP-токен — 404 |
+| POST | `/auth/notifications/read` | any | Ровно одно из `{ ids: uuid[] ≤ 100 }`, `{ remarkId }`, `{ all: true }` (иначе 422) → 200 `{ unread }`; чужие id не трогаются; остальным вкладкам — `notification.read` по WS. MCP-токен — 404 |
 | POST | `/auth/reset` | — | `{ token, password ≥ 8 }` → 204: пароль заменён, все прежние токены (и MCP) недействительны, сессия не выдаётся — вход на `/login`; неизвестная или истёкшая ссылка — 404, использованная — 410. Ссылку выдаёт администратор инстанса (`/admin/users/:userId/reset-link`, ADR 013) |
 | GET | `/auth/options` | — | `{ demoLogins, registration: open \| invite_only, release, demoAccounts?, demoPassword?, sentryDsn? }` — карточки демо-персон на входе приходят только при `demoLogins` (в production выключены), режим регистрации, версия сборки, DSN Sentry для SPA (только при `SENTRY_DSN_WEB`) |
 | GET | `/projects` | any | Список membership: `{ id, name, slug, role, createdAt }` |
@@ -118,4 +120,23 @@
 
 ## Уведомления
 
-Писем нет (ADR 013 заменил ADR 009). Что ждёт человека, показывает журнал («ждут меня»); приглашения — колокольчик `GET /auth/invitations`.
+Писем нет (ADR 013 заменил ADR 009). Очередь человека — журнал («ждут меня»); колокольчик указывает на неё (ADR 016): приглашения — `GET /auth/invitations`, события по замечаниям — `GET /auth/notifications`.
+
+```ts
+type NotificationView = {
+  id: string;
+  kind: 'action' | 'info';            // «ждёт вас» | «к сведению» — из правил notifications/audience.ts и роли адресата
+  at: string;                         // ISO, момент события (строка истории)
+  readAt: string | null;
+  project: { id: string; name: string; slug: string };
+  remark: { id: string; number: number; roundNumber: number; title: string | null; status: RemarkStatus; readable: boolean };
+  event: { action: string; fromStatus: RemarkStatus | null; toStatus: RemarkStatus };
+  by: { name: string; role: Role | null } | null;   // null — система (разбор, сравнение кадров); имя — снимок истории
+};
+```
+
+- `remark.status` — текущий статус, не статус на момент события. `readable` — может ли адресат сейчас открыть карточку (разработчик — `defect`, `ready_for_retest`, `awaiting_pm`; остальные — всегда); при `false` `title` — `null`.
+- Ни комментариев, ни пометок истории, ни предложения модели, черновика, цитат, советов и `runId` — ни для одной роли (ADR 007).
+- Кому что: `proposal` → руководителю (и legacy `admin`) «ждёт вас»; решение `defect` → разработчику «ждёт вас», заказчику «к сведению»; `change_request`, `duplicate` → заказчику «к сведению»; `unspecified`, `cannot_tell` → заказчику «ждёт вас»; «Готово» и итог сравнения кадров → заказчику «ждёт вас»; «не исправлено» → разработчику «ждёт вас», заказчику «к сведению»; закрытие → заказчику «к сведению». Автор действия и отключённые не получают; действие человека по замечанию гасит его непрочитанные по этому замечанию.
+- Видны строки только проектов, где человек сейчас участник, и только его текущей роли: после удаления из проекта или смены роли прежние строки пропадают (фильтр в SQL).
+- Толчки по WS — комната `user:{id}` (`docs/WS.md`); правда — этот список, клиент сверяется с ним при подключении сокета.

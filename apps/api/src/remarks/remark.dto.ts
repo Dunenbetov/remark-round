@@ -393,6 +393,16 @@ export function audienceFor(role: Role): Audience {
   return role === 'business' ? 'customer' : 'internal';
 }
 
+/** Разработчик видит в журнале и очереди только принятые поломки и то, что сам отдал на ретест. */
+export const DEVELOPER_STATUSES: RemarkStatus[] = ['defect', 'ready_for_retest'];
+/** …плюс то, что сейчас у PM: прочитать карточку и посоветовать решение можно, в журнал и очередь оно не попадает. */
+export const DEVELOPER_READ_STATUSES: RemarkStatus[] = [...DEVELOPER_STATUSES, 'awaiting_pm'];
+
+/** Может ли роль открыть карточку в этом статусе (тот же ACL, что `RemarksService.get`; колокольчик — ADR 016). */
+export function canRead(role: Role, status: RemarkStatus): boolean {
+  return role !== 'developer' || DEVELOPER_READ_STATUSES.includes(status);
+}
+
 /** События комнаты, которые заказчику не отдаются: сырьё черновика и совет разработчика (ADR 007). */
 export const INTERNAL_EVENT_TYPES: ReadonlySet<string> = new Set(['run.token', 'run.citations', 'run.proposal', 'remark.advice']);
 
@@ -411,7 +421,7 @@ export function toRemarkView(r: RemarkRow, extra: ViewExtra, audience: Audience 
     roundId: r.roundId,
     roundNumber: r.round.number,
     number: r.number,
-    title: firstLine(r.description) || untitled(r.externalId),
+    title: remarkTitle(r),
     pageOrScreen: r.pageOrScreen ?? '—',
     description: r.description,
     expected: r.expected ?? undefined,
@@ -528,6 +538,11 @@ export function quoteForView(content: string): string {
   if (behind && behind >= QUOTE_SOFT / 2) return `«${clean.slice(0, behind)}»`;
   const word = clean.lastIndexOf(' ', QUOTE_SOFT - 1);
   return `«${clean.slice(0, word > QUOTE_SOFT / 2 ? word : QUOTE_SOFT - 1).trimEnd()}…»`;
+}
+
+/** Заголовок карточки: первая непустая строка «что не так»; одна функция для карточки и колокольчика (ADR 016). */
+export function remarkTitle(r: { description: string; externalId: string | null }): string {
+  return firstLine(r.description) || untitled(r.externalId);
 }
 
 function firstLine(s: string): string {

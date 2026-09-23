@@ -16,6 +16,7 @@ import { ImportsModule } from './imports/imports.module';
 import { JobsModule } from './jobs/jobs.module';
 import { LlmModule } from './llm/llm.module';
 import { MediaModule } from './media/media.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -80,6 +81,7 @@ const REQUEST_ID = /^[\w.-]{8,64}$/;
     ImportsModule,
     AdminModule,
     JobsModule,
+    NotificationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

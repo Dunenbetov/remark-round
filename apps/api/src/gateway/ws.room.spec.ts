@@ -90,6 +90,8 @@ describe('ws: комната remark:{id}', () => {
 
     // Клиент мог подключиться посреди прогона: либо фазы придут, либо join уже отдал awaiting_pm.
     await h.waitFor(remarkId, ['awaiting_pm']);
+    // Статус в базе коммитится раньше, чем граф шлёт фазу: если фазы шли в эту комнату, дождаться и последней
+    if (pmEvents.some((e) => e.type === 'run.phase')) await until(pmEvents, (e) => e.type === 'run.phase' && e.phase === 'awaiting_pm', 5000);
     const phases = pmEvents.filter((e) => e.type === 'run.phase').map((e) => e.phase);
     const lastPhase = phases[phases.length - 1] ?? (await ask<{ phase?: string }>(pm, 'join', { projectId: h.projectId, remarkId })).phase;
     expect(lastPhase).toBe('awaiting_pm');

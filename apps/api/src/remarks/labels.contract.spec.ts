@@ -5,6 +5,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { NOTIFY_ACTIONS } from '../notifications/audience';
 import { STATUS_LABEL_RU } from './labels';
 
 const ROOT = resolve(__dirname, '../../../..');
@@ -43,6 +44,14 @@ function schemaEnums(source: string): Map<string, string[]> {
 describe('labels and enums contract (api ↔ web)', () => {
   it('ключи STATUS_LABEL_RU (xlsx) и STATUS_LABEL (экран) совпадают', () => {
     expect(objectKeys(copySource, 'STATUS_LABEL').sort()).toEqual(Object.keys(STATUS_LABEL_RU).sort());
+  });
+
+  it('у каждого события колокольчика (ADR 016) есть фраза на экране: HISTORY_ACTION, а для proposal — NOTIFY.proposal', () => {
+    const history = objectKeys(copySource, 'HISTORY_ACTION');
+    expect(NOTIFY_ACTIONS.filter((a) => a !== 'proposal' && !history.includes(a))).toEqual([]);
+    // Блок NOTIFY — объект с функциями внутри: берём текст до закрывающей `};` в начале строки и ищем ключ в нём
+    const notify = /export const NOTIFY\b[^=]*=\s*\{([\s\S]*?)\n\};/.exec(copySource)?.[1] ?? '';
+    expect(notify).toMatch(/^\s+proposal\s*:/m);
   });
 
   it('каждый enum схемы, который web повторяет литералами, совпадает с ним по составу', () => {

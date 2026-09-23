@@ -14,6 +14,8 @@
 
 С `20260907180000_tenancy_fks` тенантные колонки держат внешние ключи: `Remark/AgentRun/DocumentChunk/ImportJob.projectId → Project` (RESTRICT), `Remark/ImportJob (roundId, projectId) → Round (id, projectId)` — раунд обязан быть из того же проекта, ссылки на людей (`authorId`, `fixedByUserId`, `closedByUserId`, `invitedById`, `acceptedByUserId`) — `SET NULL`, `HumanVerdict.runId` обязателен и ссылается на `AgentRun`. Без FK остаются только `Job.projectId/runId` (очередь переживает удаление ресурсов) и `GraphCheckpoint` (каскад от прогона есть). Новая колонка с `projectId` или `*UserId` без `@relation` — ошибка ревью. Проверка сирот перед выкатом этой миграции — в `docs/PROD.md` («Обновление»).
 
+`Notification` (`20260924100000_notifications`, ADR 016): все четыре внешних ключа — `userId`, `projectId`, `remarkId`, `changeId → RemarkStatusChange` — `ON DELETE CASCADE`; каскад от строки истории проходит триггер `rr_append_only`, как и каскад от замечания.
+
 ## Новая миграция
 
 ```bash
@@ -21,5 +23,7 @@ pnpm db:migrate -- --name <slug>     # prisma migrate dev: генерирует 
 # открыть migration.sql: убрать DROP INDEX HNSW (если появился), добавить заголовок-комментарий «зачем»
 pnpm db:generate && pnpm --filter @remarkround/db build
 ```
+
+Сверка миграций со схемой (`prisma migrate diff --from-migrations … --shadow-database-url …`) — только на отдельной пустой базе: Prisma сбрасывает теневую базу целиком, рабочую `DATABASE_URL` туда передавать нельзя.
 
 Миграции с потерей данных (DROP COLUMN, смена типа) — сначала репетиция на копии прод-дампа (`docs/adr/008-release-and-ownership.md`).

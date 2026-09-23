@@ -64,7 +64,8 @@ flowchart LR
 | Jobs | Очередь задач в той же Postgres: прогоны графа и индексация документов; повторы с паузой, heartbeat, возврат осиротевших задач, остановка по SIGTERM | `apps/api/src/jobs` |
 | Llm | Контракт `TriageLlm`: OpenAI (`gpt-4.1-mini` / `gpt-4.1`) или правила без модели (`LLM_MODE=rules`); Skill `uat-triage` в системном промпте; гиперпараметры и переключатели экспериментов — `llm-params.ts`; стоимость — `pricing.ts` | `apps/api/src/llm` |
 | Diff | pixelmatch; `cannot_compare` на разных размерах или другом экране | `apps/api/src/diff` |
-| Gateway | socket.io, комната `remark:{id}`: фазы, токены черновика, presence, решение PM, совет разработчика | `apps/api/src/gateway` |
+| Gateway | socket.io, комната `remark:{id}`: фазы, токены черновика, presence, решение PM, совет разработчика; личная комната `user:{id}` — толчки колокольчика (ADR 016) | `apps/api/src/gateway` |
+| Notifications | Колокольчик о замечаниях (ADR 016): правила «кому что» по действию истории, строки `Notification` в транзакции `writeHistory` под SAVEPOINT, список и прочтение по текущим membership, толчок задачей `notify_push` | `apps/api/src/notifications` |
 | Observability | Langfuse SDK v5 поверх OpenTelemetry: один `AgentRun` = один трейс, generation на каждый вызов модели; `/health.tracing` — `on` / `degraded` / `off` | `apps/api/src/observability` |
 | Invitations | Писем нет (ADR 013): ссылка `/join/<token>` и приглашения в колокольчике; ссылку смены пароля выдаёт администратор | `apps/api/src/{tenancy,projects,auth,admin}` |
 | Evals | Golden через те же сервисы; binding quality, faithfulness, hit@k поиска; A/B ретеста на одном коде | `apps/api/src/evals`, `evals/` |
@@ -176,11 +177,16 @@ sequenceDiagram
 - **Срок хранения:** завершённые задачи — 30 дней, упавшие — 90 (с `lastError`); чекпоинты завершённых прогонов — 7 дней.
 - `wait: true` (evals, тесты) исполняет граф прямо в вызове, мимо очереди. `/health` отдаёт `jobs: {queued, running}`.
 
+## Уведомления
+
+Колокольчик о замечаниях — ADR 016. Точка записи одна: `RemarksService.writeHistory` зовёт `NotificationsService.record(tx, change)` в той же транзакции, что строку истории. Внутри — `SAVEPOINT rr_notify`: получатели одним запросом по membership проекта (правила `notifications/audience.ts`, автор и отключённые исключены), строки одним `INSERT … ON CONFLICT DO NOTHING`, гашение непрочитанных автора по замечанию и задача `notify_push` в той же транзакции. Любая ошибка — `ROLLBACK TO SAVEPOINT` и строка в логе; решение человека коммитится. Задача видна воркеру только после коммита, её обработчик собирает `NotificationView` той же функцией, что `GET /auth/notifications`, и через шину `UserEvents` отдаёт гейтвею — тот шлёт в комнату `user:{id}`. Сокет — толчок; правда — таблица, клиент сверяется по REST. Модуль не импортирует доменных модулей: Remarks зовёт его, Gateway слушает его шину.
+
 ## Один инстанс API
 
 Сейчас работает один инстанс `api` (`.railway/railway.ts:43`). Ко второму уже готово: очередь задач и чекпоинты графа лежат в Postgres — задачу возьмёт любой процесс, спящий граф разбудит любой процесс по `thread_id`. Мешает то, что живёт в памяти процесса:
 
 - шина событий прогона `RunEvents` и presence комнаты (`apps/api/src/agent/run-events.ts:28-31`, `remark.gateway.ts`): фазы и токены черновика дойдут только до сокетов того процесса, где идёт граф — адаптера socket.io для Redis нет;
+- шина `UserEvents` и личные комнаты `user:{id}` (ADR 016): толчок колокольчика дойдёт только до сокетов процесса, выполнившего задачу `notify_push`; список по REST при этом верен;
 - отмена бегущего прогона — `AbortController` в `Map` процесса (`agent.service.ts:76`): второй процесс его не прервёт;
 - лимиты параллельности — claim считает только свои слоты (`jobs.service.ts:297-316`): два процесса удвоят лимиты;
 - файлы кадров и документов — на томе `api`, а том Railway подключается к одному сервису.

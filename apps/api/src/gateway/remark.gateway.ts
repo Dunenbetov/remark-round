@@ -1,11 +1,12 @@
 import { HttpException, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { ConnectedSocket, MessageBody, OnGatewayDisconnect, OnGatewayInit, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import { ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit, SubscribeMessage, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { Server, Socket } from 'socket.io';
 import { AgentService } from '../agent/agent.service';
 import { RunEvents, type Phase, type ServerEvent } from '../agent/run-events';
 import { AuthService, type AuthUser } from '../auth/auth.service';
+import { UserEvents, type UserEvent } from '../notifications/user-events';
 import { CancelRunDto, INTERNAL_EVENT_TYPES, RemarkView, VerdictDto } from '../remarks/remark.dto';
 import { RemarksService } from '../remarks/remarks.service';
 import type { ProjectContext } from '../tenancy/project-context';
@@ -38,14 +39,17 @@ interface SocketData {
 /**
  * Комната замечания `remark:{id}` (docs/WS.md). Auth — тот же JWT при connect, membership — на join.
  * verdict.* и run.cancel идут в те же методы AgentService, что REST: один путь записи, та же идемпотентность.
+ * Личная комната `user:{id}` (ADR 016): сервер кладёт в неё сокет сам при подключении, клиент туда не входит и
+ * ничего не шлёт — только толчки колокольчика своему человеку. Сокет с токеном MCP в неё не попадает.
  */
 @WebSocketGateway({ path: WS_PATH, cors: { origin: process.env['WEB_ORIGIN'] ?? 'http://localhost:4200', credentials: true } })
-export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
+export class RemarkGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
   @WebSocketServer() server!: Server;
   private readonly log = new Logger(RemarkGateway.name);
   private readonly presence = new Map<string, Map<string, Presence>>();
   private off: (() => void) | null = null;
   private offRevoke: (() => void) | null = null;
+  private offUser: (() => void) | null = null;
 
   constructor(
     private readonly auth: AuthService,
@@ -53,6 +57,7 @@ export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModu
     private readonly remarks: RemarksService,
     private readonly agent: AgentService,
     private readonly events: RunEvents,
+    private readonly userEvents: UserEvents,
   ) {}
 
   onModuleInit(): void {
@@ -60,11 +65,13 @@ export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModu
     // Участника убрали из проекта (или он сменил пароль): контекст на join закеширован, поэтому выкидываем
     // его сокеты из комнат этого проекта; без projectId — рвём соединение, токен всё равно уже недействителен.
     this.offRevoke = this.tenancy.onRevoke((userId, projectId) => this.revoke(userId, projectId));
+    this.offUser = this.userEvents.on((userId, event) => this.server?.to(userRoom(userId)).emit(event.type, event));
   }
 
   onModuleDestroy(): void {
     this.off?.();
     this.offRevoke?.();
+    this.offUser?.();
   }
 
   /**
@@ -83,7 +90,12 @@ export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModu
     }
   }
 
+  /**
+   * Личная комната переживает отзыв по проекту: в ней только свои строки, а колокольчик после `notification.sync`
+   * перечитает список — строки убранного проекта или прежней роли пропадут фильтром в SQL (ADR 016).
+   */
   private revoke(userId: string, projectId?: string): void {
+    if (projectId) this.server?.to(userRoom(userId)).emit('notification.sync', { type: 'notification.sync' } satisfies UserEvent);
     for (const socket of this.server?.sockets.sockets.values() ?? []) {
       const data = socket.data as Partial<SocketData>;
       if (data.user?.id !== userId) continue;
@@ -115,6 +127,13 @@ export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModu
         next(new Error('Нет доступа'));
       }
     });
+  }
+
+  /** Сокет уже прошёл middleware с JWT; токен MCP живёт внутри одного проекта — личных событий ему нет. */
+  handleConnection(socket: Socket): void {
+    const user = (socket.data as Partial<SocketData>).user;
+    if (!user || user.scopedProjectId) return;
+    void socket.join(userRoom(user.id));
   }
 
   handleDisconnect(socket: Socket): void {
@@ -213,6 +232,10 @@ export class RemarkGateway implements OnGatewayInit, OnGatewayDisconnect, OnModu
 
 function room(remarkId: string): string {
   return `remark:${remarkId}`;
+}
+
+function userRoom(userId: string): string {
+  return `user:${userId}`;
 }
 
 function dedupe(list: Presence[]): Presence[] {

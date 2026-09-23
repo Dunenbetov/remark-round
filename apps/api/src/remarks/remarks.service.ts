@@ -5,7 +5,8 @@ import { ObservabilityService } from '../observability/observability.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import type { ProjectContext } from '../tenancy/project-context';
-import { AdviceDto, CreateRemarkDto, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, audienceFor, quote, toHistoryEntry, toRemarkView, type HistoryEntry } from './remark.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { AdviceDto, CreateRemarkDto, DEVELOPER_STATUSES, FixRowDto, ImportedRemarkInput, RemarkRow, RemarkView, VerdictDto, audienceFor, canRead, quote, toHistoryEntry, toRemarkView, type HistoryEntry } from './remark.dto';
 import { PROPOSED_LABEL_RU, RETEST_OUTCOME_RU } from './labels';
 
 const REMARK_INCLUDE = {
@@ -25,10 +26,6 @@ const REMARK_INCLUDE = {
 export const ROUND_CLOSED = 'Раунд закрыт — добавляйте в открытый раунд';
 const RETEST_RUNNING = 'Кадры уже сравниваются — дождитесь диффа';
 
-/** Разработчик видит только принятые поломки и то, что сам отдал на ретест. */
-const DEVELOPER_STATUSES: RemarkStatus[] = ['defect', 'ready_for_retest'];
-/** …плюс то, что сейчас у PM: прочитать карточку и посоветовать решение можно, в журнал и очередь оно не попадает. */
-const DEVELOPER_READ_STATUSES: RemarkStatus[] = [...DEVELOPER_STATUSES, 'awaiting_pm'];
 /** Сколько соседей раунда получает модель для поиска повторов. */
 const MAX_SIBLINGS = 60;
 
@@ -88,6 +85,7 @@ export class RemarksService {
     private readonly prisma: PrismaService,
     private readonly observability: ObservabilityService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Кадр из тела запроса — только ключ этого проекта той же формы, что выдаёт POST /media: чужой иначе ушёл бы в vision и pixel-diff (фаза 11). */
@@ -158,7 +156,7 @@ export class RemarksService {
 
   async get(ctx: ProjectContext, remarkId: string): Promise<RemarkView> {
     const row = await this.load(ctx, remarkId);
-    if (ctx.role === 'developer' && !DEVELOPER_READ_STATUSES.includes(row.status)) throw new NotFoundException();
+    if (!canRead(ctx.role, row.status)) throw new NotFoundException();
     return (await this.views([row], ctx))[0]!;
   }
 
@@ -675,10 +673,11 @@ export class RemarksService {
   /**
    * Строка истории (ADR 011). Postgres не даст её потом поправить (триггер rr_append_only), поэтому всё известно
    * сейчас: имя человека — снимком (переименование и удаление аккаунта историю не меняют), кадр действия — ссылкой.
+   * Уведомления (ADR 016) — здесь же, одной точкой на все переходы: под SAVEPOINT, их сбой решение не откатывает.
    */
   private async writeHistory(tx: Prisma.TransactionClient, h: Omit<HistoryBy, 'fromStatus'> & { remarkId: string; action: string; fromStatus: RemarkStatus | null; toStatus: RemarkStatus }): Promise<void> {
     const actorName = h.userId ? ((await tx.user.findUnique({ where: { id: h.userId }, select: { name: true } }))?.name ?? null) : null;
-    await tx.remarkStatusChange.create({
+    const change = await tx.remarkStatusChange.create({
       data: {
         remarkId: h.remarkId,
         fromStatus: h.fromStatus,
@@ -693,6 +692,7 @@ export class RemarksService {
         screenshotId: h.screenshotId ?? null,
       },
     });
+    await this.notifications.record(tx, change);
   }
 
   private async load(ctx: ProjectContext, remarkId: string): Promise<RemarkRow> {

@@ -137,6 +137,7 @@ model User {
   sentInvitations Invitation[] @relation("InvitationInvitedBy")
   acceptedInvitations Invitation[] @relation("InvitationAcceptedBy")
   passwordResets PasswordReset[]
+  notifications Notification[]
   createdAt    DateTime     @default(now())
 }
 
@@ -170,6 +171,7 @@ model Project {
   chunks      DocumentChunk[]
   importJobs  ImportJob[]
   roundEvents RoundEvent[]
+  notifications Notification[]
   createdAt   DateTime       @default(now())
 }
 
@@ -314,6 +316,7 @@ model Remark {
   history        RemarkStatusChange[]
   verdicts       HumanVerdict[]
   advices        DeveloperAdvice[]
+  notifications  Notification[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -527,8 +530,33 @@ model RemarkStatusChange {
   createdAt  DateTime      @default(now())
   remark     Remark        @relation(fields: [remarkId], references: [id], onDelete: Cascade)
   user       User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  notifications Notification[]
 
   @@index([remarkId, createdAt])
+}
+
+/// Уведомление в колокольчике (ADR 016): строка на адресата и событие истории. Данные события — из неизменяемой
+/// строки RemarkStatusChange (changeId), без копий; `kind` («ждёт вас» / «к сведению») не хранится — выводится из
+/// правил notifications/audience.ts и `role`. Пишется в той же транзакции, что и история (под SAVEPOINT: сбой
+/// уведомлений не откатывает решение человека). Список показывает только строки текущей роли адресата в проекте.
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  projectId String
+  remarkId  String
+  changeId  String
+  /// Роль адресата в проекте на момент события: сменили роль или убрали из проекта — старые строки не видны
+  role      Role
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  remark    Remark             @relation(fields: [remarkId], references: [id], onDelete: Cascade)
+  change    RemarkStatusChange @relation(fields: [changeId], references: [id], onDelete: Cascade)
+
+  @@unique([changeId, userId])
+  @@index([userId, createdAt])
+  @@index([remarkId])
 }
 
 /// События раунда (ADR 011): открыт, закрыт, открыт снова — кто, в какой роли, когда. Только дописывается (триггер
