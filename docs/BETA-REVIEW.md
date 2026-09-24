@@ -207,7 +207,7 @@
 - Комментарии в коде со старым каноном «закон меди / медная полоса»: `segmented.ts:7`, `undo-bar.ts:11`, `brand-mark.ts:8`, `process-strip.ts:24,169`, `group-header.ts:8`, `login-page.ts:408`, `dev-queue-page.ts:27,278`, `journal-page.ts:44`, `copy.ts:125` — заменить на «маркер / accent-2».
 - `docs/screenshots/`: `dev-advice.png`, `dev-card.png`, `import.png`, `new-remark.png` никем не подключены — подключить в README или удалить; остальные 7 — актуальные (Arc · Индиго). Все PNG прогнать через `pngquant`.
 - `.claude/launch.json` содержит абсолютный путь `/Users/diamond/.nvm/…/node` — машинно-специфичен, но в git. Заменить на `node` (с `nvm use` в runtimeExecutable через `sh -c`) или добавить в `.gitignore`.
-- `ui/compare-stage.ts:20` `TODO(PR7)` — единственный TODO в репо: либо сделать слайдер «Сравнить» после беты, либо снять TODO и завести issue.
+- ~~`ui/compare-stage.ts:20` `TODO(PR7)` — единственный TODO в репо: либо сделать слайдер «Сравнить» после беты, либо снять TODO и завести issue.~~ Сделано 17.09: `TODO(PR7)` снят (см. «Ход работ»).
 
 ### 3.4 Что не трогать (выглядит неиспользуемым, но нужно)
 
@@ -295,7 +295,7 @@
 ## 6. Демо- и мок-данные
 
 ### 6.1 Вывод
-Во фронте **нет** моков вместо API (grep по `mock|demo|fake|stub|заглушка` — только `TODO(PR7)` в `compare-stage.ts:20`). Демо и прод разделены `NODE_ENV` и тремя барьерами: `seed.ts:114` отказывает в production без `SEED_FORCE=1`; `DEMO_LOGINS` в production по умолчанию `false` (`config.ts:20,128`); `docker-compose.prod.yml:43-49` явно ставит `SEED_ON_START=false`, `DEMO_LOGINS=false`, `MIGRATE_ON_START=false`. Без `OPENAI_API_KEY` production **не стартует** (`config.ts:66`) — тихой деградации в «правила» нет; `/health` отдаёт `llm: rules|openai`, `alerts.sh:36` алертит.
+Во фронте **нет** моков вместо API (grep по `mock|demo|fake|stub|заглушка` на 17.09 нашёл только `TODO(PR7)` в `compare-stage.ts:20`, его сняли в тот же день). Демо и прод разделены `NODE_ENV` и тремя барьерами: `seed.ts:114` отказывает в production без `SEED_FORCE=1`; `DEMO_LOGINS` в production по умолчанию `false` (`config.ts:20,128`); `docker-compose.prod.yml:43-49` явно ставит `SEED_ON_START=false`, `DEMO_LOGINS=false`, `MIGRATE_ON_START=false`. Без `OPENAI_API_KEY` production **не стартует** (`config.ts:66`) — тихой деградации в «правила» нет; `/health` отдаёт `llm: rules|openai`, `alerts.sh:36` алертит.
 
 Пути утечки — **человеческие**: запуск базового compose без прод-оверлея (тогда `NODE_ENV=development`, seed, `JWT_SECRET=change-me`), перенос демо-тома `postgres-data` в прод, `SEED_FORCE=1` в `.env`.
 
