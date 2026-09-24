@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1760 800" width="1760" height="800" role="img"
-  aria-label="Путь замечания: запрос заказчика, транзакция и очередь задач в PostgreSQL, воркер, граф триажа LangGraph с двумя циклами и паузой до решения PM, запись решения и продолжение графа">
-  <!-- Сверять с docs/GRAPH.md («Триаж», «Как граф запускается») и docs/ARCHITECTURE.md («Путь запроса: триаж»).
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1760 850" width="1760" height="850" role="img"
+  aria-label="Путь замечания: запрос заказчика, транзакция и очередь задач в PostgreSQL, воркер, граф триажа LangGraph с двумя циклами и паузой до решения PM; решение PM ведёт в запись, в паузу до нового скрина или в цикл от человека к поиску по ТЗ">
+  <!-- Сверять с apps/api/src/agent/triage.graph.ts (addEdge, addConditionalEdges), docs/GRAPH.md («Триаж», «Как граф запускается») и docs/ARCHITECTURE.md («Путь запроса: триаж»).
        PNG: node docs/diagrams/render.mjs remark-flow. Подписи короткие, назывные. -->
   <defs>
     <linearGradient id="obj" x1="0" y1="0" x2="0.18" y2="1">
@@ -11,6 +11,9 @@
     </filter>
     <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" fill="#5c6280"/>
+    </marker>
+    <marker id="arr-h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#1d2d80"/>
     </marker>
     <style>
       text { font-family: 'Onest', 'Golos Text', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; fill: #141a33; }
@@ -32,11 +35,13 @@
       .b-dark { font-size: 10px; fill: #2a3ea3; }
       .a { fill: none; stroke: #5c6280; stroke-width: 1.5; marker-end: url(#arr); }
       .a-dash { stroke-dasharray: 5 4; }
+      .a-human { stroke: #1d2d80; stroke-dasharray: 6 4; marker-end: url(#arr-h); }
+      .al.al-h { fill: #1d2d80; }
       .al { font-size: 11.5px; fill: #5c6280; paint-order: stroke; stroke: #eef0f6; stroke-width: 4px; stroke-linejoin: round; }
       .lg { font-size: 12px; fill: #5c6280; }
     </style>
   </defs>
-  <rect width="1760" height="800" fill="#eef0f6"/>
+  <rect width="1760" height="850" fill="#eef0f6"/>
   <text class="h1" x="30" y="46">Путь замечания: от журнала до решения PM</text>
   <text class="h2" x="30" y="68">Граф триажа на LangGraph, время слева направо</text>
 <rect class="lane" x="20" y="100" width="1720" height="90" rx="14"/>
@@ -50,7 +55,7 @@
 <rect class="lane" x="20" y="392" width="1720" height="92" rx="14"/>
 <text class="lane-t" x="34" y="416" text-anchor="start">PostgreSQL</text>
 <text class="lane-s" x="34" y="432" text-anchor="start">pgvector</text>
-<rect class="lane" x="20" y="494" width="1720" height="220" rx="14"/>
+<rect class="lane" x="20" y="494" width="1720" height="270" rx="14"/>
 <text class="lane-t" x="34" y="518" text-anchor="start">Граф триажа</text>
 <text class="lane-s" x="34" y="534" text-anchor="start">LangGraph</text>
 <rect class="paper" x="180" y="117" width="150" height="56" rx="14"/>
@@ -144,18 +149,18 @@
 <polyline class="a" points="1242,596 1258,596"/>
 <polyline class="a" points="620,566 620,552 780,552 780,566"/>
 <text class="al" x="700" y="546" text-anchor="middle">без скриншота</text>
-<rect class="node" x="758" y="646" width="84" height="60" rx="8"/>
-<text class="n" x="800" y="663" text-anchor="middle">rewrite</text>
-<text class="n" x="800" y="675" text-anchor="middle">_query</text>
-<text class="b" x="800" y="694" text-anchor="middle">mini</text>
-<polyline class="a" points="800,626 800,646"/>
-<text class="al" x="814" y="648" text-anchor="start">score &lt; 0,45</text>
-<polyline class="a" points="758,676 600,676 600,626"/>
-<text class="al" x="679" y="694" text-anchor="middle">цикл 1, до 2 раз</text>
-<polyline class="a" points="1100,566 1100,534 910,534 910,566"/>
-<text class="al" x="1005" y="526" text-anchor="middle">цикл 2: проверка не пройдена, до 2 раз</text>
+<rect class="node" x="758" y="656" width="84" height="60" rx="8"/>
+<text class="n" x="800" y="673" text-anchor="middle">rewrite</text>
+<text class="n" x="800" y="685" text-anchor="middle">_query</text>
+<text class="b" x="800" y="704" text-anchor="middle">mini</text>
+<polyline class="a" points="800,626 800,656"/>
+<text class="al" x="810" y="645" text-anchor="start">score &lt; 0,45</text>
+<polyline class="a" points="758,686 600,686 600,626"/>
+<text class="al" x="679" y="704" text-anchor="middle">цикл 1, до 2 раз</text>
+<polyline class="a" points="1100,566 1100,534 820,534 820,566"/>
+<text class="al" x="960" y="526" text-anchor="middle">цикл 2: проверка не пройдена, до 2 раз</text>
 <polyline class="a" points="1342,596 1578,596"/>
-<text class="al" x="1460" y="588" text-anchor="middle">resume</text>
+<text class="al" x="1460" y="588" text-anchor="middle">класс выбран</text>
 <polyline class="a" points="255,173 255,214"/>
 <polyline class="a" points="255,258 255,296"/>
 <polyline class="a" points="255,368 255,410"/>
@@ -163,7 +168,7 @@
 <polyline class="a" points="395,360 395,416"/>
 <polyline class="a" points="395,304 395,258"/>
 <polyline class="a" points="455,430 470,370"/>
-<text class="al" x="478" y="388" text-anchor="start">claim</text>
+<text class="al" x="456" y="392" text-anchor="end">claim</text>
 <polyline class="a" points="500,368 500,566"/>
 <text class="al" x="508" y="522" text-anchor="start">invoke</text>
 <polyline class="a" points="600,566 600,466"/>
@@ -176,14 +181,23 @@
 <polyline class="a" points="1500,173 1500,211"/>
 <polyline class="a" points="1500,261 1500,296"/>
 <polyline class="a" points="1500,368 1500,410"/>
-<polyline class="a" points="1610,368 1610,566"/>
-<text class="al" x="1618" y="440" text-anchor="start">resume</text>
-<rect class="node" x="34" y="744" width="26" height="16" rx="4"/>
-<text class="lg" x="68" y="757" text-anchor="start">вызов модели</text>
-<rect class="node-code" x="190" y="744" width="26" height="16" rx="4"/>
-<text class="lg" x="224" y="757" text-anchor="start">код</text>
-<rect class="node-hitl" x="280" y="744" width="26" height="16" rx="4"/>
-<text class="lg" x="314" y="757" text-anchor="start">ожидание человека</text>
-<polyline class="a a-dash" points="470,752 500,752"/>
-<text class="lg" x="510" y="757" text-anchor="start">WebSocket-события</text>
+<polyline class="a" points="1600,368 1600,540 1330,540 1330,566"/>
+<text class="al" x="1608" y="440" text-anchor="start">resume</text>
+<rect class="node-code" x="1470" y="646" width="84" height="60" rx="8"/>
+<text class="n-dark" x="1512" y="680" text-anchor="middle">pause</text>
+<polyline class="a" points="1320,626 1320,676 1470,676"/>
+<text class="al" x="1395" y="668" text-anchor="middle">«Не хватает скрина»</text>
+<text class="al" x="1562" y="680" text-anchor="start">новый скрин: новый прогон</text>
+<polyline class="a a-human" points="1285,626 1285,740 575,740 575,626"/>
+<text class="al al-h" x="1030" y="733" text-anchor="middle">«Не та цитата из ТЗ»: цикл от человека</text>
+<rect class="node" x="34" y="794" width="26" height="16" rx="4"/>
+<text class="lg" x="68" y="807" text-anchor="start">вызов модели</text>
+<rect class="node-code" x="190" y="794" width="26" height="16" rx="4"/>
+<text class="lg" x="224" y="807" text-anchor="start">код</text>
+<rect class="node-hitl" x="280" y="794" width="26" height="16" rx="4"/>
+<text class="lg" x="314" y="807" text-anchor="start">ожидание человека</text>
+<polyline class="a a-dash" points="470,802 500,802"/>
+<text class="lg" x="510" y="807" text-anchor="start">WebSocket-события</text>
+<polyline class="a a-human" points="660,802 690,802"/>
+<text class="lg" x="700" y="807" text-anchor="start">цикл от человека</text>
 </svg>
