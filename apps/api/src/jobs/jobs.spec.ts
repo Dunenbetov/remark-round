@@ -335,7 +335,8 @@ describe('jobs queue', () => {
     expect(await h.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).toMatchObject({ status: 'done', attempts: 2, lastError: 'ещё раз' });
 
     const unknown = await jobs.enqueue('spec_unknown', {}, { projectId: h.projectId });
-    for (let i = 0; i < 50 && (await h.prisma.job.findUniqueOrThrow({ where: { id: unknown.id } })).status === 'queued'; i++) await new Promise((r) => setTimeout(r, 100));
+    // Между claim и записью ошибки задача стоит в running: ждём именно failed, а не выход из queued
+    await until(unknown.id, 'failed');
     const row = await h.prisma.job.findUniqueOrThrow({ where: { id: unknown.id } });
     expect(row.status).toBe('failed');
     expect(row.lastError).toMatch(/нет обработчика/);
