@@ -2,7 +2,7 @@ import { config, type AppConfig } from '../config';
 import type { LlmCallMeta } from './triage-llm';
 
 /**
- * Гиперпараметры вызовов модели в одном месте (docs/defense P4). Значения по умолчанию — те, на которых сняты
+ * Гиперпараметры вызовов модели в одном месте (docs/EVALS.md, раздел 4). Значения по умолчанию — те, на которых сняты
  * цифры evals; переменные окружения из config.ts меняют их только для эксперимента (сессия замеров M1):
  *   LLM_TEMP_CLASSIFY, LLM_TEMP_DRAFT, LLM_TOP_P, LLM_MAX_TOKENS_DRAFT, LLM_IMAGE_DETAIL, SKILL_DISABLED, VISION_DISABLED.
  * Почему такие дефолты:

@@ -41,7 +41,7 @@ export function cannotCompareText(r: { reason: string; before?: { width: number;
     return `Кадры разного размера: ${r.before.width}×${r.before.height} и ${r.after.width}×${r.after.height} — пиксели не сопоставить. Приложите кадр того же размера, что первый (${r.before.width}×${r.before.height}), или, если проверили на стенде, закройте без кадра.`;
   }
   // Без слова «исправлено»: его не произносит система, только человек (evals: RETEST_CLOSING). Версия 20.09 «…закройте
-  // без кадра, если исправлено» провалила retest-incomparable-zoom в M1 4 раза из 4 — HONEST-NOTES.md
+  // без кадра, если исправлено» провалила retest-incomparable-zoom в M1 4 раза из 4 — docs/EVALS.md, раздел 7
   return `${r.reason.charAt(0).toUpperCase()}${r.reason.slice(1)}. Проверьте на стенде — если всё в порядке, закройте без кадра.`;
 }
 

@@ -1,7 +1,7 @@
 import type { LlmCallMeta } from './triage-llm';
 
 /**
- * Журнал вызовов модели для отчёта evals (docs/defense P4): шаг графа, модель, finish_reason, токены, $ и время
+ * Журнал вызовов модели для отчёта evals (docs/EVALS.md, раздел 4): шаг графа, модель, finish_reason, токены, $ и время
  * каждого вызова. AgentRun хранит только сумму по прогону — по ней не видно, какой шаг сколько стоит и сколько
  * ответов обрезал max_tokens (finish_reason=length).
  *

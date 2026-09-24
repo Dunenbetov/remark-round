@@ -4,7 +4,6 @@
 
 ## Обязательно прочитай до первого diff
 
-0. **До 01.10.2026 — [`docs/defense/DEFENSE-PLAN.md`](docs/defense/DEFENSE-PLAN.md)**: план подготовки к защите курса, порядок задач и «Ход работ». С 21.09 на проде работает реальная команда — правила деплоя в разделе 2 плана.
 1. [`REMARKROUND.md`](REMARKROUND.md) — доктрина §2 и запреты §15.
 2. [`docs/BETA-REVIEW.md`](docs/BETA-REVIEW.md) — актуальный список работ и «Ход работ» в начале; фазы 0–11 закрыты, их история — [`docs/archive/PHASES.md`](docs/archive/PHASES.md). Правила исполнителя — раздел 0 ревью.
 3. Контракты: [`packages/db/prisma/schema.prisma`](packages/db/prisma/schema.prisma), [`docs/API.md`](docs/API.md), [`docs/WS.md`](docs/WS.md), [`docs/GRAPH.md`](docs/GRAPH.md), [`docs/STATUS.md`](docs/STATUS.md).

@@ -46,7 +46,7 @@ const Schema = z
     OPENAI_API_KEY: z.string().optional(),
     LLM_MODE: z.enum(['openai', 'rules']).optional(),
     /**
-     * Переключатели экспериментов (docs/defense P4, сессия замеров M1). Без значения — поведение по умолчанию из
+     * Переключатели экспериментов (docs/EVALS.md, раздел 4, сессия замеров M1). Без значения — поведение по умолчанию из
      * apps/api/src/llm/llm-params.ts (classify T=0, draft T=0.3, top_p не шлём, draft max_tokens 220, detail auto,
      * Skill в системном промпте, vision включён). Заданный переключатель пишется в лог старта и в отчёт evals.
      */
