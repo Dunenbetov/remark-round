@@ -1,6 +1,8 @@
 /**
  * Демо проекта «Клиентский кабинет»: закрытый раунд 1 (5 замечаний) и открытый раунд 2 (14 замечаний как в дизайне).
- * Скрины — из fixtures/screenshots, дифф настоящий (pixelmatch), цитаты — реальные чанки проиндексированного ТЗ.
+ * Кадры из fixtures/screenshots, дифф настоящий (pixelmatch), цитаты — реальные чанки проиндексированного ТЗ.
+ * Правило честной карточки: кадр показывает предмет замечания, иначе кадра нет; черновик утверждает только то, что есть
+ * в процитированном разделе или на кадре; пояснение ретеста описывает настоящий дифф (seed-remarks.spec проверяет).
  * У каждой карточки полная история (ADR 011): кто создал, что предложила модель, кто решил, кто исправил, кто и как
  * закрыл — с датами демо-календаря (1–12 сентября 2026, время Алматы), чтобы «Раунды», «История» и xlsx-журнал было
  * что показать. Пересоздаётся при каждом seed: это демо, а не данные заказчика.
@@ -20,12 +22,30 @@ export const ROUND_ONE_ID = 'c1111111-1111-4111-8111-111111111101';
 const at = (day: number, hh: number, mm = 0): Date => new Date(Date.UTC(2026, 8, day, hh - 5, mm));
 const plusMin = (d: Date, minutes: number): Date => new Date(d.getTime() + minutes * 60_000);
 
+interface FrameFiles {
+  /** Кадр «было» — приложен к замечанию. */
+  before: string;
+  /** Кадр «стало» после исправления. */
+  after: string;
+  /** Кадр «стало» круга, вернувшегося «не исправлено». */
+  notFixedAfter?: string;
+}
+
+/** Наборы кадров из fixtures/screenshots. Все кадры набора одного размера: иначе дифф ответит «сравнить нельзя». */
+export const FRAME_SETS: Record<'save' | 'payment', FrameFiles> = {
+  // Форма профиля: серая кнопка «Сохранить», после исправления синяя
+  save: { before: 'before-save-gray.png', after: 'after-save-blue.png' },
+  // Оплата счёта: ошибка тостом сверху; «не исправлено» — тот же тост с другим текстом; исправлено — текст под полем
+  payment: { before: 'before-payment-toast.png', after: 'after-payment-under-field.png', notFixedAfter: 'after-payment-toast-other.png' },
+};
+export type FrameSet = keyof typeof FRAME_SETS;
+
 interface RetestSeed {
   outcome: RetestOutcome;
   explanation: string;
 }
 
-interface SeedRemark {
+export interface SeedRemark {
   round: 1 | 2;
   number: number;
   /** День сентября, когда замечание появилось. */
@@ -37,18 +57,19 @@ interface SeedRemark {
   proposedClass?: ProposedClass;
   rationale?: string[];
   visionFacts?: string;
-  /** Подписи разделов чанков: «§2.1 Primary», 'protocol' — первый чанк протокола. */
+  /** Подписи разделов чанков: «§2.1 Primary», 'protocol' — чанк «Решения, которых нет в ТЗ» протокола. */
   cite?: string[];
-  shot?: 'gray';
+  /** Кадры замечания — только если кадр показывает предмет претензии. */
+  frames?: FrameSet;
   verdict?: VerdictCode;
   /** Слова PM к решению — внутренние, заказчику не показываются (ADR 007). */
   verdictComment?: string;
   fixed?: boolean;
-  /** Первый круг ретеста, вернувшийся «не исправлено»: кадры остаются заменёнными (ADR 011). */
+  /** Первый круг ретеста, вернувшийся «не исправлено»: кадры остаются заменёнными (ADR 011). Нужен кадр notFixedAfter. */
   notFixedRetest?: RetestSeed;
-  /** Ретест с новым кадром и диффом — текущий (ждёт закрытия или закрыт после него). */
+  /** Ретест с новым кадром и диффом — текущий (ждёт закрытия или закрыт после него). Нужны кадры. */
   retest?: RetestSeed;
-  /** Закрыто: после ретеста (`retest`) или заказчик проверил сам (ADR 010). */
+  /** Закрыто: после ретеста (`retest`) или заказчик проверил сам, без нового кадра (ADR 010). */
   closed?: { comment?: string };
   duplicateOfNumber?: number;
   /** Повтор претензии: номер закрытого оригинала в раунде 1. */
@@ -57,10 +78,9 @@ interface SeedRemark {
   advice?: { code: VerdictCode; comment?: string };
 }
 
-const DEFECT_RATIONALE = (section: string, requirement: string, seen: string): string[] => [
-  'Похоже, это поломка относительно ТЗ.',
-  `ТЗ (${section}) требует: ${requirement}. На кадре — ${seen}. Похожих замечаний в раунде нет.`,
-];
+const NO_BASIS = 'В бумагах нет опоры.';
+const DECIDE = 'Решите вы: работа это или новое желание.';
+const NEED_FRAME = 'Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.';
 
 export const SEED_REMARKS: SeedRemark[] = [
   // ---------- раунд 1: сдан и закрыт 5 сентября ----------
@@ -72,14 +92,13 @@ export const SEED_REMARKS: SeedRemark[] = [
     pageOrScreen: 'Вход',
     expected: 'Enter отправляет форму входа',
     status: 'closed',
-    proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§1', '«вход, профиль, оплата счетов» как рабочий кабинет клиента', 'после Enter форма не отправляется'),
-    cite: ['§1 Назначение'],
-    shot: 'gray',
+    proposedClass: 'unspecified',
+    rationale: [NO_BASIS, `ТЗ (§3) описывает форму входа: поля email и пароль, кнопка «Войти». Про отправку формы клавишей Enter в ТЗ и протоколе ничего нет. ${DECIDE}`],
+    cite: ['§3 Вход'],
     verdict: 'defect',
+    verdictComment: 'Enter на форме входа ждут все пользователи, берём как поломку',
     fixed: true,
-    retest: { outcome: 'likely_addressed', explanation: 'Красное на диффе: область кнопки, теперь форма отправляется. Остальное без изменений.' },
-    closed: {},
+    closed: { comment: 'Проверила на стенде: Enter отправляет форму' },
   },
   {
     round: 1,
@@ -89,12 +108,12 @@ export const SEED_REMARKS: SeedRemark[] = [
     pageOrScreen: 'Все страницы, подвал',
     expected: '«Обратная связь»',
     status: 'closed',
-    proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§1', 'единый кабинет клиента', 'в подвале опечатка'),
-    cite: ['§1 Назначение'],
+    proposedClass: 'unspecified',
+    rationale: [NO_BASIS, `Про тексты подвала в ТЗ и протоколе ничего нет. ${DECIDE}`],
     verdict: 'defect',
+    verdictComment: 'Опечатка, чиним без обсуждения',
     fixed: true,
-    closed: { comment: 'Проверила на стенде — в подвале уже «Обратная связь»' },
+    closed: { comment: 'Проверила на стенде: в подвале уже «Обратная связь»' },
   },
   {
     round: 1,
@@ -105,10 +124,13 @@ export const SEED_REMARKS: SeedRemark[] = [
     expected: 'Сообщение в Telegram, когда выставлен счёт',
     status: 'change_request',
     proposedClass: 'change_request_candidate',
-    rationale: ['Похоже, это новое желание.', 'ТЗ (§6) не описывает уведомления вне кабинета. Это не поломка, а новое желание — решите, брать ли его в работу отдельно.'],
+    rationale: [
+      'Похоже, это новое желание.',
+      'Уведомлений в ТЗ нет. По §6 то, чего нет в документе, становится новым желанием, если заказчик явно просит новое. Здесь так: «хотим уведомления». Решите, брать ли это в работу отдельно.',
+    ],
     cite: ['§6 Чего в ТЗ нет (дыры)'],
     verdict: 'change_request',
-    verdictComment: 'Не в ТЗ — оценим отдельным доп. соглашением',
+    verdictComment: 'Не в ТЗ, оценим отдельным доп. соглашением',
   },
   {
     round: 1,
@@ -118,14 +140,12 @@ export const SEED_REMARKS: SeedRemark[] = [
     pageOrScreen: 'Оплата счёта',
     expected: 'Кнопка «Скачать PDF» открывает счёт',
     status: 'closed',
-    proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§1', '«оплата счетов» в рабочем кабинете', 'по кнопке «Скачать PDF» ничего не происходит'),
-    cite: ['§1 Назначение'],
-    shot: 'gray',
+    proposedClass: 'unspecified',
+    rationale: [NO_BASIS, `Про скачивание счёта в PDF в ТЗ и протоколе ничего нет. ${DECIDE}`],
     verdict: 'defect',
+    verdictComment: 'Кнопка «Скачать PDF» на экране есть и не работает, это поломка',
     fixed: true,
-    notFixedRetest: { outcome: 'likely_unchanged', explanation: 'Красное на диффе: другая часть формы, кнопка «Скачать PDF» не изменилась. Относится ли это к претензии — решите вы.' },
-    closed: { comment: 'Со второго исправления скачивается — проверила на трёх счетах' },
+    closed: { comment: 'Проверила на трёх счетах: скачивается' },
   },
   {
     round: 1,
@@ -136,13 +156,14 @@ export const SEED_REMARKS: SeedRemark[] = [
     expected: 'Телефон сохраняется после «Сохранить»',
     status: 'closed',
     proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§2.1 Primary', 'форма профиля с кнопкой «Сохранить»', 'после сохранения поле телефона пустое'),
+    rationale: [
+      'Похоже, это поломка относительно ТЗ.',
+      'ТЗ (§2.1) предусматривает кнопку «Сохранить» на форме профиля. Если после неё телефон не сохраняется, это похоже на поломку. Какие поля есть в профиле, ТЗ не перечисляет.',
+    ],
     cite: ['§2.1 Primary'],
-    shot: 'gray',
     verdict: 'defect',
     fixed: true,
-    retest: { outcome: 'likely_addressed', explanation: 'Красное на диффе: область поля телефона. Остальное без изменений.' },
-    closed: {},
+    closed: { comment: 'Проверила на стенде: телефон сохраняется' },
   },
 
   // ---------- раунд 2: идёт с 7 сентября ----------
@@ -155,10 +176,10 @@ export const SEED_REMARKS: SeedRemark[] = [
     expected: 'Синяя primary-кнопка при заполненных полях',
     status: 'awaiting_pm',
     proposedClass: 'defect_candidate',
-    rationale: ['Похоже, это поломка относительно ТЗ.', 'ТЗ (§2.1) требует синюю primary-кнопку «Сохранить»; на кадре при заполненных полях она серая. Протокол от 12.03 подтверждает: цвета кнопок по макету, без изменений. Похожих замечаний в раунде нет.'],
+    rationale: ['Похоже, это поломка относительно ТЗ.', 'ТЗ (§2.1) требует синюю primary-кнопку «Сохранить» на форме профиля. На кадре при заполненных полях она серая. Похожих замечаний в раунде нет.'],
     visionFacts: 'кнопка «Сохранить» серая, поля заполнены.',
-    cite: ['§2.1 Primary', 'protocol'],
-    shot: 'gray',
+    cite: ['§2.1 Primary'],
+    frames: 'save',
     advice: { code: 'defect', comment: 'В ТЗ §2.1 однозначно, чиню за час' },
   },
   {
@@ -170,9 +191,9 @@ export const SEED_REMARKS: SeedRemark[] = [
     expected: 'Чтобы ночью не слепило',
     status: 'awaiting_pm',
     proposedClass: 'change_request_candidate',
-    rationale: ['Похоже, это новое желание.', 'ТЗ (§6) прямо относит тёмную тему к тому, чего в проекте нет. Это не поломка, а новое желание — решите, брать ли его в работу отдельно.'],
+    rationale: ['Похоже, это новое желание.', 'ТЗ (§6) прямо относит тёмную тему к тому, чего в проекте нет. Это не поломка, а новое желание: решите, брать ли его в работу отдельно.'],
     cite: ['§6 Чего в ТЗ нет (дыры)'],
-    advice: { code: 'change_request', comment: 'Тёмной темы в ТЗ нет — это отдельная задача на пару дней' },
+    advice: { code: 'change_request', comment: 'Тёмной темы в ТЗ нет, это отдельная задача на пару дней' },
   },
   {
     round: 2,
@@ -183,7 +204,7 @@ export const SEED_REMARKS: SeedRemark[] = [
     expected: 'Как в старой 1С',
     status: 'awaiting_pm',
     proposedClass: 'unspecified',
-    rationale: ['В бумагах нет опоры.', 'Заказчик просит выгрузку реестра в Excel. ТЗ (§6) перечисляет выгрузку среди того, чего в документе нет, а протокол о ней молчит. Решите вы: работа это или новое желание.'],
+    rationale: [NO_BASIS, `Заказчик просит выгрузку в Excel. ТЗ (§6) называет выгрузку реестра в Excel среди того, чего в документе нет. Протокол о ней молчит. ${DECIDE}`],
     cite: ['§6 Чего в ТЗ нет (дыры)'],
   },
   {
@@ -194,23 +215,37 @@ export const SEED_REMARKS: SeedRemark[] = [
     pageOrScreen: 'Все страницы, футер',
     status: 'cannot_tell',
     proposedClass: 'cannot_tell',
-    rationale: ['Недостаточно данных.', 'Для претензии про цвет или вёрстку нужен скрин: без него не сравнить с ТЗ.'],
+    rationale: ['Недостаточно данных.', NEED_FRAME],
     verdict: 'cannot_tell',
   },
   {
+    // Запасной ретест демо: кадры «было» и «стало» одного размера, дифф настоящий, ждёт закрытия заказчиком.
+    // В истории — круг «не исправлено»: разработчик поменял текст тоста, тост остался.
     round: 2,
     number: 7,
     day: 9,
     description: 'Ошибка оплаты тостом',
     pageOrScreen: 'Оплата счёта',
-    expected: 'Ошибка показывается тостом на 3 секунды, а не текстом под формой',
-    status: 'defect',
+    expected: 'Текст ошибки под полем, а не тостом сверху',
+    status: 'awaiting_business_close',
     proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§4.2', '«текст ошибки платежа показывается под полем, красным»', 'ошибка 500 показана тостом сверху, под полем пусто'),
-    visionFacts: 'ошибка 500 показана тостом сверху, под полем пусто.',
+    rationale: [
+      'Похоже, это поломка относительно ТЗ.',
+      'ТЗ (§4.2) требует текст ошибки платежа под полем, красным, не тост. На кадре ошибка 500 показана красным тостом сверху, под полями текста нет. Протокол от 12.03 это подтверждает: тост с демо 11.03 считать дефектом. Похожих замечаний в раунде нет.',
+    ],
+    visionFacts: 'красный тост сверху «Ошибка 500: платёж не прошёл», под полями «Сумма» и «Карта» текста ошибки нет.',
     cite: ['§4.2 Ошибки', 'protocol'],
-    shot: 'gray',
+    frames: 'payment',
     verdict: 'defect',
+    fixed: true,
+    notFixedRetest: {
+      outcome: 'likely_unchanged',
+      explanation: 'Красное на диффе: только текст внутри тоста сверху. Ошибка по-прежнему показана тостом, под полем её нет, а §4.2 требует текст под полем.',
+    },
+    retest: {
+      outcome: 'likely_addressed',
+      explanation: 'Красное на диффе: тост сверху исчез, рамка поля «Карта» стала красной, под полем появился красный текст «Платёж не прошёл: ошибка 500». Так требует §4.2: ошибка под полем, не тост. Остальное без изменений.',
+    },
   },
   {
     round: 2,
@@ -220,13 +255,23 @@ export const SEED_REMARKS: SeedRemark[] = [
     pageOrScreen: 'Список клиентов',
     expected: 'Фильтр должен переживать обновление страницы',
     status: 'defect',
-    proposedClass: 'defect_candidate',
-    rationale: ['Похоже, это поломка относительно ТЗ.', 'ТЗ (§1) описывает кабинет как рабочий инструмент с фильтрами; на кадре после обновления фильтр «Активные» снят. Прямой нормы про сохранение фильтра нет — PM подтвердил как поломку.'],
-    visionFacts: 'после обновления страницы фильтр «Активные» снят.',
-    cite: ['§1 Назначение'],
-    shot: 'gray',
+    proposedClass: 'unspecified',
+    rationale: [NO_BASIS, `Про фильтр списка клиентов и его сохранение в ТЗ и протоколе ничего нет. ${DECIDE}`],
     verdict: 'defect',
-    verdictComment: 'Прямой нормы нет, но без этого кабинетом не пользоваться — берём',
+    verdictComment: 'Прямой нормы нет, но без этого кабинетом не пользоваться. Берём',
+  },
+  {
+    round: 2,
+    number: 3,
+    day: 8,
+    description: 'Сортировка списка заказов',
+    pageOrScreen: 'Список заказов',
+    expected: 'Сортировка по дате должна применяться',
+    status: 'defect',
+    proposedClass: 'unspecified',
+    rationale: [NO_BASIS, `Про сортировку списка заказов в ТЗ и протоколе ничего нет. ${DECIDE}`],
+    verdict: 'defect',
+    verdictComment: 'Сортировка по дате на экране есть и не работает, это поломка',
   },
   {
     round: 2,
@@ -248,31 +293,15 @@ export const SEED_REMARKS: SeedRemark[] = [
     pageOrScreen: 'Поиск',
     expected: 'Поиск по БИН находит клиента',
     status: 'closed',
-    proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§1', '«вход, профиль, оплата счетов» как рабочий кабинет клиента', 'поиск по БИН пустой'),
-    cite: ['§1 Назначение'],
-    shot: 'gray',
+    proposedClass: 'unspecified',
+    rationale: [NO_BASIS, `Про поиск клиентов по БИН в ТЗ и протоколе ничего нет. ${DECIDE}`],
     verdict: 'defect',
+    verdictComment: 'Поиск по БИН нужен бухгалтерии каждый день, берём',
     fixed: true,
-    retest: { outcome: 'likely_addressed', explanation: 'Красное на диффе: область результатов поиска, теперь клиент найден. Остальное без изменений.' },
-    closed: {},
+    closed: { comment: 'Проверила: клиент находится по БИН' },
   },
   {
-    round: 2,
-    number: 3,
-    day: 8,
-    description: 'Сортировка списка заказов',
-    pageOrScreen: 'Список заказов',
-    expected: 'Сортировка по дате должна применяться',
-    status: 'ready_for_retest',
-    proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§1', '«оплата счетов» в рабочем кабинете', 'список не отсортирован по дате'),
-    cite: ['§1 Назначение'],
-    shot: 'gray',
-    verdict: 'defect',
-    fixed: true,
-  },
-  {
+    // Закрытие без нового кадра (ADR 010): разработчик нажал «Готово», заказчик проверяет сам
     round: 2,
     number: 8,
     day: 8,
@@ -280,11 +309,11 @@ export const SEED_REMARKS: SeedRemark[] = [
     pageOrScreen: 'Профиль компании, планшет',
     expected: 'Форма видна целиком',
     status: 'ready_for_retest',
-    proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§1', '«веб-кабинет клиента», а не мобильное приложение', 'шапка закрывает первое поле формы'),
+    proposedClass: 'cannot_tell',
+    rationale: ['Недостаточно данных.', `${NEED_FRAME} ТЗ (§1) описывает веб-кабинет, «не мобильное приложение»; про планшет отдельной нормы нет.`],
     cite: ['§1 Назначение'],
-    shot: 'gray',
     verdict: 'defect',
+    verdictComment: 'Сама видела на планшете: шапка закрывает первое поле. Берём',
     fixed: true,
   },
   {
@@ -294,27 +323,24 @@ export const SEED_REMARKS: SeedRemark[] = [
     description: 'Логотип не по центру',
     pageOrScreen: 'Шапка',
     expected: 'Логотип по центру',
-    status: 'awaiting_business_close',
-    proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§1', 'единый кабинет с шапкой', 'логотип смещён влево'),
-    cite: ['§1 Назначение'],
-    shot: 'gray',
+    status: 'ready_for_retest',
+    proposedClass: 'cannot_tell',
+    rationale: ['Недостаточно данных.', `${NEED_FRAME} Про логотип и шапку в ТЗ ничего нет.`],
     verdict: 'defect',
+    verdictComment: 'Логотип сдвинут на всех страницах, видно и без скрина. Берём',
     fixed: true,
-    retest: { outcome: 'likely_addressed', explanation: 'Красное на диффе: область логотипа, теперь по центру. Остальное без изменений.' },
   },
   {
-    // Демо закрытия без нового кадра (ADR 010): разработчик нажал «Готово», заказчик проверяет сам
     round: 2,
     number: 6,
     day: 8,
     description: 'Пагинация пропадает на второй странице',
     pageOrScreen: 'Список заказов',
     status: 'ready_for_retest',
-    proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§1', 'постраничный список счетов', 'со второй страницы пагинация исчезает'),
-    cite: ['§1 Назначение'],
+    proposedClass: 'unspecified',
+    rationale: [NO_BASIS, `Про постраничный вывод списка заказов в ТЗ и протоколе ничего нет. ${DECIDE}`],
     verdict: 'defect',
+    verdictComment: 'Без пагинации список заказов не просмотреть. Берём',
     fixed: true,
   },
   {
@@ -326,13 +352,11 @@ export const SEED_REMARKS: SeedRemark[] = [
     expected: 'Профиль открывается по ссылке',
     status: 'closed',
     proposedClass: 'defect_candidate',
-    rationale: DEFECT_RATIONALE('§1', '«вход, профиль, оплата счетов»', 'по ссылке «Профиль» пустая страница'),
+    rationale: ['Похоже, это поломка относительно ТЗ.', 'ТЗ (§1) включает профиль в кабинет: «вход, профиль, оплата счетов». Профиль, который не открывается по ссылке, похож на поломку.'],
     cite: ['§1 Назначение'],
-    shot: 'gray',
     verdict: 'defect',
     fixed: true,
-    retest: { outcome: 'likely_addressed', explanation: 'Красное на диффе: область формы, теперь профиль открывается. Остальное без изменений.' },
-    closed: {},
+    closed: { comment: 'Проверила: профиль открывается' },
   },
   {
     // Повтор претензии: в раунде 1 телефон закрыли, заказчик снова видит ту же проблему (docs/STATUS.md closed → reopened)
@@ -344,9 +368,7 @@ export const SEED_REMARKS: SeedRemark[] = [
     expected: 'Телефон сохраняется после «Сохранить»',
     status: 'awaiting_pm',
     proposedClass: 'duplicate',
-    rationale: ['Похоже на повтор закрытого замечания.', 'Та же претензия, что № 5 раунда 1, закрытая после ретеста 4 сентября. Кадр новый — сравните с прежним и решите, работа ли это снова.'],
-    cite: ['§2.1 Primary'],
-    shot: 'gray',
+    rationale: ['Похоже на повтор закрытого замечания.', 'Та же претензия, что № 5 раунда 1. Её закрыли 4 сентября: заказчик проверил на стенде, без нового кадра. Решите, работа ли это снова.'],
     originNumber: 5,
   },
 ];
@@ -374,12 +396,12 @@ interface HistoryRow {
  * Путь замечания до его статуса — те же действия и в том же порядке, что пишет RemarksService: создано → разбор →
  * предложение модели → решение PM → «Готово» → ретест(ы) → закрытие. Время растёт от дня создания.
  */
-function timeline(r: SeedRemark): { rows: HistoryRow[]; closedAt: Date | null; verdictAt: Date | null; supersededAt: Date | null } {
+export function timeline(r: SeedRemark): { rows: HistoryRow[]; closedAt: Date | null; verdictAt: Date | null; supersededAt: Date | null } {
   const rows: HistoryRow[] = [];
   const created = at(r.day, 10, r.number * 3);
   const push = (row: HistoryRow) => rows.push(row);
   const start: RemarkStatus = r.originNumber ? 'reopened' : 'imported';
-  push({ action: r.originNumber ? 'reopen' : 'create', fromStatus: null, toStatus: start, who: 'business', createdAt: created, shot: r.shot ? 'original' : undefined, detail: r.originNumber ? `Повтор № ${r.originNumber} из раунда 1` : undefined });
+  push({ action: r.originNumber ? 'reopen' : 'create', fromStatus: null, toStatus: start, who: 'business', createdAt: created, shot: r.frames ? 'original' : undefined, detail: r.originNumber ? `Повтор № ${r.originNumber} из раунда 1` : undefined });
   push({ action: 'triage', fromStatus: start, toStatus: 'triaging', who: 'business', createdAt: plusMin(created, 1) });
   const proposalDetail = r.proposedClass ? `${PROPOSED_LABEL_RU[r.proposedClass]}${r.rationale?.[1] ? `: ${r.rationale[1]}` : ''}`.slice(0, 300) : undefined;
   push({ action: 'proposal', fromStatus: 'triaging', toStatus: 'awaiting_pm', who: null, createdAt: plusMin(created, 2), detail: proposalDetail });
@@ -414,16 +436,50 @@ function timeline(r: SeedRemark): { rows: HistoryRow[]; closedAt: Date | null; v
   return { rows, closedAt, verdictAt, supersededAt };
 }
 
+interface Frame {
+  png: Buffer;
+  width: number;
+  height: number;
+}
+
+interface LoadedFrames {
+  before: Frame;
+  after: Frame;
+  diff: Frame | null;
+  notFixedAfter: Frame | null;
+  notFixedDiff: Frame | null;
+}
+
+/** Размер PNG из заголовка IHDR: ширина и высота — два uint32 сразу после сигнатуры и длины чанка. */
+const pngFrame = (png: Buffer): Frame => ({ png, width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
+
+async function loadFrames(set: FrameSet, diff: DiffService): Promise<LoadedFrames> {
+  const files = FRAME_SETS[set];
+  const load = async (name: string) => pngFrame(await readFile(resolve(ROOT, 'fixtures/screenshots', name)));
+  const before = await load(files.before);
+  // Дифф в демо настоящий: pixelmatch по тем же кадрам, а не нарисованная маска
+  const diffOf = (after: Frame): Frame | null => {
+    const d = diff.compare(before.png, after.png);
+    return d.kind === 'ok' ? { png: d.png, width: d.width, height: d.height } : null;
+  };
+  const after = await load(files.after);
+  const notFixedAfter = files.notFixedAfter ? await load(files.notFixedAfter) : null;
+  return { before, after, diff: diffOf(after), notFixedAfter, notFixedDiff: notFixedAfter ? diffOf(notFixedAfter) : null };
+}
+
 export async function seedRemarks(
   prisma: PrismaClient,
   ids: { projectId: string; specDocumentId: string; protocolDocumentId: string; pmId: string; businessId: string; developerId: string },
 ): Promise<void> {
+  // Ретест без кадров — выдумка: «не исправлено» и дифф бывают только с новым кадром (ADR 010)
+  for (const r of SEED_REMARKS) {
+    if ((r.retest || r.notFixedRetest) && !r.frames) throw new Error(`seed: у № ${r.number} раунда ${r.round} ретест без кадров`);
+    if (r.notFixedRetest && r.frames && !FRAME_SETS[r.frames].notFixedAfter) throw new Error(`seed: у № ${r.number} раунда ${r.round} нет кадра круга «не исправлено»`);
+  }
   const storage = new StorageService();
   const diff = new DiffService();
-  const gray = await readFile(resolve(ROOT, 'fixtures/screenshots/before-save-gray.png'));
-  const blue = await readFile(resolve(ROOT, 'fixtures/screenshots/after-save-blue.png'));
-  const grayVsBlue = diff.compare(gray, blue);
-  const diffPng = grayVsBlue.kind === 'ok' ? grayVsBlue.png : null;
+  const frameSets = new Map<FrameSet, LoadedFrames>();
+  for (const set of new Set(SEED_REMARKS.flatMap((r) => (r.frames ? [r.frames] : [])))) frameSets.set(set, await loadFrames(set, diff));
 
   const users = await prisma.user.findMany({ where: { id: { in: [ids.pmId, ids.businessId, ids.developerId] } }, select: { id: true, name: true } });
   const nameOf = (id: string) => users.find((u) => u.id === id)?.name ?? '';
@@ -483,17 +539,24 @@ export async function seedRemarks(
   const ordered = [...SEED_REMARKS].sort((a, b) => a.round - b.round || (a.duplicateOfNumber ? 1 : 0) - (b.duplicateOfNumber ? 1 : 0));
   for (const r of ordered) {
     const { rows, closedAt, verdictAt, supersededAt } = timeline(r);
-    const shots: Partial<Record<NonNullable<HistoryRow['shot']>, { kind: ScreenshotKind; storageKey: string; supersededAt: Date | null; createdAt: Date }>> = {};
+    type Shot = { kind: ScreenshotKind; storageKey: string; width: number; height: number; supersededAt: Date | null; createdAt: Date };
+    const shots: Partial<Record<NonNullable<HistoryRow['shot']>, Shot>> = {};
     const shotAt = (name: NonNullable<HistoryRow['shot']>) => rows.find((h) => h.shot === name)?.createdAt ?? at(r.day, 10);
-    if (r.shot) shots.original = { kind: 'original', storageKey: await storage.save(ids.projectId, 'before.png', gray), supersededAt: null, createdAt: shotAt('original') };
-    if (r.notFixedRetest) {
-      shots.retest0 = { kind: 'retest', storageKey: await storage.save(ids.projectId, 'after.png', blue), supersededAt, createdAt: shotAt('retest0') };
-      if (r.shot && diffPng) shots.diff0 = { kind: 'diff', storageKey: await storage.save(ids.projectId, 'diff.png', diffPng), supersededAt, createdAt: shotAt('diff0') };
-    }
-    if (r.retest) {
-      shots.retest = { kind: 'retest', storageKey: await storage.save(ids.projectId, 'after.png', blue), supersededAt: null, createdAt: shotAt('retest') };
-      // Дифф в демо настоящий: pixelmatch по тем же кадрам, а не нарисованная маска
-      if (r.shot && diffPng) shots.diff = { kind: 'diff', storageKey: await storage.save(ids.projectId, 'diff.png', diffPng), supersededAt: null, createdAt: shotAt('diff') };
+    const put = async (name: NonNullable<HistoryRow['shot']>, kind: ScreenshotKind, file: string, frame: Frame | null, superseded: Date | null) => {
+      if (!frame) return;
+      shots[name] = { kind, storageKey: await storage.save(ids.projectId, file, frame.png), width: frame.width, height: frame.height, supersededAt: superseded, createdAt: shotAt(name) };
+    };
+    const frames = r.frames ? frameSets.get(r.frames)! : null;
+    if (frames) {
+      await put('original', 'original', 'before.png', frames.before, null);
+      if (r.notFixedRetest) {
+        await put('retest0', 'retest', 'after.png', frames.notFixedAfter, supersededAt);
+        await put('diff0', 'diff', 'diff.png', frames.notFixedDiff, supersededAt);
+      }
+      if (r.retest) {
+        await put('retest', 'retest', 'after.png', frames.after, null);
+        await put('diff', 'diff', 'diff.png', frames.diff, null);
+      }
     }
     const cited = (r.cite ?? []).map(chunkFor).filter((x): x is SeedChunk => Boolean(x));
     const roundId = r.round === 1 ? ROUND_ONE_ID : ROUND_ID;
@@ -526,14 +589,15 @@ export async function seedRemarks(
     created.set(key(r.round, r.number), { id: remark.id, closedAt });
 
     const shotIds: Partial<Record<NonNullable<HistoryRow['shot']>, string>> = {};
-    for (const [name, s] of Object.entries(shots) as Array<[NonNullable<HistoryRow['shot']>, NonNullable<(typeof shots)[keyof typeof shots]>]>) {
-      const row = await prisma.remarkScreenshot.create({ data: { remarkId: remark.id, kind: s.kind, storageKey: s.storageKey, width: 800, height: 400, createdAt: s.createdAt, supersededAt: s.supersededAt } });
+    for (const [name, s] of Object.entries(shots) as Array<[NonNullable<HistoryRow['shot']>, Shot]>) {
+      const row = await prisma.remarkScreenshot.create({ data: { remarkId: remark.id, kind: s.kind, storageKey: s.storageKey, width: s.width, height: s.height, createdAt: s.createdAt, supersededAt: s.supersededAt } });
       shotIds[name] = row.id;
     }
     if (r.advice) {
       await prisma.developerAdvice.create({ data: { remarkId: remark.id, userId: ids.developerId, code: r.advice.code, comment: r.advice.comment ?? null } });
     }
 
+    // Прогон без модели и без графа: model 'seed', чекпоинта и трейса в Langfuse у него нет (docs/DEMO.md)
     const run = await prisma.agentRun.create({
       data: { remarkId: remark.id, projectId: ids.projectId, mode: 'triage', status: r.verdict ? 'persisted' : 'awaiting_human', model: 'seed', proposedClass: r.proposedClass ?? null, rationale: r.rationale?.join('\n\n') ?? null, createdAt: rows[1]!.createdAt },
     });

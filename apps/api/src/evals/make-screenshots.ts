@@ -35,7 +35,8 @@ const SHOTS: Shot[] = [
   { file: 'journal.png', path: ({ slug }) => `/${slug}/round-2`, as: 'pm' },
   { file: 'remark-card.png', path: ({ slug }) => `/${slug}/round-2/12`, as: 'pm', height: 1000, queue: true },
   { file: 'remark-card-dark.png', path: ({ slug }) => `/${slug}/round-2/12`, as: 'pm', height: 1000, dark: true, queue: true },
-  { file: 'retest.png', path: ({ slug }) => `/${slug}/round-2/2`, as: 'business', height: 900 },
+  // №7 «Ошибка оплаты тостом» ждёт закрытия: кадры оплаты «было» и «стало», настоящий дифф (seed-remarks.ts)
+  { file: 'retest.png', path: ({ slug }) => `/${slug}/round-2/7`, as: 'business', height: 900 },
   { file: 'documents.png', path: ({ slug }) => `/${slug}/documents`, as: 'pm' },
   { file: 'import.png', path: ({ slug }) => `/${slug}/round-2/import`, as: 'business' },
   { file: 'new-remark.png', path: ({ slug }) => `/${slug}/round-2/new`, as: 'business' },
