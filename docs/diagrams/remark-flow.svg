@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1760 850" width="1760" height="850" role="img"
-  aria-label="Путь замечания: запрос заказчика, транзакция и очередь задач в PostgreSQL, воркер, граф триажа LangGraph с двумя циклами и паузой до решения PM; решение PM ведёт в запись, в паузу до нового скрина или в цикл от человека к поиску по ТЗ">
-  <!-- Сверять с apps/api/src/agent/triage.graph.ts (addEdge, addConditionalEdges), docs/GRAPH.md («Триаж», «Как граф запускается») и docs/ARCHITECTURE.md («Путь запроса: триаж»).
+  aria-label="Путь замечания: запрос заказчика, транзакция и очередь задач в PostgreSQL, воркер, граф триажа LangGraph с двумя циклами и паузой до решения PM; решение PM ведет в запись, в паузу до нового скрина или в цикл от человека к поиску по ТЗ">
+  <!-- Сверять с apps/api/src/agent/triage.graph.ts (addEdge, addConditionalEdges), docs/GRAPH.md ("Триаж", "Как граф запускается") и docs/ARCHITECTURE.md ("Путь запроса: триаж").
        PNG: node docs/diagrams/render.mjs remark-flow. Подписи короткие, назывные. -->
   <defs>
     <linearGradient id="obj" x1="0" y1="0" x2="0.18" y2="1">
@@ -186,10 +186,10 @@
 <rect class="node-code" x="1470" y="646" width="84" height="60" rx="8"/>
 <text class="n-dark" x="1512" y="680" text-anchor="middle">pause</text>
 <polyline class="a" points="1320,626 1320,676 1470,676"/>
-<text class="al" x="1395" y="668" text-anchor="middle">«Не хватает скрина»</text>
+<text class="al" x="1395" y="668" text-anchor="middle">"Не хватает скрина"</text>
 <text class="al" x="1562" y="680" text-anchor="start">новый скрин: новый прогон</text>
 <polyline class="a a-human" points="1285,626 1285,740 575,740 575,626"/>
-<text class="al al-h" x="1030" y="733" text-anchor="middle">«Не та цитата из ТЗ»: цикл от человека</text>
+<text class="al al-h" x="1030" y="733" text-anchor="middle">"Не та цитата из ТЗ": цикл от человека</text>
 <rect class="node" x="34" y="794" width="26" height="16" rx="4"/>
 <text class="lg" x="68" y="807" text-anchor="start">вызов модели</text>
 <rect class="node-code" x="190" y="794" width="26" height="16" rx="4"/>

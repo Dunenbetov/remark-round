@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 780" width="1440" height="780" role="img"
   aria-label="Архитектура продакшена RemarkRound: браузер и IDE, сервисы web, api и PostgreSQL на Railway, OpenAI, Langfuse Cloud, Sentry, деплой из GitHub после CI">
-  <!-- Уровень сервисов. Сверять с docs/ARCHITECTURE.md, раздел «Компоненты». Токены: apps/web/src/styles/tokens.css.
+  <!-- Уровень сервисов. Сверять с docs/ARCHITECTURE.md, раздел "Компоненты". Токены: apps/web/src/styles/tokens.css.
        PNG: node docs/diagrams/render.mjs system. Подписи короткие, назывные. -->
   <defs>
     <linearGradient id="obj" x1="0" y1="0" x2="0.18" y2="1">

@@ -25,7 +25,7 @@
  "cover": "cover",
  "sections": {
   "s1": {
-   "description": "Проблема приёмки и что делает RemarkRound",
+   "description": "Проблема приемки и что делает RemarkRound",
    "start": "cover"
   },
   "s2": {
