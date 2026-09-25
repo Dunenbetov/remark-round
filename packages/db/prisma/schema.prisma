@@ -442,7 +442,7 @@ model DeveloperAdvice {
   @@unique([remarkId, userId])
 }
 
-/// Загрузка журнала по официальному шаблону (REMARKROUND.md §14). projectId дублирует round.projectId
+/// Загрузка журнала по официальному шаблону (fixtures/journal/README.md). projectId дублирует round.projectId
 /// ради прямого SQL-фильтра тенанси; storageKey — исходный файл, чтобы ничего не терять.
 model ImportJob {
   id        String      @id @default(uuid())
@@ -476,7 +476,7 @@ model ImportRow {
 }
 
 /// Фоновая задача (аудит: no-job-queue): прогон графа, индексация документа. Очередь живёт в той же Postgres —
-/// SELECT … FOR UPDATE SKIP LOCKED вместо брокера (REMARKROUND §5: без Kafka/микросервисов). Рестарт API
+/// SELECT … FOR UPDATE SKIP LOCKED вместо брокера (без Kafka и микросервисов, docs/ARCHITECTURE.md). Рестарт API
 /// не теряет работу: running с протухшим lockedAt возвращается в queued, временные ошибки модели — повтор с паузой.
 model Job {
   id          String    @id @default(uuid())

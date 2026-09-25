@@ -51,7 +51,7 @@ export interface RetestFacts {
 
 export interface ProposalInput {
   proposedClass: ProposedClass;
-  /** Абзацы черновика; первый — заголовок по docs/ui/COPY.md. */
+  /** Абзацы черновика; первый: заголовок, как в apps/web/src/app/core/copy.ts. */
   rationale: string[];
   chunkIds: string[];
   duplicateOfNumber?: number | null;

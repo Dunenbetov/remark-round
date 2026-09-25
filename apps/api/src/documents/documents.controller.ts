@@ -29,7 +29,7 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024;
 export class DocumentsController {
   constructor(private readonly documents: DocumentsService) {}
 
-  /** Пакет читает вся команда, включая разработчика: ТЗ и протокол — их рабочие документы (замечание владельца 20.09). */
+  /** Пакет читает вся команда, включая разработчика: ТЗ и протокол — их рабочие документы. */
   @Get()
   list(@Ctx() ctx: ProjectContext): Promise<DocumentSummary[]> {
     return this.documents.list(ctx);

@@ -597,7 +597,7 @@ export async function seedRemarks(
       await prisma.developerAdvice.create({ data: { remarkId: remark.id, userId: ids.developerId, code: r.advice.code, comment: r.advice.comment ?? null } });
     }
 
-    // Прогон без модели и без графа: model 'seed', чекпоинта и трейса в Langfuse у него нет (docs/DEMO.md)
+    // Прогон без модели и без графа: model 'seed', чекпоинта и трейса в Langfuse у него нет
     const run = await prisma.agentRun.create({
       data: { remarkId: remark.id, projectId: ids.projectId, mode: 'triage', status: r.verdict ? 'persisted' : 'awaiting_human', model: 'seed', proposedClass: r.proposedClass ?? null, rationale: r.rationale?.join('\n\n') ?? null, createdAt: rows[1]!.createdAt },
     });

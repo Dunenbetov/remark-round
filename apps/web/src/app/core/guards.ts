@@ -13,7 +13,7 @@ export const authGuard: CanActivateFn = () => {
 };
 
 /**
- * Администратору инстанса — только /admin (решение владельца 20.09, ADR 006): в проектах он не участвует,
+ * Администратору инстанса — только /admin (ADR 006): в проектах он не участвует,
  * даже если у его аккаунта есть membership. Проекты, ожидание приглашения и старые ссылки ведут в /admin.
  */
 export const notInstanceAdminGuard: CanActivateFn = () => {

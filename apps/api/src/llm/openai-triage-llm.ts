@@ -23,7 +23,7 @@ import { llmCallLog } from './call-log';
 import { llmParams, sampling, type ImageDetail, type LlmParams } from './llm-params';
 
 /**
- * Модели по шагу (REMARKROUND.md §10): bind/classify/vision — дешёвая и быстрая, draft — сильнее.
+ * Модели по шагу (docs/ARCHITECTURE.md, ADR 015): bind/classify/vision — дешёвая и быстрая, draft — сильнее.
  * Имена переопределяются через env; цифры по моделям — docs/EVALS.md, раздел 5 (M1, 20.09; черновик остаётся на gpt-4.1).
  */
 export const DEFAULT_FAST_MODEL = 'gpt-4.1-mini';

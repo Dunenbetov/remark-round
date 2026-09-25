@@ -1,5 +1,5 @@
 /**
- * Все русские строки интерфейса. Источник — docs/ui/COPY.md (дословно) и дизайн RemarkRound.dc.html.
+ * Все русские строки интерфейса в одном месте.
  * Синонимы запрещены: не Approve/Reject/Submit/Ticket.
  */
 import type { DocumentKind, DocumentStatus, Phase, RemarkStatus, Role, Side, VerdictCode } from './models';
@@ -32,7 +32,7 @@ export const STATUS_LABEL: Record<RemarkStatus, string> = {
 
 /**
  * Те же статусы для того, от кого решения не ждут: заказчик после «Добавить замечание» видит не «Ждёт вашего решения»,
- * а чьего именно (замечание владельца 20.09). Тексты — как в xlsx сервера (STATUS_LABEL_RU).
+ * а чьего именно. Тексты — как в xlsx сервера (STATUS_LABEL_RU).
  */
 export const OTHER_STATUS_LABEL: Partial<Record<RemarkStatus, string>> = {
   awaiting_pm: 'Ждёт решения руководителя приёмки',
@@ -389,7 +389,7 @@ export const ROUNDS = {
   emptyClosed: 'В этом раунде замечаний не было.',
 };
 
-/** Служебные подписи (добавлены при переработке UI, см. docs/ui/COPY.md). */
+/** Служебные подписи (добавлены при переработке UI). */
 export const COMMON = {
   undo: 'Отменить',
   retry: 'Повторить',

@@ -47,7 +47,7 @@ export function buildTriageGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
     const facts = await deps.remarks.triageFacts(ctxOf(s), s.remarkId);
     // Продолжение без чекпоинта после «Не та цитата»: исключаем уже показанные чанки.
     const exclude = s.humanComment ? [...new Set([...s.excludeChunkIds, ...facts.citedChunkIds])] : s.excludeChunkIds;
-    // Guardrail входа: находка не останавливает разбор, а помечает его (REMARKROUND.md §12).
+    // Guardrail входа: находка не останавливает разбор, а помечает его (docs/ARCHITECTURE.md).
     const injection = detectInjection(facts.description, facts.expected, facts.pageOrScreen, s.humanComment);
     return { facts, query: buildQuery(facts, s.humanComment), excludeChunkIds: exclude, injectionMatches: injection.matches };
   };
@@ -65,7 +65,7 @@ export function buildTriageGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
 
   const afterRetrieve = (s: S): 'maybe_vision' | 'bind_to_clause' => (s.facts?.screenshotKey && s.visionFacts === null && deps.llm.canSee ? 'maybe_vision' : 'bind_to_clause');
 
-  /** Факты кадра, не вердикт (REMARKROUND.md §2.1 п.3: скриншот меняет ответ). */
+  /** Факты кадра, не вердикт: скриншот может изменить ответ. */
   const vision = async (s: S) => {
     phase(s, 'vision');
     const image = await loadFrame(deps.storage, s.facts!.screenshotKey!);
@@ -140,7 +140,7 @@ export function buildTriageGraph(deps: GraphDeps, checkpointer: BaseCheckpointSa
     return { rationale };
   };
 
-  /** Без LLM: черновик не ссылается на раздел, которого нет среди цитат (REMARKROUND.md §12 guardrail выхода). */
+  /** Без LLM: черновик не ссылается на раздел, которого нет среди цитат (guardrail выхода, docs/ARCHITECTURE.md). */
   const faithfulness = (s: S) => {
     const cited = new Set(s.chunkIds);
     const check = checkFaithfulness({

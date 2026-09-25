@@ -15,7 +15,7 @@ export interface ImportInput {
 }
 
 /**
- * Импорт журнала по официальному шаблону (docs/archive/PHASES.md, фаза 4).
+ * Импорт журнала по официальному шаблону (fixtures/journal/README.md).
  * Файл целиком ложится в storage, каждая строка — в ImportRow как есть; замечания создаёт RemarksService
  * (единственный путь записи). Строки без description → needs_human_parse: разбор по ним не стартует.
  */

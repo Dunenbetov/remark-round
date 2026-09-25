@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 
 /**
- * Официальный шаблон журнала (REMARKROUND.md §14, fixtures/journal/template.csv).
+ * Официальный шаблон журнала (fixtures/journal/README.md, fixtures/journal/template.csv).
  * Ключи колонок зафиксированы здесь и только здесь — это же ключи ячеек в ImportRow.rawJson и ImportRowView.cells.
  * В файле шапка русская (JOURNAL_HEADERS): её видит заказчик и её же обещает карточка «Что в шаблоне» на странице импорта.
  * Парсер принимает русскую шапку и прежнюю английскую (HEADER_ALIASES); других шапок не угадывает.

@@ -1,4 +1,4 @@
-/** faithfulness — черновик не ссылается на раздел, которого нет среди цитат (REMARKROUND.md §11, §12). Чистая функция, без БД. */
+/** faithfulness — черновик не ссылается на раздел, которого нет среди цитат (docs/EVALS.md, docs/ARCHITECTURE.md). Чистая функция, без БД. */
 import { checkFaithfulness } from './faithfulness';
 
 const SECTIONS = ['§2.1 Primary', '§4.2 Ошибки', 'Решения'];

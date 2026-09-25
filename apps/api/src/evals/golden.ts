@@ -1,5 +1,5 @@
 /**
- * Golden set фазы 9: evals/golden.json (REMARKROUND.md §11). Здесь — типы и загрузка, без логики оценки.
+ * Golden set фазы 9: evals/golden.json (docs/EVALS.md, раздел 14). Здесь — типы и загрузка, без логики оценки.
  */
 import type { ProposedClass, RetestOutcome } from '@remarkround/db';
 import { existsSync, readFileSync } from 'node:fs';

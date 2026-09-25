@@ -30,7 +30,7 @@ export const SEED = {
   projectId: '11111111-1111-4111-8111-111111111111',
   otherProjectId: '22222222-2222-4222-8222-222222222222',
   password: DEMO_PASSWORD,
-  // Демо-персоны названы ролями — на защите сразу видно, кто есть кто. Реальные люди регистрируются под своими именами.
+  // Демо-персоны названы ролями — в демо сразу видно, кто есть кто. Реальные люди регистрируются под своими именами.
   // Порядок pm, business, developer: seed-remarks берёт их по индексу
   users: (['pm', 'business', 'developer'] as Role[]).map((role) => {
     const account = DEMO_ACCOUNTS.find((a) => a.role === role)!;

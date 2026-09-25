@@ -33,7 +33,7 @@ describe('демо-сид', () => {
     for (const { before, next } of framePairs) compared.set(`${before}|${next}`, diff.compare(shot(before), shot(next)));
   }, 120_000);
 
-  it('раунд 2: 14 замечаний — 5 ждут PM, 2 в работе, 4 на ретесте, 2 закрыты (docs/DEMO.md)', () => {
+  it('раунд 2: 14 замечаний — 5 ждут PM, 2 в работе, 4 на ретесте, 2 закрыты', () => {
     const count = (...statuses: string[]) => roundTwo.filter((r) => statuses.includes(r.status)).length;
     expect(roundTwo).toHaveLength(14);
     expect(count('awaiting_pm', 'cannot_tell')).toBe(5);

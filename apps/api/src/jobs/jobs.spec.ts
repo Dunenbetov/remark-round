@@ -1,5 +1,5 @@
 /**
- * jobs.spec — аудит: no-job-queue, deploy-kills-inflight-and-stale-sweep, llm-outage-retry; P2 плана защиты 18.09.
+ * jobs.spec — аудит: no-job-queue, deploy-kills-inflight-and-stale-sweep, llm-outage-retry.
  * Прогоны графа и индексация идут через очередь в Postgres: REST отвечает сразу, временная ошибка модели
  * повторяется с паузой (человек видит «не получилось» только после последней, четвёртой попытки), задача,
  * осиротевшая после падения процесса, возвращается в очередь — и на старте, и таймером, — run.cancel снимает задачу,

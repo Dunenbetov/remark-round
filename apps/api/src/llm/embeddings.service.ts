@@ -3,7 +3,7 @@ import { startActiveObservation } from '@langfuse/tracing';
 import OpenAI from 'openai';
 import { createOpenAi } from './openai-client';
 
-/** Одна модель на весь индекс (REMARKROUND.md §10). Размерность зашита в миграции vector(1536). */
+/** Одна модель на весь индекс (docs/ARCHITECTURE.md). Размерность зашита в миграции vector(1536). */
 export const EMBEDDING_MODEL = 'text-embedding-3-small';
 export const EMBEDDING_DIM = 1536;
 const BATCH = 64;

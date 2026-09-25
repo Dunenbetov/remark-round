@@ -10,7 +10,7 @@ export interface DemoAccount {
   email: string;
   name: string;
   role: Role;
-  /** Что делает эта роль — подпись карточки на входе (те же слова, что в docs/ui/COPY.md). */
+  /** Что делает эта роль — подпись карточки на входе (те же слова, что в apps/web/src/app/core/copy.ts). */
   does: string;
 }
 

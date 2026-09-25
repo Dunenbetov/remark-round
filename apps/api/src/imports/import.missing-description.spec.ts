@@ -1,5 +1,5 @@
 /**
- * import.missing-description.spec — импорт только официального шаблона (docs/archive/PHASES.md, фаза 4).
+ * import.missing-description.spec — импорт только официального шаблона (fixtures/journal/README.md).
  * sample-round.csv даёт смесь parsed + needs_human_parse; чужая шапка не маппится; картинка из xlsx
  * становится кадром; строка без описания не уходит в разбор, пока человек её не допишет.
  */

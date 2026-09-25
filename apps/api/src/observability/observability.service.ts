@@ -30,7 +30,7 @@ export interface RunTrace {
 }
 
 /**
- * ObservabilityModule (REMARKROUND.md §7.1, docs/ENGINEERING.md паттерн 3): Langfuse на каждый LLM-вызов.
+ * ObservabilityModule (docs/ARCHITECTURE.md, docs/ENGINEERING.md паттерн 3): Langfuse на каждый LLM-вызов.
  *
  * Как устроено: у Langfuse свой OpenTelemetry-провайдер, один на процесс (почему не глобальный — у конструктора);
  * span'ы летят в Langfuse батчами. Один `AgentRun` = один trace (traceId детерминирован из runId, поэтому продолжение после interrupt —

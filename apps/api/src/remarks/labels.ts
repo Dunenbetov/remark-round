@@ -1,7 +1,7 @@
 import type { ProposedClass, RemarkStatus, RetestOutcome, Role, VerdictCode } from '@remarkround/db';
 
 /**
- * Русские подписи для выгрузки раунда (docs/ui/COPY.md, apps/web/src/app/core/copy.ts — те же слова, что видит человек
+ * Русские подписи для выгрузки раунда (apps/web/src/app/core/copy.ts: те же слова, что видит человек
  * на экране). Коды на экран не выходят; здесь они нужны, потому что xlsx для заказчика собирает сервер.
  * Контракт с фронтом: ключи STATUS_LABEL_RU и web STATUS_LABEL совпадают (labels.contract.spec); тексты могут расходиться
  * осознанно — в xlsx нет «вы» («Ждёт вашего решения» на экране → «Ждёт решения руководителя приёмки» в файле).

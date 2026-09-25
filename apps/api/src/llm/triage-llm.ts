@@ -120,7 +120,7 @@ export interface TriageLlm {
   takeUsage(runId: string): LlmUsage;
 }
 
-/** Первая строка черновика — дословно из docs/ui/COPY.md, по классу. */
+/** Первая строка черновика по классу, те же слова, что в apps/web/src/app/core/copy.ts. */
 export function headline(proposedClass: ProposedClass, duplicateOfNumber?: number): string {
   switch (proposedClass) {
     case 'defect_candidate':
