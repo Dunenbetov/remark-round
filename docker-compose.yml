@@ -1,15 +1,15 @@
-# RemarkRound — Docker Compose
-# cp .env.example .env && docker compose up  →  web :4200, api :3001, mcp :3002, Langfuse :3000
-# API сам применяет миграции и кладёт демо-данные (apps/api/docker-entrypoint.sh)
+# RemarkRound: Docker Compose
+# cp .env.example .env && docker compose up. Порты: web 4200, api 3001, mcp 3002, Langfuse 3000
+# API сам применяет миграции и кладет демо-данные (apps/api/docker-entrypoint.sh)
 # Порты опубликованы только на 127.0.0.1: наружу в проде смотрит caddy из docker-compose.prod.yml (docs/PROD.md)
 # Langfuse-стек (6 сервисов ниже) на демо поднимается всегда; прод-оверлей прячет его за профиль `observability`,
-# а трейсы шлёт в Langfuse Cloud (LANGFUSE_CLOUD_URL) — на одном сервере 8 ГБ self-host не помещается (docs/BETA-REVIEW.md R-B1)
+# а трейсы шлет в Langfuse Cloud (LANGFUSE_CLOUD_URL): на одном сервере 8 ГБ self-host не помещается (docs/PROD.md)
 
 services:
   postgres:
     image: pgvector/pgvector:pg17
     restart: unless-stopped
-    # pg_stat_statements — «какие запросы едят базу» (docs/PROD.md «Обслуживание БД»); расширение создаёт миграция
+    # pg_stat_statements: какие запросы едят базу (docs/PROD.md "Обслуживание БД"); расширение создает миграция
     command: ['postgres', '-c', 'shared_preload_libraries=pg_stat_statements', '-c', 'pg_stat_statements.track=all']
     environment:
       POSTGRES_USER: remarkround
@@ -27,10 +27,10 @@ services:
       retries: 10
 
   api:
-    # Имя образа = реестр релизов (docs/PROD.md): CI публикует ghcr.io/…:<sha>, прод делает pull по RR_TAG;
+    # Имя образа = реестр релизов (docs/PROD.md): CI публикует ghcr.io/...:<sha>, прод делает pull по RR_TAG;
     # демо и dev собирают локально под тем же именем (RR_TAG=local)
     image: ghcr.io/dunenbetov/remark-round-api:${RR_TAG:-local}
-    # Прогон графа длится 5–30 с, вызов модели — до 60 с: даём дописать перед SIGKILL при деплое (аудит: deploy-kills-inflight)
+    # Прогон графа длится 5-30 с, вызов модели до 60 с: даем дописать перед SIGKILL при деплое
     stop_grace_period: 90s
     build:
       context: .
@@ -39,14 +39,14 @@ services:
         GIT_SHA: ${GIT_SHA:-dev}
     restart: unless-stopped
     # Зависимости от langfuse-web нет намеренно: в проде стек за профилем, compose отказал бы в `up`;
-    # экспортёр OpenTelemetry сам переждёт, пока Langfuse поднимется
+    # экспортер OpenTelemetry сам переждет, пока Langfuse поднимется
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       PORT: 3000
-      # Демо-стенд (фаза 11): в образе NODE_ENV=production, но здесь — development: seed и карточки ролей на входе.
-      # Прод — docker-compose.prod.yml (production, настоящий JWT_SECRET, без seed).
+      # Демо-стенд: в образе NODE_ENV=production, а здесь development (seed и карточки ролей на входе).
+      # Прод: docker-compose.prod.yml (production, настоящий JWT_SECRET, без seed).
       NODE_ENV: development
       TRUST_PROXY_HOPS: '1'
       DATABASE_URL: postgresql://remarkround:${POSTGRES_PASSWORD:-remarkround}@postgres:5432/remarkround
@@ -55,20 +55,20 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LLM_MODEL_FAST: ${LLM_MODEL_FAST:-gpt-4.1-mini}
       LLM_MODEL_STRONG: ${LLM_MODEL_STRONG:-gpt-4.1}
-      # Ветка ретеста: победитель A/B (docs/EVALS.md); llm_only — только для сравнения
+      # Ветка ретеста: победитель A/B (docs/EVALS.md); llm_only только для сравнения
       RETEST_STRATEGY: ${RETEST_STRATEGY:-diff_explain}
-      # Демо-данные при старте (миграции всегда): PM / Business / Developer, ТЗ + протокол, раунд 2. SEED_ON_START=false — выключить
+      # Демо-данные при старте (миграции всегда): PM, Business, Developer, ТЗ и протокол, раунд 2. Выключить: SEED_ON_START=false
       SEED_ON_START: ${SEED_ON_START:-true}
-      # Контур доступа (ADR 006): на демо-стенде администратор инстанса — отдельная демо-персона admin@ (видит только /admin); регистрация открыта (NODE_ENV=development)
+      # Контур доступа (ADR 006): на демо-стенде администратор инстанса это отдельная демо-персона admin@ (видит только /admin); регистрация открыта (NODE_ENV=development)
       ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@remarkround.dev}
       REGISTRATION_MODE: ${REGISTRATION_MODE:-}
       REGISTRATION_DOMAINS: ${REGISTRATION_DOMAINS:-}
       # Пояс дат в xlsx-журнале (ADR 011): сервер в UTC, Excel поясов не знает
       REPORT_TIMEZONE: ${REPORT_TIMEZONE:-Asia/Almaty}
       STORAGE_DIR: /app/apps/api/storage
-      # Langfuse (фаза 8): API шлёт span'ы внутрь сети compose, ссылки для человека — на публичный адрес UI.
+      # Langfuse: API шлет span'ы внутрь сети compose, ссылки для человека ведут на публичный адрес UI.
       # Ключи совпадают с LANGFUSE_INIT_* у langfuse-web: проект и ключи создаются при первом старте.
-      # LANGFUSE_CLOUD_URL (не LANGFUSE_BASE_URL: та в .env задаёт адрес для API с хоста) переключает на Langfuse Cloud
+      # LANGFUSE_CLOUD_URL (не LANGFUSE_BASE_URL: та в .env задает адрес для API с хоста) переключает на Langfuse Cloud
       LANGFUSE_BASE_URL: ${LANGFUSE_CLOUD_URL:-http://langfuse-web:3000}
       LANGFUSE_PUBLIC_URL: ${LANGFUSE_PUBLIC_URL:-http://localhost:3000}
       LANGFUSE_TRACING_ENABLED: ${LANGFUSE_TRACING_ENABLED:-}
@@ -221,7 +221,7 @@ services:
       DATABASE_URL: postgresql://postgres:${LANGFUSE_DB_PASSWORD:-postgres}@langfuse-postgres:5432/langfuse
       SALT: ${SALT:-change-me-local-dev}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
-      # Телеметрия Langfuse наружу выключена по умолчанию (аудит: неожиданный egress из корпоративной сети)
+      # Телеметрия Langfuse наружу выключена по умолчанию, чтобы не было неожиданного egress из корпоративной сети
       TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-false}
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-false}
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
@@ -258,7 +258,7 @@ services:
       <<: *langfuse-env
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-local-dev}
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
-      # Headless-инициализация (фаза 8): организация, проект, ключи и пользователь UI создаются на первом старте,
+      # Headless-инициализация: организация, проект, ключи и пользователь UI создаются на первом старте,
       # чтобы `docker compose up` сразу писал трейсы. Вход в UI: LANGFUSE_INIT_USER_EMAIL / _PASSWORD.
       LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-remarkround}
       LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-RemarkRound}

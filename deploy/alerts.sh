@@ -1,8 +1,8 @@
 #!/bin/sh
-# Дешёвые алерты одного сервера (аудит: metrics-and-alerts, минимальный шаг до Prometheus). Запускать cron'ом раз в час
+# Простые алерты одного сервера (минимальный шаг до Prometheus). Запускать cron'ом раз в час
 # на хосте: `0 * * * * /opt/remark-round/deploy/alerts.sh`. Проверки: свободное место на диске, возраст последнего дампа,
 # offsite-копия, здоровье API. Сообщение уходит в Telegram (ALERT_TELEGRAM_BOT_TOKEN + ALERT_TELEGRAM_CHAT_ID) или в webhook
-# (ALERT_WEBHOOK_URL, POST JSON {"text": …}); без них — только stdout/cron mail. Внешний uptime-монитор на /health — отдельно.
+# (ALERT_WEBHOOK_URL, POST JSON {"text": ...}); без них только stdout и cron mail. Внешний uptime-монитор на /health ставится отдельно.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 DISK_MIN_FREE_PCT="${DISK_MIN_FREE_PCT:-15}"
@@ -38,7 +38,7 @@ elif grep -q '"llm":"rules"' /tmp/rr-health.json 2>/dev/null; then
 elif grep -q '"vectorIndex":"missing"' /tmp/rr-health.json 2>/dev/null; then
   problems="$problems\n• API: нет HNSW-индекса (retrieve полным сканом)"
 else
-  # Очередь задач: сотня ждущих задач при исправном API — воркер не берёт их или модель лежит дольше всех повторов
+  # Очередь задач: сотня ждущих задач при исправном API значит, что воркер не берет их или модель лежит дольше всех повторов
   queued=$(sed -n 's/.*"jobs":{"queued":\([0-9]*\).*/\1/p' /tmp/rr-health.json 2>/dev/null)
   if [ -n "$queued" ] && [ "$queued" -ge "${JOBS_QUEUED_ALERT:-100}" ]; then
     problems="$problems\n• API: в очереди задач $queued ждущих (docker compose logs api | grep jobs)"
@@ -46,7 +46,7 @@ else
 fi
 
 [ -z "$problems" ] && exit 0
-text="RemarkRound ${PUBLIC_HOST:-server} — проблемы:$problems"
+text="RemarkRound ${PUBLIC_HOST:-server}, проблемы:$problems"
 printf '%b\n' "$text"
 if [ -n "${ALERT_TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${ALERT_TELEGRAM_CHAT_ID:-}" ]; then
   curl -s -m 10 -X POST "https://api.telegram.org/bot${ALERT_TELEGRAM_BOT_TOKEN}/sendMessage" --data-urlencode "chat_id=${ALERT_TELEGRAM_CHAT_ID}" --data-urlencode "text=$(printf '%b' "$text")" >/dev/null

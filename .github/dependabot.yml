@@ -1,10 +1,10 @@
-# Обновления зависимостей (аудит: supply-chain): npm — по workspace целиком; базовые образы Dockerfile; actions в CI.
+# Обновления зависимостей: npm по workspace целиком, базовые образы Dockerfile, actions в CI.
 # Secret scanning и Dependabot alerts включаются в Settings → Code security репозитория (не файлом).
 #
-# ПАУЗА до защиты курса (решение владельца 18.09.2026): open-pull-requests-limit: 0 выключает PR с обновлениями
-# версий — каждое обновление было отдельной веткой, а PR шли прямо в main, то есть на прод в обход dev.
+# Обновления на паузе до 01.10.2026: open-pull-requests-limit: 0 выключает PR с обновлениями
+# версий: каждое обновление было отдельной веткой, а PR шли прямо в main, то есть на прод в обход dev.
 # Оповещения об уязвимостях (Dependabot alerts) продолжают приходить. Вернуть после Demo Days: limit 0 → 1.
-# Когда вернём: PR идут в dev (target-branch), раз в месяц, одним PR на экосистему (groups.all).
+# Когда вернем: PR идут в dev (target-branch), раз в месяц, одним PR на экосистему (groups.all).
 version: 2
 updates:
   - package-ecosystem: npm
@@ -17,7 +17,7 @@ updates:
       all:
         patterns: ['*']
     ignore:
-      # Мажоры фреймворков — руками и по одному: Angular, Nest, Prisma, LangGraph
+      # Мажоры фреймворков руками и по одному: Angular, Nest, Prisma, LangGraph
       - dependency-name: '@angular/*'
         update-types: [version-update:semver-major]
       - dependency-name: '@nestjs/*'
@@ -38,7 +38,7 @@ updates:
       all:
         patterns: ['*']
     ignore:
-      # Мажор Node — вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 — конец октября 2026)
+      # Мажор Node вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 в конце октября 2026)
       - dependency-name: node
         update-types: [version-update:semver-major]
   - package-ecosystem: docker
@@ -51,7 +51,7 @@ updates:
       all:
         patterns: ['*']
     ignore:
-      # Мажор Node — вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 — конец октября 2026)
+      # Мажор Node вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 в конце октября 2026)
       - dependency-name: node
         update-types: [version-update:semver-major]
   - package-ecosystem: docker
@@ -64,7 +64,7 @@ updates:
       all:
         patterns: ['*']
     ignore:
-      # Мажор Node — вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 — конец октября 2026)
+      # Мажор Node вручную, вместе с .nvmrc и CI, и только после выхода в LTS (Node 26 в конце октября 2026)
       - dependency-name: node
         update-types: [version-update:semver-major]
   - package-ecosystem: github-actions

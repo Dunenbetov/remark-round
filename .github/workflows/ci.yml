@@ -2,9 +2,9 @@ name: ci
 
 on:
   pull_request:
-  # Любая ветка: фаза не должна копиться неделями без прогона тестов (аудит: uncommitted-phase).
-  # Фильтр branches явный: Railway «Wait for CI» ждёт только workflow, у которого ветка деплоя видна в триггере
-  # (docs.railway.com/guides/github-autodeploys); tags — для релизных образов в job images
+  # Любая ветка: изменения не должны копиться неделями без прогона тестов.
+  # Фильтр branches явный: Railway "Wait for CI" ждет только workflow, у которого ветка деплоя видна в триггере
+  # (docs.railway.com/guides/github-autodeploys); tags нужны для релизных образов в job images
   push:
     branches: ['**']
     tags: ['v*']
@@ -41,10 +41,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
-      # @remarkround/db отдаёт dist/ (main/types): без сборки tsc API не видит модуль — локально dist есть, в CI нет
+      # @remarkround/db отдает dist/ (main/types): без сборки tsc API не видит модуль. Локально dist есть, в CI нет
       - run: pnpm --filter @remarkround/db build
       - run: pnpm db:migrate:deploy
-      - name: Уязвимости prod-зависимостей (high и выше — красный)
+      - name: Уязвимости prod-зависимостей (high и выше валят сборку)
         run: pnpm audit --prod --audit-level=high
       - name: Типы API (спеки и evals тоже)
         run: pnpm --filter @remarkround/api exec tsc --noEmit -p tsconfig.json
@@ -52,10 +52,10 @@ jobs:
         run: pnpm --filter @remarkround/mcp build
       - name: Тесты API (включая evals.spec офлайн)
         run: pnpm --filter @remarkround/api test
-      - name: Evals офлайн — golden через продуктовые сервисы, отчёт в артефакт
+      - name: Evals офлайн, golden через продуктовые сервисы, отчет в артефакт
         run: pnpm evals -- --offline --out evals/results/ci-offline
         env:
-          # Выше вырожденного «всегда cannot_tell» (20/33 = 0,61) и ниже правил офлайн (23/33 = 0,70) — docs/EVALS.md, «Базовые уровни»
+          # Выше вырожденного "всегда cannot_tell" (20/33 = 0,61) и ниже правил офлайн (23/33 = 0,70), см. docs/EVALS.md "Базовые уровни"
           EVALS_MIN_BINDING: '0.65'
       - uses: actions/upload-artifact@v4
         if: always()
@@ -64,14 +64,14 @@ jobs:
           path: evals/results/ci-offline.*
       - name: 'Сборка фронта (web-тестов нет: сборка ловит ошибки шаблонов и типов)'
         run: pnpm --filter @remarkround/web build
-      - name: Прод-override compose валиден (без профиля observability — как на бете, R-B1)
+      - name: Прод-override compose валиден (без профиля observability, как на Railway)
         run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
         env:
           JWT_SECRET: 0123456789abcdef0123456789abcdef
           POSTGRES_PASSWORD: ci-only
           PUBLIC_HOST: rr.example.com
           ADMIN_EMAILS: admin@rr.example.com
-      - name: Прод-override compose валиден с профилем observability (self-hosted Langfuse на сервере ≥ 16 ГБ)
+      - name: Прод-override compose валиден с профилем observability (свой Langfuse, сервер от 16 ГБ)
         run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config -q
         env:
           COMPOSE_PROFILES: observability
@@ -90,7 +90,7 @@ jobs:
           LANGFUSE_SECRET_KEY: sk-lf-ci
           LANGFUSE_INIT_USER_PASSWORD: ci-only
 
-  # Релизные образы (аудит: no-release-artifacts): на push в main и на тег v* собираем api/web/mcp с GIT_SHA
+  # Релизные образы: на push в main и на тег v* собираем api/web/mcp с GIT_SHA
   # и публикуем в GHCR. Прод делает `docker compose pull` по RR_TAG вместо сборки на боевом сервере (docs/PROD.md).
   images:
     needs: api

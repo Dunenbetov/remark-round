@@ -1,16 +1,16 @@
-# RemarkRound — прод на одном сервере (фаза 11, runbook: docs/PROD.md).
-# Запуск: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d (образы — из GHCR по RR_TAG)
-# Порты инфраструктуры в базовом файле уже на 127.0.0.1; наружу смотрит только caddy (80/443 → web).
-# Обязательные переменные .env: JWT_SECRET, POSTGRES_PASSWORD, PUBLIC_HOST, ADMIN_EMAILS — без них compose не стартует.
+# RemarkRound: прод на одном сервере (runbook: docs/PROD.md).
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d (образы из GHCR по RR_TAG)
+# Порты инфраструктуры в базовом файле уже на 127.0.0.1; наружу смотрит только caddy (80/443, дальше web).
+# Обязательные переменные .env: JWT_SECRET, POSTGRES_PASSWORD, PUBLIC_HOST, ADMIN_EMAILS. Без них compose не стартует.
 #
-# Langfuse (docs/BETA-REVIEW.md R-B1): трейсы уходят в Langfuse Cloud — LANGFUSE_CLOUD_URL, LANGFUSE_PROJECT_ID и настоящие
-# ключи (плейсхолдеры api в production отвергает; выключить трейсы — явно LANGFUSE_TRACING_ENABLED=false).
-# Self-hosted стек (6 сервисов ниже) — за профилем `observability` (COMPOSE_PROFILES=offsite,observability) и только на
-# сервере ≥ 16 ГБ: на 8 ГБ он съедал 4,3 ГБ лимитов вместе с приложением. Его секреты здесь без `:?` — compose требует
-# их даже у выключенного профиля. При включённом профиле с пустыми секретами langfuse-web, langfuse-worker и minio не
-# стартуют, langfuse-postgres не инициализируется, а clickhouse и redis поднимутся без пароля (порты наружу не
-# опубликованы): задайте LANGFUSE_DB_PASSWORD, CLICKHOUSE_PASSWORD, MINIO_ROOT_PASSWORD, REDIS_AUTH, SALT, ENCRYPTION_KEY,
-# NEXTAUTH_SECRET, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_INIT_USER_PASSWORD.
+# Langfuse (docs/PROD.md "Langfuse в проде"): трейсы уходят в Langfuse Cloud, нужны LANGFUSE_CLOUD_URL, LANGFUSE_PROJECT_ID
+# и настоящие ключи (плейсхолдеры api в production отвергает; выключить трейсы можно явно: LANGFUSE_TRACING_ENABLED=false).
+# Self-hosted стек (6 сервисов ниже) спрятан за профилем `observability` (COMPOSE_PROFILES=offsite,observability),
+# включать его только на сервере от 16 ГБ: на 8 ГБ он съедал 4,3 ГБ лимитов вместе с приложением. Его секреты здесь
+# без `:?`, потому что compose требует их даже у выключенного профиля. При включенном профиле с пустыми секретами
+# langfuse-web, langfuse-worker и minio не стартуют, langfuse-postgres не инициализируется, а clickhouse и redis поднимутся
+# без пароля (порты наружу не опубликованы): задайте LANGFUSE_DB_PASSWORD, CLICKHOUSE_PASSWORD, MINIO_ROOT_PASSWORD,
+# REDIS_AUTH, SALT, ENCRYPTION_KEY, NEXTAUTH_SECRET, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_INIT_USER_PASSWORD.
 
 # Ротация логов для всех сервисов: якорь объявлен до первого использования (YAML читает сверху вниз)
 x-logging: &logging
@@ -22,9 +22,9 @@ x-logging: &logging
 services:
   postgres:
     restart: always
-    # Память под сервер 8 ГБ без Langfuse-стека (docs/PROD.md): база — до 1,5 ГБ, shared_buffers 512 МБ (≈ треть лимита);
+    # Память под сервер 8 ГБ без Langfuse-стека (docs/PROD.md): база до 1,5 ГБ, shared_buffers 512 МБ (около трети лимита);
     # дефолт образа (128 МБ / 4 МБ work_mem) лил бы векторный поиск и агрегаты журнала на диск при первом росте пакета ТЗ.
-    # effective_cache_size — подсказка планировщику, не выше лимита контейнера
+    # effective_cache_size: подсказка планировщику, не выше лимита контейнера
     command:
       - postgres
       - -c
@@ -50,46 +50,46 @@ services:
 
   api:
     restart: always
-    # Лимиты памяти (аудит: langfuse-colocated-no-limits): без них OOM-killer снимает произвольный контейнер —
-    # в худшем случае api или postgres. Бюджет 8 ГБ без профиля observability: postgres 1,5 + api 2 + web/mcp/caddy/backup
-    # ≈ 0,75 → ≈ 4,3 ГБ, остальное — ОС и page cache (R-B1)
+    # Лимиты памяти: без них OOM-killer снимает произвольный контейнер, в худшем случае api или postgres.
+    # Бюджет 8 ГБ без профиля observability: postgres 1,5 + api 2 + web/mcp/caddy/backup 0,75, итого около 4,3 ГБ;
+    # остальное остается ОС и page cache
     deploy:
       resources:
         limits:
           memory: 2g
     environment:
-      # Куча Node ниже лимита контейнера: остаток — нативная память (буферы ExcelJS и pixelmatch, сокеты) (R-M6)
+      # Куча Node ниже лимита контейнера: остаток идет на нативную память (буферы ExcelJS и pixelmatch, сокеты)
       NODE_OPTIONS: --max-old-space-size=1536
       NODE_ENV: production
-      JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET в .env — openssl rand -hex 32}
+      JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET в .env (openssl rand -hex 32)}
       JWT_EXPIRES_SECONDS: ${JWT_EXPIRES_SECONDS:-86400}
       SEED_ON_START: 'false'
       DEMO_LOGINS: 'false'
-      # Миграции в проде — отдельным шагом перед up (docs/PROD.md): при старте только проверка, что они применены
+      # Миграции в проде идут отдельным шагом перед up (docs/PROD.md), при старте только проверка, что они применены
       MIGRATE_ON_START: 'false'
       # Контур доступа (ADR 006): без администратора в пустой системе некому зарегистрироваться первым
-      ADMIN_EMAILS: ${ADMIN_EMAILS:?задайте ADMIN_EMAILS в .env — e-mail администраторов инстанса через запятую}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:?задайте ADMIN_EMAILS в .env, e-mail администраторов инстанса через запятую}
       REGISTRATION_MODE: ${REGISTRATION_MODE:-invite_only}
       REGISTRATION_DOMAINS: ${REGISTRATION_DOMAINS:-}
-      # nginx (web) берёт адрес клиента из X-Forwarded-For от Caddy и шлёт в API один адрес — один hop, как в демо и на Railway
+      # nginx (web) берет адрес клиента из X-Forwarded-For от Caddy и шлет в API один адрес: один hop, как в демо и на Railway
       TRUST_PROXY_HOPS: '1'
-      WEB_ORIGIN: https://${PUBLIC_HOST:?задайте PUBLIC_HOST в .env — домен без https://}
-      # Пул соединений (R-H1): каждый запрос — минимум 2 обращения к БД в guard'ах, интерактивные транзакции воркера держат
-      # соединение целиком; 25 при max_connections=100 у Postgres (плюс backup и psql). Ждать соединение — до 20 с, потом P2024 → 503
+      WEB_ORIGIN: https://${PUBLIC_HOST:?задайте PUBLIC_HOST в .env, домен без https://}
+      # Пул соединений: каждый запрос делает минимум 2 обращения к БД в guard'ах, интерактивные транзакции воркера держат
+      # соединение целиком; 25 при max_connections=100 у Postgres (плюс backup и psql). Соединение ждем до 20 с, потом P2024 и 503
       DATABASE_URL: postgresql://remarkround:${POSTGRES_PASSWORD}@postgres:5432/remarkround?connection_limit=25&pool_timeout=20
-      # Импорт на бете (R-H3): разбор xlsx и создание строк идут в HTTP-запросе, поэтому журнал — до 100 строк и 5 МБ;
-      # фоновый импорт (ImportJob + задача очереди) — вторая неделя беты, тогда потолки поднять
+      # Импорт на бете: разбор xlsx и создание строк идут в HTTP-запросе, поэтому журнал до 100 строк и 5 МБ;
+      # с фоновым импортом (ImportJob и задача очереди) потолки можно поднять
       IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-100}
       IMPORT_MAX_BYTES: ${IMPORT_MAX_BYTES:-5242880}
       LANGFUSE_TRACING_ENVIRONMENT: production
-      # Трейсы включены (Langfuse Cloud по LANGFUSE_CLOUD_URL из базового файла); плейсхолдеры ключей в production не пройдут —
-      # либо настоящие ключи, либо LANGFUSE_TRACING_ENABLED=false. Ссылка «Трейс в Langfuse» ведёт на LANGFUSE_PUBLIC_URL,
-      # без него — на тот же адрес, куда шлём трейсы; self-hosted за профилем смотрят через ssh -L 3000:127.0.0.1:3000
+      # Трейсы включены (Langfuse Cloud по LANGFUSE_CLOUD_URL из базового файла). Плейсхолдеры ключей в production не пройдут:
+      # нужны настоящие ключи или LANGFUSE_TRACING_ENABLED=false. Ссылка "Трейс в Langfuse" ведет на LANGFUSE_PUBLIC_URL,
+      # без него на тот же адрес, куда шлем трейсы; self-hosted за профилем смотрят через ssh -L 3000:127.0.0.1:3000
       # с LANGFUSE_PUBLIC_URL=http://localhost:3000
       LANGFUSE_TRACING_ENABLED: ${LANGFUSE_TRACING_ENABLED:-true}
       LANGFUSE_PUBLIC_URL: ${LANGFUSE_PUBLIC_URL:-}
     volumes:
-      # Именованный том вместо bind-mount демо: кадры и документы живут в docker volume api-storage (бэкап — docs/PROD.md)
+      # Именованный том вместо bind-mount демо: кадры и документы живут в docker volume api-storage (бэкап: docs/PROD.md)
       - api-storage:/app/apps/api/storage
     logging: *logging
 
@@ -128,7 +128,7 @@ services:
   clickhouse:
     profiles: [observability]
     restart: always
-    # ClickHouse читает лимит cgroup как объём RAM и держится в 90 % от него
+    # ClickHouse читает лимит cgroup как объем RAM и держится в 90 % от него
     deploy:
       resources:
         limits:
@@ -224,7 +224,7 @@ services:
       - caddy-config:/config
     logging: *logging
 
-  # Ежедневный pg_dump в том postgres-backups (restore — docs/PROD.md). Файлы кадров бэкапятся отдельно (том api-storage).
+  # Ежедневный pg_dump в том postgres-backups (restore: docs/PROD.md). Файлы кадров бэкапятся отдельно (том api-storage).
   backup:
     image: prodrigestivill/postgres-backup-local:17
     restart: always
@@ -250,9 +250,9 @@ services:
       - postgres-backups:/backups
     logging: *logging
 
-  # Копия вне сервера (аудит: backups-dr): rclone sync дампов и файлов в S3-совместимое хранилище раз в сутки.
+  # Копия вне сервера: rclone sync дампов и файлов в S3-совместимое хранилище раз в сутки.
   # Включается профилем: `docker compose --profile offsite up -d` (или COMPOSE_PROFILES=offsite в .env)
-  # после того, как в .env заданы RCLONE_CONFIG_OFFSITE_* и OFFSITE_REMOTE (docs/PROD.md «Бэкап»).
+  # после того, как в .env заданы RCLONE_CONFIG_OFFSITE_* и OFFSITE_REMOTE (docs/PROD.md "Бэкап и восстановление").
   offsite:
     image: rclone/rclone:1
     restart: always
@@ -266,7 +266,7 @@ services:
         limits:
           memory: 256m
     environment:
-      # Переменные без :? — профиль необязательный, а compose проверяет их даже у выключенных сервисов; скрипт сам откажет без OFFSITE_REMOTE
+      # Переменные без :?, потому что профиль необязательный, а compose проверяет их даже у выключенных сервисов; скрипт сам откажет без OFFSITE_REMOTE
       OFFSITE_REMOTE: ${OFFSITE_REMOTE:-}
       OFFSITE_INTERVAL_SECONDS: ${OFFSITE_INTERVAL_SECONDS:-86400}
       RCLONE_CONFIG_OFFSITE_TYPE: ${RCLONE_CONFIG_OFFSITE_TYPE:-s3}
@@ -280,7 +280,7 @@ services:
       - postgres-backups:/backups:ro
       - api-storage:/storage:ro
     healthcheck:
-      # Копия старше 36 часов — unhealthy: видно в docker compose ps и внешнему монитору
+      # Копия старше 36 часов: контейнер unhealthy, это видно в docker compose ps и внешнему монитору
       test: ['CMD-SHELL', 'test -f /tmp/offsite-last-run && test $(( $(date +%s) - $(date -d "$(cat /tmp/offsite-last-run)" +%s 2>/dev/null || echo 0) )) -lt 129600']
       interval: 10m
       timeout: 10s
