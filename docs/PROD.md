@@ -1,14 +1,12 @@
-# Прод на одном сервере — runbook
+# Прод на одном сервере: runbook
 
-> Два варианта прода: **один сервер** с docker compose и Caddy — этот файл; **Railway** (Hobby, из ветки `main` после зелёного CI) — [`docs/PROD-RAILWAY.md`](PROD-RAILWAY.md). Образы, миграции, контур доступа и `/health` у них общие; различаются только запуск и хранение файлов.
-
-Фаза 11 (сентябрь 2026). Одна машина, docker compose, наружу смотрит только Caddy (80/443). Ёмкость нагрузочно не тестировалась: узкое место — прогоны модели (лимит `GRAPH_MAX_CONCURRENT` / `GRAPH_MAX_PER_PROJECT`) и pixel-diff с разбором файлов в одном процессе API; список замечаний отдаётся без пагинации. Перед обещанием SLA нескольким командам — прогнать `autocannon`/`k6` по журналу на 300 строк и параллельным ретестам. Второй инстанс API — отдельный этап (Redis для socket.io, S3 вместо тома; очередь задач уже в Postgres), см. `docs/ARCHITECTURE.md`.
+Основной прод работает на Railway (план Hobby, деплой из ветки `main` после зеленого CI), его runbook: [`docs/PROD-RAILWAY.md`](PROD-RAILWAY.md). Этот файл описывает второй вариант: один сервер с docker compose, наружу открыт только Caddy (порты 80 и 443). Dockerfile, миграции, контур доступа и `/health` у вариантов общие, различаются запуск и хранение файлов.
 
 ## Что нужно
 
-- Сервер Linux **4 vCPU / 8 ГБ**: лимиты памяти в `docker-compose.prod.yml` без профиля `observability` в сумме ≈ 4,3 ГБ (api 2, postgres 1,5, web/mcp/caddy/backup по мелочи), остальное — ОС и page cache. Self-hosted Langfuse-стек (профиль `observability`, ещё 4,3 ГБ лимитов) — только на **16 ГБ**; на бете трейсы идут в Langfuse Cloud (см. «Langfuse в проде»). Docker ≥ 24 с compose ≥ 2.24.
-- DNS: `PUBLIC_HOST` (например `rr.company.kz`) → IP сервера. Caddy сам получит сертификат Let's Encrypt.
-- `OPENAI_API_KEY` и решение, можно ли слать тексты замечаний и кадры заказчика во внешнюю модель (`REMARKROUND.md` §12: без договора — нельзя; альтернатива — локальная модель за `LlmModule`).
+- Сервер Linux 4 vCPU / 8 ГБ. Лимиты памяти в `docker-compose.prod.yml` без профиля `observability` в сумме ≈ 4,3 ГБ (api 2, postgres 1,5, остальное понемногу у web, mcp, caddy и backup), оставшуюся память занимают ОС и page cache. Self-hosted Langfuse (профиль `observability`, еще 4,3 ГБ лимитов) требует сервер на 16 ГБ, поэтому трейсы идут в Langfuse Cloud (раздел "Langfuse в проде"). Docker ≥ 24, compose ≥ 2.24.
+- DNS: `PUBLIC_HOST` (например, `rr.company.kz`) указывает на IP сервера. Сертификат Let's Encrypt Caddy получает сам.
+- `OPENAI_API_KEY` и решение, можно ли отправлять тексты замечаний и кадры заказчика во внешнюю модель. Без договора с заказчиком нельзя; другой вариант: локальная модель за `LlmModule`. Какие данные уходят в OpenAI и Langfuse Cloud, описано в `README.md`, раздел "Ограничения".
 
 ## Первый запуск
 
@@ -17,39 +15,42 @@ git clone <repo> remark-round && cd remark-round
 cp .env.example .env
 ```
 
-В `.env` заполнить (генерация: `openssl rand -hex 32`, для `ENCRYPTION_KEY` — 64 hex-символа, это как раз `openssl rand -hex 32`):
+Заполнить `.env`. Секреты генерируются командой `openssl rand -hex 32`; `ENCRYPTION_KEY` должен состоять из 64 hex-символов, это тот же `openssl rand -hex 32`.
 
 | Переменная | Зачем |
 |---|---|
-| `JWT_SECRET` | подпись токенов; ≥ 32 символов, иначе API не стартует |
-| `POSTGRES_PASSWORD` | пароль БД приложения; задать **до** первого `up` — Postgres создаёт пользователя один раз |
+| `JWT_SECRET` | подпись токенов; не короче 32 символов, иначе API не стартует |
+| `POSTGRES_PASSWORD` | пароль БД приложения. Задать до первого `up`: Postgres создает пользователя один раз |
 | `PUBLIC_HOST` | домен для Caddy и `WEB_ORIGIN` |
-| `ADMIN_EMAILS` | администраторы инстанса через запятую (ADR 006): регистрируются всегда, выдают право создавать проекты, отключают людей и завершают их сессии на странице «Администрирование» |
-| `REGISTRATION_MODE`, `REGISTRATION_DOMAINS` | необязательно: в production регистрация по умолчанию только по ссылке приглашения (`invite_only`); `REGISTRATION_DOMAINS=company.kz` пускает сотрудников с этого домена без ссылки; `open` — как на демо |
-| `OPENAI_API_KEY` | без него граф работает правилами по retrieve (честно, но грубее) |
-| `LANGFUSE_CLOUD_URL`, `LANGFUSE_PROJECT_ID`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | Langfuse Cloud: адрес региона, id проекта и ключи из настроек проекта; без трейсов — `LANGFUSE_TRACING_ENABLED=false` (плейсхолдеры `pk-lf-/sk-lf-remarkround-local` в production API не примет). Секреты self-hosted стека (`NEXTAUTH_SECRET`, `SALT`, `ENCRYPTION_KEY`, `CLICKHOUSE_PASSWORD`, `REDIS_AUTH`, `MINIO_ROOT_PASSWORD`, `LANGFUSE_DB_PASSWORD`, `LANGFUSE_INIT_USER_PASSWORD`) нужны только с профилем `observability` |
-| `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` | чтобы не писать `-f` каждый раз |
+| `ADMIN_EMAILS` | администраторы инстанса через запятую (ADR 006). Регистрируются в любом режиме, выдают право создавать проекты, отключают людей и завершают их сессии на странице "Администрирование" |
+| `REGISTRATION_MODE`, `REGISTRATION_DOMAINS` | необязательно. В production регистрация по умолчанию только по ссылке приглашения (`invite_only`). `REGISTRATION_DOMAINS=company.kz` пускает сотрудников этого домена без ссылки, `open` открывает регистрацию всем, как на демо |
+| `OPENAI_API_KEY` | ключ OpenAI для модели и эмбеддингов. Без него API в production не стартует; режим правил без модели включается только явно: `LLM_MODE=rules` |
+| `LANGFUSE_CLOUD_URL`, `LANGFUSE_PROJECT_ID`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | Langfuse Cloud: адрес региона, id проекта и ключи из настроек проекта. Без трейсов: `LANGFUSE_TRACING_ENABLED=false`. Плейсхолдеры `pk-lf-/sk-lf-remarkround-local` API в production не примет. Секреты self-hosted стека (`NEXTAUTH_SECRET`, `SALT`, `ENCRYPTION_KEY`, `CLICKHOUSE_PASSWORD`, `REDIS_AUTH`, `MINIO_ROOT_PASSWORD`, `LANGFUSE_DB_PASSWORD`, `LANGFUSE_INIT_USER_PASSWORD`) нужны только с профилем `observability` |
+| `REPORT_TIMEZONE` | необязательно: часовой пояс дат в xlsx-журнале (IANA, по умолчанию `Asia/Almaty`). С неверным значением API не стартует. Смещение подписано в шапке колонок файла |
+| `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` | чтобы не писать `-f` в каждой команде |
 
-Образы не собираются на сервере: CI публикует их в GHCR на каждый push в `main` и тег `v*` ([ADR 008](adr/008-release-and-ownership.md)). В `.env` укажите, какую сборку поднимать: `RR_TAG=sha-<короткий sha>` (или `v1.2.0`; `latest` — последний `main`). Запуск и проверка:
+Образы на сервере не собираются: CI публикует их в GHCR на каждый push в `main` и на тег `v*` ([ADR 008](adr/008-release-and-ownership.md)). Сборка задается в `.env`: `RR_TAG=sha-<короткий sha>`, `v1.2.0` или `latest` (последний `main`). Запуск и проверка:
 
 ```bash
-docker compose pull                                 # образы api/web/mcp по RR_TAG + сторонние
-docker compose run --rm api migrate                 # миграции — отдельным шагом (в проде MIGRATE_ON_START=false)
+docker compose pull                                 # образы api/web/mcp по RR_TAG и сторонние
+docker compose run --rm api migrate                 # миграции отдельным шагом (в проде MIGRATE_ON_START=false)
 docker compose up -d
-docker compose ps                                   # api/web/mcp — healthy
+docker compose ps                                   # api/web/mcp: healthy
 curl -s https://$PUBLIC_HOST/api/v1/health          # {"ok":true,"db":"ok","version":"sha-…","llm":"openai","vectorIndex":"ok","jobs":{"queued":0,"running":0}}
-curl -s https://$PUBLIC_HOST/api/v1/auth/options    # {"demoLogins":false,"registration":"invite_only"} — демо-персон нет, seed не шёл
+curl -s https://$PUBLIC_HOST/api/v1/auth/options    # {"demoLogins":false,"registration":"invite_only",...}: демо-персон нет, seed не запускался
 ```
 
-Если реестр недоступен (закрытый контур), соберите на месте: `RR_TAG=local docker compose build` — но тогда версия в `/health` будет `dev`, а сервер потратит минуты на сборку.
+Без доступа к реестру (закрытый контур) образы собираются на месте: `RR_TAG=local docker compose build`. Тогда в `/health` будет версия `dev`, а сборка на сервере займет несколько минут.
 
-Первым регистрируется администратор инстанса (e-mail из `ADMIN_EMAILS`) на `https://$PUBLIC_HOST/register` — только ему регистрация в закрытом режиме открыта без ссылки. В меню аккаунта → «Администрирование» он **приглашает руководителя приёмки** («Пригласить руководителя приёмки»: ссылка `/join/<token>`, которую администратор отправляет сам — писем нет, ADR 013; по ней человек регистрируется и получает право создавать проекты; уже зарегистрированному право выдаётся сразу); дальше руководитель создаёт проект и рассылает ссылки участникам (`docs/adr/006-access-contour.md`, дополнение 17.09), а уже зарегистрированные принимают приглашение в колокольчике. Ссылка живёт 7 дней и показывается один раз: пропала — «Новая ссылка» на странице «Участники». Демо-аккаунтов `pm@remarkround.dev` в проде нет — и не должно быть.
+Первым регистрируется администратор инстанса (e-mail из `ADMIN_EMAILS`) на `https://$PUBLIC_HOST/register`: в закрытом режиме только ему регистрация доступна без ссылки. В меню аккаунта → "Администрирование" → "Пригласить руководителя приемки" он получает ссылку `/join/<token>` и отправляет ее сам, писем нет (ADR 013). По ссылке человек регистрируется и получает право создавать проекты; уже зарегистрированному право выдается сразу. Руководитель создает проект и рассылает ссылки участникам (`docs/adr/006-access-contour.md`, дополнение от 17.09), уже зарегистрированные принимают приглашение в колокольчике. Ссылка живет 7 дней и показывается один раз. Если она потерялась, на странице "Участники" есть кнопка "Новая ссылка".
 
-Прод-override делает: `NODE_ENV=production` (fail-fast на слабом секрете), `SEED_ON_START=false`, `DEMO_LOGINS=false`, `REGISTRATION_MODE=invite_only`, срок токена сутки (`JWT_EXPIRES_SECONDS`), `TRUST_PROXY_HOPS=1` (Caddy → nginx → API: nginx берёт адрес клиента из `X-Forwarded-For` Caddy и шлёт в API один адрес), кадры и документы в томе `api-storage`, лимиты памяти и куча Node ниже лимита контейнера (`NODE_OPTIONS`), ротация логов у всех сервисов, `restart: always`, сервисы `caddy` и `backup`; Langfuse-стек прячет за профиль `observability` (не поднимается).
+Демо-аккаунтов вроде `pm@remarkround.dev` в проде нет. Демо-данные кладутся только вручную: `docker compose run --rm -e SEED_FORCE=1 api seed`. Обычный старт их не создает: в образе `SEED_ON_START` по умолчанию выключен, демо-стенд включает его в `docker-compose.yml`. Удаление демо-данных: `docker compose run --rm api seed:remove`.
+
+Что задает прод-override (`docker-compose.prod.yml`): `NODE_ENV=production` (со слабым секретом API не стартует), `SEED_ON_START=false`, `DEMO_LOGINS=false`, `REGISTRATION_MODE=invite_only`, срок токена сутки (`JWT_EXPIRES_SECONDS`), `TRUST_PROXY_HOPS=1` (цепочка Caddy → nginx → API: nginx берет адрес клиента из `X-Forwarded-For` от Caddy и передает в API один адрес), кадры и документы в томе `api-storage`, лимиты памяти и кучу Node ниже лимита контейнера (`NODE_OPTIONS`), ротацию логов у всех сервисов, `restart: always`, сервисы `caddy` и `backup`. Langfuse-стек убран за профиль `observability` и не поднимается.
 
 ## Обновление
 
-Порядок всегда один: бэкап → миграции → новые образы → проверка. Если `migrate` упал — образы не поднимать, разбираться.
+Порядок: бэкап, миграции, новые образы, проверка. Если `migrate` упал, новые образы не поднимать, пока ошибка не разобрана.
 
 ```bash
 docker compose exec backup /backup.sh      # свежий дамп перед обновлением
@@ -60,86 +61,144 @@ docker compose up -d api web mcp
 docker compose ps && curl -s https://$PUBLIC_HOST/api/v1/health   # version = RR_TAG
 ```
 
-Миграция `20260907180000_tenancy_fks` (внешние ключи) останавливается с понятной ошибкой, если в базе есть решения без прогона или замечания в раунде чужого проекта; необязательные сироты (автор, «кто закрыл», строка импорта без замечания) она обнуляет сама. Проверить до выката:
+Миграция `20260907180000_tenancy_fks` (внешние ключи) останавливается с понятной ошибкой, если в базе есть решения без прогона или замечания в раунде чужого проекта. Необязательные ссылки-сироты (автор, "кто закрыл", строка импорта без замечания) она обнуляет сама. Проверка до выката:
 
 ```bash
 docker compose exec postgres psql -U remarkround -c "select count(*) as verdicts_without_run from \"HumanVerdict\" v left join \"AgentRun\" a on a.id = v.\"runId\" where a.id is null" -c "select count(*) as remarks_in_foreign_round from \"Remark\" r join \"Round\" ro on ro.id = r.\"roundId\" where ro.\"projectId\" <> r.\"projectId\""
 ```
 
-Во время `up -d` старый контейнер api получает SIGTERM: воркер очереди не берёт новых задач, даёт бегущим прогонам до 25 с и возвращает недоделанные в очередь; новый контейнер их подхватывает (задачи с протухшим `lockedAt` возвращаются в `queued` на старте). Карточки в «разбирается» доходят до черновика сами, кнопку «запустить снова» нажимать не нужно. Перед обновлением можно глянуть `/health` → `jobs.running`: ноль — самый спокойный момент.
+При `up -d` старый контейнер api получает SIGTERM. Воркер очереди перестает брать новые задачи, дает бегущим прогонам до 25 с и возвращает недоделанные в очередь, новый контейнер их подхватывает (задачи с протухшим `lockedAt` на старте возвращаются в `queued`). Карточки в статусе "разбирается" доходят до черновика сами, нажимать "запустить снова" не нужно. Спокойнее всего обновлять, когда в `/health` значение `jobs.running` равно нулю.
 
-Откат кода — вернуть прежний `RR_TAG` и повторить `pull && up -d` (сборки нет, минута). Откат данных — restore ниже: миграции Prisma не откатываются автоматически, поэтому миграцию, которая удаляет или переписывает данные, сначала репетируют на копии (`docs/adr/008-release-and-ownership.md`).
+Откат кода: вернуть прежний `RR_TAG` и повторить `pull && up -d`. Сборки нет, это около минуты. Откат данных: восстановление из дампа (ниже). Миграции Prisma сами не откатываются, поэтому миграцию, которая удаляет или переписывает данные, сначала прогоняют на копии базы (`docs/adr/008-release-and-ownership.md`).
 
 ## Бэкап и восстановление
 
-- **База.** Сервис `backup` (`prodrigestivill/postgres-backup-local`) делает `pg_dump` по `BACKUP_SCHEDULE` (по умолчанию ежедневно) в том `postgres-backups`: хранит 14 дневных, 8 недельных, 6 месячных. Список: `docker compose exec backup ls /backups/daily`.
-- **Копия вне сервера — обязательна.** Дамп на том же диске, что и база, — не бэкап. Сервис `offsite` (профиль `offsite`) раз в сутки делает `rclone sync` дампов и тома `api-storage` в S3-совместимое хранилище (Backblaze B2, Yandex Object Storage, MinIO в другом ДЦ). В `.env`: `COMPOSE_PROFILES=offsite`, `OFFSITE_REMOTE=offsite:<bucket>`, `RCLONE_CONFIG_OFFSITE_*` (см. `.env.example`), затем `docker compose up -d`. Свежесть копии видна в `docker compose ps` (healthcheck: старше 36 часов — unhealthy) и в логах `docker compose logs offsite`. Ретеншн задаёт `backup` (sync — зеркало).
-- **Файлы** (кадры, документы, дифф-картинки) в томе `api-storage` — в дамп БД **не** попадают; их копирует тот же `offsite`. Ручной архив, если профиль не включён: `docker run --rm -v remark-round_api-storage:/data -v $PWD:/out alpine tar czf /out/storage-$(date +%F).tgz -C /data .` (имя тома — `docker volume ls`).
-- **Восстановление БД** (на остановленном api):
-  ```bash
-  docker compose stop api mcp
-  gunzip -c backups/daily/remarkround-<дата>.sql.gz | docker compose exec -T postgres psql -U remarkround -d remarkround
-  docker compose start api mcp
-  ```
-  Файлы: распаковать архив обратно в том (`docker run --rm -v remark-round_api-storage:/data -v $PWD:/in alpine sh -c 'cd /data && tar xzf /in/storage-<дата>.tgz'`).
-- **Репетиция восстановления — до первого пилота и потом раз в квартал.** На чистой машине: `.env` с теми же секретами, `docker compose pull`, `docker compose up -d postgres`, restore дампа как выше, `rclone copy offsite:<bucket>/storage` в том `api-storage`, `docker compose up -d`, вход администратора, открыть карточку с кадром. Засечь время — это и есть RTO; RPO при суточной копии — до 24 часов (`BACKUP_SCHEDULE` и `OFFSITE_INTERVAL_SECONDS` можно сделать чаще). Записать дату и время репетиции сюда: последняя — _не проводилась_.
-- **Пояс дат в xlsx-журнале** — `REPORT_TIMEZONE` (IANA, по умолчанию `Asia/Almaty`; неверное значение — API не стартует). Смещение подписано в шапке колонок файла.
-- **Доказательная база живёт в основной БД, а не в бэкапах** (ADR 011): дампы хранятся 6 месяцев, а история замечаний, события раундов и кадры (включая заменённые) нужны годами. История только дописывается — это держит триггер `rr_append_only`; строки истории и кадры не удаляются ни приложением, ни чисткой очереди. Удаление данных заказчика по требованию — вручную, в транзакции: `ALTER TABLE "RemarkStatusChange" DISABLE TRIGGER "RemarkStatusChange_append_only"` (и `RoundEvent_append_only`, `RemarkScreenshot_no_delete`), удаление, `ENABLE TRIGGER`, затем файлы проекта из тома `api-storage`; запись о том, кто и по какому запросу это сделал, — в журнал обслуживания.
-- Трейсы Langfuse **не бэкапятся** осознанно: это наблюдаемость, не данные приёмки. В Langfuse Cloud они живут у провайдера по его ретеншну; при self-hosted профиле (тома `langfuse-*`) с потерей сервера пропадают вместе со ссылками «Трейс в Langfuse» на карточках.
+### База
+
+Сервис `backup` (`prodrigestivill/postgres-backup-local`) делает `pg_dump` по `BACKUP_SCHEDULE` (по умолчанию раз в сутки) в том `postgres-backups` и хранит 14 дневных, 8 недельных и 6 месячных копий. Список: `docker compose exec backup ls /backups/daily`.
+
+### Копия вне сервера
+
+Дамп на том же диске, что и база, от потери сервера не спасает, поэтому нужна копия вне сервера. Сервис `offsite` (профиль `offsite`) раз в сутки делает `rclone sync` дампов и тома `api-storage` в S3-совместимое хранилище (Backblaze B2, Yandex Object Storage, MinIO в другом ДЦ). Включение: в `.env` задать `COMPOSE_PROFILES=offsite`, `OFFSITE_REMOTE=offsite:<bucket>` и `RCLONE_CONFIG_OFFSITE_*` (см. `.env.example`), затем `docker compose up -d`. Свежесть копии видна в `docker compose ps` (healthcheck: копия старше 36 часов дает unhealthy) и в `docker compose logs offsite`. Сроки хранения задает `backup`, `sync` держит зеркало.
+
+### Файлы
+
+Кадры, документы и дифф-картинки лежат в томе `api-storage` и в дамп БД не попадают, их копирует тот же `offsite`. Ручной архив без профиля: `docker run --rm -v remark-round_api-storage:/data -v $PWD:/out alpine tar czf /out/storage-$(date +%F).tgz -C /data .` (имя тома покажет `docker volume ls`).
+
+### Восстановление
+
+База восстанавливается при остановленном api:
+
+```bash
+docker compose stop api mcp
+gunzip -c backups/daily/remarkround-<дата>.sql.gz | docker compose exec -T postgres psql -U remarkround -d remarkround
+docker compose start api mcp
+```
+
+Файлы: распаковать архив обратно в том, `docker run --rm -v remark-round_api-storage:/data -v $PWD:/in alpine sh -c 'cd /data && tar xzf /in/storage-<дата>.tgz'`.
+
+Проверка восстановления на чистой машине: `.env` с теми же секретами, `docker compose pull`, `docker compose up -d postgres`, восстановление дампа как выше, `rclone copy offsite:<bucket>/storage` в том `api-storage`, `docker compose up -d`, вход администратора, открыть карточку с кадром. Время всей процедуры и есть RTO. RPO при суточной копии до 24 часов; `BACKUP_SCHEDULE` и `OFFSITE_INTERVAL_SECONDS` можно сделать чаще.
+
+### История замечаний и трейсы
+
+История замечаний хранится в основной БД (ADR 011). Дампы хранятся 6 месяцев, а история замечаний, события раундов и кадры, включая замененные, нужны годами. История только дописывается, это обеспечивает триггер `rr_append_only`; ни приложение, ни чистка очереди не удаляют строки истории и кадры. Данные заказчика по его требованию удаляются вручную, в транзакции: `ALTER TABLE "RemarkStatusChange" DISABLE TRIGGER "RemarkStatusChange_append_only"` (и `RoundEvent_append_only`, `RemarkScreenshot_no_delete`), удаление, `ENABLE TRIGGER`, затем файлы проекта из тома `api-storage`. Кто и по какому запросу это сделал, записывается в журнал обслуживания.
+
+Трейсы Langfuse в бэкап не входят. В Langfuse Cloud их хранит провайдер по своим срокам. При self-hosted профиле (тома `langfuse-*`) трейсы пропадают вместе с сервером, и ссылки "Трейс в Langfuse" на карточках перестают открываться.
 
 ## Наблюдаемость и алерты
 
-- **Логи** — JSON-строки (pino): каждая HTTP-строка несёт `req.id` (= `X-Request-Id` ответа), `userId`, `projectId`, статус и длительность; ошибки 5xx — со стеком; события безопасности — `security.*` (вход, регистрация, приглашения, участники, отключения). Разбор инцидента: пользователь называет `requestId` из сообщения об ошибке → `docker compose logs api | grep <requestId>`. По проекту за интервал: `docker compose logs --since 14:00 --until 14:10 api | grep <projectId>`. Уровень — `LOG_LEVEL` (`info` по умолчанию).
-- **Сбой прогона** виден на карточке (`runFailure`: «модель перегружена», «ключ не принят», «файл не найден») и в логе строкой `run … failed: <код>` со стеком; необработанное исключение процесса — строка `uncaughtException`/`unhandledRejection` со стеком и перезапуск контейнера.
-- **Sentry (R-L5).** `SENTRY_DSN` (api) и `SENTRY_DSN_WEB` (SPA; DSN публичный, SPA получает его из `GET /auth/options`) в `.env`, `docker compose up -d api` → `/health` → `sentry: 'on'`. В Sentry уходят: ответы 5xx с `requestId`, падения процесса, сбои прогона с кодом `unknown` (ошибка в коде графа, не модели), ошибки фронта у людей (глобальный `ErrorHandler`). Без DSN ничего не инициализируется. Бесплатного тарифа хватает; трейсинг и replay выключены — это не аналитика поведения.
-- **Uptime.** Внешний бесплатный монитор (UptimeRobot, Better Stack, HetrixTools) на `https://$PUBLIC_HOST/api/v1/health` раз в минуту с уведомлением в Telegram или почту — единственный способ узнать, что сервер лёг, раньше пользователей. Заведите до пилота.
-- **Алерты сервера** — `deploy/alerts.sh` cron'ом раз в час на хосте: свободное место на диске (< 15 %), возраст последнего дампа (> 36 ч), offsite-копия, `/health` (недоступен, `llm=rules`, нет HNSW). Уведомление — Telegram (`ALERT_TELEGRAM_BOT_TOKEN`, `ALERT_TELEGRAM_CHAT_ID`) или webhook (`ALERT_WEBHOOK_URL`):
-  ```bash
-  echo '0 * * * * ALERT_TELEGRAM_BOT_TOKEN=… ALERT_TELEGRAM_CHAT_ID=… /opt/remark-round/deploy/alerts.sh' | crontab -
-  ```
-- **429 у целого офиса.** Лимит API считается по вошедшему пользователю (`THROTTLE_LIMIT`, 1200/мин по JWT), у анонимных маршрутов и входа — по IP (`THROTTLE_AUTH_LIMIT`, 120/мин); nginx за Caddy берёт адрес клиента из `X-Forwarded-For` и ограничивает только `login|register|password|forgot|reset` (300/мин). `/health` без лимита. Если 429 всё же приходит всем сразу — проверить `TRUST_PROXY_HOPS=1` и что nginx видит настоящие адреса (`docker compose logs web`: первый столбец — адрес клиента, не Caddy).
-- **Очередь задач.** `/health` → `jobs: {queued, running}`. Растущий `queued` при `running: 0` — воркер не берёт задачи (смотреть `docker compose logs api | grep jobs`); `queued` растёт при `running` = `GRAPH_MAX_CONCURRENT` — это норма после большого импорта: прогоны идут по `GRAPH_MAX_PER_PROJECT` на проект, остальные виды задач (индексация, письма) их не ждут (R-B2); второй инстанс api удвоил бы эти лимиты — не поднимать; задача, упавшая после всех попыток, — `Job.status = failed` с `lastError`, прогон при этом уже помечен `failed` с причиной на карточке. Осмотреть: `docker compose exec postgres psql -U remarkround -c "select kind, status, attempts, \"lastError\" from \"Job\" where status in ('queued','running','failed') order by \"createdAt\" desc limit 20"`.
-- **Что делать, если** OpenAI лежит или ключ протух: таймауты, 429 и 5xx модели очередь повторяет сама через 30 с, 2 мин и 8 мин — карточка всё это время «разбирается»; после последней попытки и при ошибке ключа карточки показывают «сервис модели недоступен» / «ключ не принят», прогоны можно запускать снова кнопкой; ключ меняется в `.env` и `docker compose up -d api`. Прогон упёрся в дедлайн (карточка: «не уложился в 5 мин», код `timeout`, `GRAPH_RUN_TIMEOUT_MS`) — модель отвечала по минуте с ретраями; запустить снова. Команда видит `409 Лимит стоимости модели на сутки исчерпан` — проект сжёг `GRAPH_DAILY_USD_PER_PROJECT` (20 $) за скользящие сутки: посмотреть `select "projectId", round(sum("costUsd"), 2) from "AgentRun" where "createdAt" > now() - interval '1 day' group by 1`, при необходимости поднять переменную в `.env` (`0` — без лимита) и `docker compose up -d api`. Диск кончился: кадры и документы перестают приниматься заранее — API отвечает `507 storage_full` («кончается место»), когда свободно меньше `STORAGE_MIN_FREE_MB` (2 ГБ); `docker system prune`, затем проверить `docker compose ps` и `/health`; кадры и дампы — самые крупные тома (`docker system df -v`); тома `api-storage` и `postgres-backups` лучше держать на отдельном диске. Проект получает `507 «исчерпал квоту»` — сумма его файлов больше `STORAGE_QUOTA_MB_PER_PROJECT` (2 ГБ, `0` — без квоты): поднять в `.env`, `docker compose up -d api`. Импорт отвечает 422 «больше 100 строк» или 413 — потолки беты `IMPORT_MAX_ROWS`/`IMPORT_MAX_BYTES` (разбор идёт в запросе), журнал разбить. Postgres не отвечает: `docker compose logs postgres`, `docker compose restart postgres`, затем `/health` → `db: ok`.
+### Логи
+
+Логи пишутся JSON-строками (pino). Каждая HTTP-строка содержит `req.id` (он же `X-Request-Id` ответа), `userId`, `projectId`, статус и длительность. Ошибки 5xx пишутся со стеком, события безопасности идут как `security.*` (вход, регистрация, приглашения, участники, отключения). Уровень задает `LOG_LEVEL` (по умолчанию `info`).
+
+Разбор инцидента: пользователь называет `requestId` из сообщения об ошибке, дальше `docker compose logs api | grep <requestId>`. Логи проекта за интервал: `docker compose logs --since 14:00 --until 14:10 api | grep <projectId>`.
+
+Сбой прогона виден на карточке (`runFailure`: "модель перегружена", "ключ не принят", "файл не найден") и в логе строкой `run … failed: <код>` со стеком. Необработанное исключение процесса пишется строкой `uncaughtException` или `unhandledRejection` со стеком, после чего контейнер перезапускается.
+
+### Sentry
+
+`SENTRY_DSN` (api) и `SENTRY_DSN_WEB` (SPA; DSN публичный, SPA получает его из `GET /auth/options`) задаются в `.env`, затем `docker compose up -d api`; в `/health` появляется `sentry: 'on'`. В Sentry уходят ответы 5xx с `requestId`, падения процесса, сбои прогона с кодом `unknown` (ошибка в коде графа) и ошибки фронта у пользователей (глобальный `ErrorHandler`). Без DSN Sentry не инициализируется. Трейсинг и replay выключены.
+
+### Uptime
+
+Внешний монитор (UptimeRobot, Better Stack, HetrixTools) настраивается на `https://$PUBLIC_HOST/api/v1/health`: проверка раз в минуту, уведомление в Telegram или на почту.
+
+### Алерты сервера
+
+`deploy/alerts.sh` запускается на хосте cron'ом раз в час и проверяет свободное место на диске (< 15 %), возраст последнего дампа (> 36 ч), offsite-копию и `/health` (недоступен, `llm=rules`, нет HNSW). Уведомления уходят в Telegram (`ALERT_TELEGRAM_BOT_TOKEN`, `ALERT_TELEGRAM_CHAT_ID`) или в webhook (`ALERT_WEBHOOK_URL`):
+
+```bash
+echo '0 * * * * ALERT_TELEGRAM_BOT_TOKEN=… ALERT_TELEGRAM_CHAT_ID=… /opt/remark-round/deploy/alerts.sh' | crontab -
+```
+
+### 429 у целого офиса
+
+Лимит API считается по вошедшему пользователю (`THROTTLE_LIMIT`, 1200/мин по JWT), для анонимных маршрутов и входа по IP (`THROTTLE_AUTH_LIMIT`, 120/мин). nginx за Caddy берет адрес клиента из `X-Forwarded-For` и ограничивает только `login|register|password|forgot|reset` (300/мин). `/health` без лимита. Если 429 приходит всем сразу, проверить `TRUST_PROXY_HOPS=1` и что nginx видит настоящие адреса: в `docker compose logs web` первый столбец должен содержать адрес клиента, адрес Caddy там означает ошибку в цепочке прокси.
+
+### Очередь задач
+
+`/health` → `jobs: {queued, running}`. Если `queued` растет при `running: 0`, воркер не берет задачи: смотреть `docker compose logs api | grep jobs`. Рост `queued` при `running` = `GRAPH_MAX_CONCURRENT` после большого импорта нормален: прогоны идут по `GRAPH_MAX_PER_PROJECT` на проект, остальные виды задач (индексация, уведомления) их не ждут. Второй экземпляр api удвоил бы эти лимиты, поэтому он не поднимается. Задача, упавшая после всех попыток, получает `Job.status = failed` и `lastError`, прогон к этому моменту уже помечен `failed` с причиной на карточке. Осмотр очереди:
+
+```bash
+docker compose exec postgres psql -U remarkround -c "select kind, status, attempts, \"lastError\" from \"Job\" where status in ('queued','running','failed') order by \"createdAt\" desc limit 20"
+```
+
+## Типовые сбои
+
+| Ситуация | Что делать |
+|---|---|
+| OpenAI недоступен или ключ протух | Таймауты, 429 и 5xx модели очередь повторяет сама через 30 с, 2 мин и 8 мин, все это время карточка в статусе "разбирается". После последней попытки и при ошибке ключа карточка показывает "сервис модели недоступен" или "ключ не принят", прогон запускается снова кнопкой. Ключ меняется в `.env`, затем `docker compose up -d api` |
+| Прогон упал по дедлайну: на карточке "не уложился в 5 мин", код `timeout` (`GRAPH_RUN_TIMEOUT_MS`) | Модель отвечала по минуте с повторами. Запустить прогон снова |
+| `409 Лимит стоимости модели на сутки исчерпан` | Проект израсходовал `GRAPH_DAILY_USD_PER_PROJECT` (20 $) за скользящие сутки. Расход по проектам: `select "projectId", round(sum("costUsd"), 2) from "AgentRun" where "createdAt" > now() - interval '1 day' group by 1`. При необходимости поднять переменную в `.env` (`0` снимает лимит) и выполнить `docker compose up -d api` |
+| `507 storage_full` ("кончается место") | Кадры и документы перестают приниматься заранее, когда свободно меньше `STORAGE_MIN_FREE_MB` (2 ГБ). `docker system prune`, затем проверить `docker compose ps` и `/health`. Самые крупные тома: кадры и дампы (`docker system df -v`). Тома `api-storage` и `postgres-backups` лучше держать на отдельном диске |
+| Проект получает `507` ("исчерпал квоту") | Сумма файлов проекта больше `STORAGE_QUOTA_MB_PER_PROJECT` (2 ГБ, `0` без квоты). Поднять значение в `.env`, затем `docker compose up -d api` |
+| Импорт отвечает 422 ("больше 100 строк") или 413 | Это потолки беты `IMPORT_MAX_ROWS`/`IMPORT_MAX_BYTES`, разбор идет в запросе. Разбить журнал на части |
+| Postgres не отвечает | `docker compose logs postgres`, `docker compose restart postgres`, затем `/health` → `db: ok` |
 
 ## Без почты (ADR 013)
 
-Домена писем и SMTP на бете нет, настраивать нечего. Приглашение незарегистрированному — ссылка `/join/<token>`: PM копирует её или отправляет кнопкой Telegram / WhatsApp на странице «Участники». Зарегистрированный видит приглашение в колокольчике и принимает сам. Человек забыл пароль — пишет администратору инстанса: «Администрирование» → человек → «Ссылка для смены пароля» (`POST /admin/users/:userId/reset-link`); ссылка `/reset/<token>` одноразовая, живёт сутки, новая гасит прежнюю, отключённому не выдаётся. След в логах: `docker compose logs api | grep -E 'security.(password.reset_link|password.reset|invitation.accept|invitation.decline)'`.
+Почтового домена и SMTP нет, настраивать нечего. Незарегистрированному человеку приглашение отправляется ссылкой `/join/<token>`: PM копирует ее или отправляет кнопкой Telegram или WhatsApp на странице "Участники". Зарегистрированный видит приглашение в колокольчике и принимает сам.
+
+Забытый пароль: человек пишет администратору инстанса, тот открывает "Администрирование" → человек → "Ссылка для смены пароля" (`POST /admin/users/:userId/reset-link`). Ссылка `/reset/<token>` одноразовая, живет сутки, новая гасит прежнюю, отключенному пользователю не выдается. След в логах: `docker compose logs api | grep -E 'security.(password.reset_link|password.reset|invitation.accept|invitation.decline)'`.
 
 ## Обслуживание БД
 
-- Роль приложения получает `statement_timeout = 120s` и `idle_in_transaction_session_timeout = 60s` (миграция `20260907130000`): зависший запрос или брошенная транзакция не держат пул и не блокируют autovacuum. Тяжёлая миграция начинается с `SET statement_timeout = 0;`.
-- Пул Prisma — `connection_limit=25&pool_timeout=20` в `DATABASE_URL` прод-override (R-H1): каждый запрос делает минимум два обращения в guard'ах, интерактивные транзакции воркера держат соединение целиком. У Postgres `max_connections=100` по умолчанию — хватает на api, backup и psql. Исчерпанный пул или упавшая база отдают `503 unavailable` («база занята — повторите через минуту»), а не безымянный 500. Интерактивные транзакции ждут соединение до 10 с и живут до 30 с (`PrismaService`), индексация ТЗ — до 120 с и пишет чанки пачками по 200 (R-B3).
-- «Почему всё висит»: `docker compose exec postgres psql -U remarkround -c "SELECT pid, now()-query_start AS age, state, left(query,80) FROM pg_stat_activity WHERE datname='remarkround' AND state<>'idle' ORDER BY age DESC;"`. Самые дорогие запросы за всё время: `… -c "SELECT calls, round(total_exec_time) AS ms, left(query,100) FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 15;"` (расширение включено в образе через `shared_preload_libraries`).
-- Память базы задана командой контейнера в `docker-compose.prod.yml` (`shared_buffers=256MB`, `work_mem=16MB`): при переезде на сервер с другой памятью пересчитать (shared_buffers ≈ 25 % от лимита контейнера).
-- Рост таблиц: `GraphCheckpoint` чистится сам — чекпоинты прогонов, завершённых больше недели назад, удаляются на старте api и раз в сутки (R-M2; бегущие и ожидающие решения прогоны не трогаются), завершённые задачи очереди — по тому же расписанию (30/90 дней); `DocumentChunk` растёт с пакетом документов — смотреть `docker compose exec postgres psql -U remarkround -c "\dt+"` раз в месяц.
+- Роль приложения получает `statement_timeout = 120s` и `idle_in_transaction_session_timeout = 60s` (миграция `20260907130000`): зависший запрос или брошенная транзакция не держат пул и не блокируют autovacuum. Тяжелая миграция начинается с `SET statement_timeout = 0;`.
+- Пул Prisma: `connection_limit=25&pool_timeout=20` в `DATABASE_URL` прод-override. Каждый запрос делает минимум два обращения к базе в guard'ах, интерактивные транзакции воркера держат соединение целиком. У Postgres по умолчанию `max_connections=100`, этого хватает на api, backup и psql. При исчерпанном пуле или упавшей базе API отвечает `503 unavailable` с просьбой повторить через минуту. Интерактивные транзакции ждут соединение до 10 с и живут до 30 с (`PrismaService`), индексация ТЗ живет до 120 с и пишет чанки пачками по 200.
+- Долгие запросы сейчас: `docker compose exec postgres psql -U remarkround -c "SELECT pid, now()-query_start AS age, state, left(query,80) FROM pg_stat_activity WHERE datname='remarkround' AND state<>'idle' ORDER BY age DESC;"`. Самые дорогие запросы за все время: `… -c "SELECT calls, round(total_exec_time) AS ms, left(query,100) FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 15;"` (расширение подключено через `shared_preload_libraries` в команде контейнера).
+- Память базы задана командой контейнера в `docker-compose.prod.yml` (`shared_buffers=512MB`, `work_mem=16MB`). При переезде на сервер с другой памятью ее пересчитывают: `shared_buffers` около трети лимита контейнера.
+- `GraphCheckpoint` чистится сам: чекпоинты прогонов, завершенных больше недели назад, удаляются на старте api и раз в сутки (бегущие и ожидающие решения прогоны не трогаются). Завершенные задачи очереди удаляются по тому же расписанию (30/90 дней). `DocumentChunk` растет вместе с пакетом документов, размер таблиц раз в месяц смотрят через `docker compose exec postgres psql -U remarkround -c "\dt+"`.
 
 ## Langfuse в проде
 
-На бете трейсы уходят в **Langfuse Cloud** (решение владельца по R-B1 из `docs/BETA-REVIEW.md`: на одном сервере 8 ГБ self-hosted стек съедал 4,3 ГБ лимитов и ронял ClickHouse по OOM). В `.env`: `LANGFUSE_CLOUD_URL`, `LANGFUSE_PROJECT_ID` и ключи проекта, затем `docker compose up -d api`; `/health` → `tracing: 'on'`. Ссылка «Трейс в Langfuse» на карточке у PM ведёт на `LANGFUSE_PUBLIC_URL` (по умолчанию — тот же адрес, что и `LANGFUSE_CLOUD_URL`). **В трейсах — тексты замечаний и цитаты ТЗ заказчика**: они уходят во внешний сервис так же, как в модель OpenAI, — это тот же класс решения (`REMARKROUND.md` §12), фиксируйте его вместе с решением по модели. Выключить трейсы совсем — `LANGFUSE_TRACING_ENABLED=false` (`tracing: 'off'`, ключи не нужны).
+Трейсы уходят в Langfuse Cloud: self-hosted стек на сервере 8 ГБ занимал 4,3 ГБ лимитов, и ClickHouse падал по OOM. В `.env` задаются `LANGFUSE_CLOUD_URL`, `LANGFUSE_PROJECT_ID` и ключи проекта, затем `docker compose up -d api`; в `/health` появляется `tracing: 'on'`. Ссылка "Трейс в Langfuse" на карточке у PM ведет на `LANGFUSE_PUBLIC_URL` (по умолчанию тот же адрес, что `LANGFUSE_CLOUD_URL`).
 
-Self-hosted стек (6 сервисов) остался за профилем `observability`: `COMPOSE_PROFILES=offsite,observability`, все секреты стека в `.env` (`NEXTAUTH_SECRET`, `SALT`, `ENCRYPTION_KEY`, `CLICKHOUSE_PASSWORD`, `REDIS_AUTH`, `MINIO_ROOT_PASSWORD`, `LANGFUSE_DB_PASSWORD`, `LANGFUSE_INIT_USER_PASSWORD`, ключи), `LANGFUSE_CLOUD_URL` не задавать, `LANGFUSE_PUBLIC_URL=http://localhost:3000`. Нужен сервер **16 ГБ**. UI наружу не публикуется (порт 3000 только на 127.0.0.1): `ssh -L 3000:127.0.0.1:3000 user@server`, затем `http://localhost:3000` (вход — `LANGFUSE_INIT_USER_EMAIL` / `_PASSWORD`) — ссылка с карточки работает у того, кто в туннеле. Compose не проверяет секреты выключенного профиля: при включённом профиле с пустыми секретами langfuse-web/worker и minio не стартуют, а clickhouse и redis поднимутся без пароля — смотрите `docker compose ps` после `up`.
+В трейсах есть тексты замечаний и цитаты ТЗ заказчика, и во внешний сервис они уходят так же, как в модель OpenAI. Поэтому разрешение на передачу данных фиксируется сразу для модели и для Langfuse. Трейсы выключаются полностью через `LANGFUSE_TRACING_ENABLED=false` (`tracing: 'off'`, ключи не нужны).
+
+Self-hosted стек (6 сервисов) остался за профилем `observability`. Для него нужны сервер на 16 ГБ, `COMPOSE_PROFILES=offsite,observability`, все секреты стека в `.env` (`NEXTAUTH_SECRET`, `SALT`, `ENCRYPTION_KEY`, `CLICKHOUSE_PASSWORD`, `REDIS_AUTH`, `MINIO_ROOT_PASSWORD`, `LANGFUSE_DB_PASSWORD`, `LANGFUSE_INIT_USER_PASSWORD`, ключи) и `LANGFUSE_PUBLIC_URL=http://localhost:3000`; `LANGFUSE_CLOUD_URL` не задается. UI наружу не публикуется, порт 3000 открыт только на 127.0.0.1: `ssh -L 3000:127.0.0.1:3000 user@server`, затем `http://localhost:3000` (вход: `LANGFUSE_INIT_USER_EMAIL` / `_PASSWORD`). Ссылка с карточки открывается только через этот туннель.
+
+Compose не проверяет секреты выключенного профиля. При включенном профиле с пустыми секретами langfuse-web, langfuse-worker и minio не стартуют, а clickhouse и redis поднимаются без пароля, поэтому после `up` нужно проверить `docker compose ps`.
 
 ## Чеклист перед запуском
 
-- [ ] `JWT_SECRET`, `POSTGRES_PASSWORD`, `PUBLIC_HOST`, `ADMIN_EMAILS` заданы; ключи Langfuse Cloud настоящие (или `LANGFUSE_TRACING_ENABLED=false`); плейсхолдеры `change-me-local-dev` в `.env` не остались; `COMPOSE_PROFILES` без `observability`.
-- [ ] `docker compose config -q` без ошибок; `docker compose ps` — все healthy.
-- [ ] `/api/v1/auth/options` → `{ demoLogins: false, registration: 'invite_only' }` без `demoAccounts`; вход `pm@remarkround.dev` → 401; регистрация с чужого адреса без ссылки → 403. Если том стенда доехал до прода (`select email from "User" where email like '%remarkround.dev'` не пуст) — `docker compose run --rm api seed:remove` (удаляет 5 демо-персон и 2 демо-проекта по фиксированным id, остальное не трогает).
-- [ ] Администратор зарегистрировался → пригласил руководителя приёмки ссылкой → тот зарегистрировался по ссылке и создал проект → приглашение участника по ссылке → второй человек вошёл; зарегистрированный принял приглашение в колокольчике; администратор выдал ссылку смены пароля, по ней пароль сменился.
-- [ ] Уволенного можно отключить одной кнопкой в «Администрировании»: его открытая вкладка и MCP-токен перестают работать сразу.
-- [ ] `docker compose exec backup ls /backups/daily` — дамп есть; профиль `offsite` включён и `docker compose ps offsite` — healthy; репетиция восстановления проведена, дата записана выше.
-- [ ] Внешний uptime-монитор на `/health` заведён; `deploy/alerts.sh` в cron и прислал тестовое сообщение (`DISK_MIN_FREE_PCT=100 ./deploy/alerts.sh`).
-- [ ] `RR_TAG` в `.env` = тег из CI, `/api/v1/health` показывает его в `version`; `git tag v…` поставлен на выкаченный коммит.
-- [ ] Порты 5432 (и 5433/8123/9000/3000, если включён профиль `observability`) снаружи закрыты (`nmap` или `ss -tlnp` на сервере: только 80/443 и ssh); `/health` → `tracing: 'on'`.
+- [ ] `JWT_SECRET`, `POSTGRES_PASSWORD`, `PUBLIC_HOST`, `ADMIN_EMAILS` заданы; ключи Langfuse Cloud настоящие (или `LANGFUSE_TRACING_ENABLED=false`); в `.env` не осталось плейсхолдеров `change-me-local-dev`; в `COMPOSE_PROFILES` нет `observability`.
+- [ ] `docker compose config -q` проходит без ошибок, в `docker compose ps` все сервисы healthy.
+- [ ] `/api/v1/auth/options` → `{ demoLogins: false, registration: 'invite_only' }` без `demoAccounts`; вход `pm@remarkround.dev` → 401; регистрация с чужого адреса без ссылки → 403. Если в прод попал том стенда (запрос `select email from "User" where email like '%remarkround.dev'` не пустой), выполнить `docker compose run --rm api seed:remove`: команда удаляет 5 демо-персон и 2 демо-проекта по фиксированным id и больше ничего не трогает.
+- [ ] Администратор зарегистрировался и пригласил руководителя приемки ссылкой. Руководитель зарегистрировался по ссылке, создал проект и пригласил участника по ссылке, участник вошел. Зарегистрированный пользователь принял приглашение в колокольчике. Администратор выдал ссылку смены пароля, и пароль по ней сменился.
+- [ ] Уволенного сотрудника отключают одной кнопкой в "Администрировании": его открытая вкладка и MCP-токен сразу перестают работать.
+- [ ] `docker compose exec backup ls /backups/daily` показывает дамп; профиль `offsite` включен, `docker compose ps offsite` показывает healthy; восстановление проверено на чистой машине.
+- [ ] Внешний uptime-монитор на `/health` заведен; `deploy/alerts.sh` стоит в cron и прислал тестовое сообщение (`DISK_MIN_FREE_PCT=100 ./deploy/alerts.sh`).
+- [ ] `RR_TAG` в `.env` совпадает с тегом из CI, `/api/v1/health` показывает его в `version`; на выкаченный коммит поставлен `git tag v…`.
+- [ ] Порты 5432 (и 5433/8123/9000/3000 при профиле `observability`) снаружи закрыты: `nmap` или `ss -tlnp` на сервере показывают только 80/443 и ssh. `/health` → `tracing: 'on'`.
 - [ ] Решение по ПДн в облачной модели зафиксировано (договор или локальная модель).
 
-## Что ещё не сделано (осознанно)
+## Известные ограничения
 
-Каждый пункт — с условием, когда его пересмотреть; иначе через полгода не отличить решение от забывчивости.
-
-- Один инстанс API: socket.io без Redis, файлы на локальном томе. Прогоны графа и индексация уже идут через очередь в Postgres и переживают перезапуск; для второго инстанса остаются Redis-адаптер socket.io и общее хранилище файлов (S3). **Пересмотреть до подключения второй команды с требованием к аптайму деплоя.**
-- Почта (ADR 013): писем нет — приглашения ссылкой и колокольчиком, ссылку смены пароля выдаёт администратор; подтверждения e-mail при регистрации нет, поэтому колокольчик показывает приглашение тому, кто первым зарегистрировал адрес (PM видит имя аккаунта). **Пересмотреть до раскатки на несколько команд** (вместе с SSO).
-- Метрики: Prometheus/Grafana нет — есть `/health` (версия, режим модели, векторный индекс, трейсинг, Sentry), структурные логи, `deploy/alerts.sh` и Sentry за `SENTRY_DSN`. Полноценные метрики — **до раскатки на несколько команд.**
-- Staging: отдельного окружения нет, релиз проверяется на демо-стенде и в CI. **Пересмотреть, когда цена сломанного релиза станет дороже второго сервера.**
-- Деплой руками по этому runbook (образы из CI, но `pull && up` — человек). **Пересмотреть, когда серверов станет больше одного.**
-- Прод-образ api содержит devDependencies и исходники (одна стадия сборки). **Пересмотреть при сканировании образов в CI.**
-- Демо-данные в проде — только руками (`docker compose run --rm -e SEED_FORCE=1 api seed`), обычный старт их не кладёт (в образе `SEED_ON_START` по умолчанию выключен; демо-стенд включает его в `docker-compose.yml`); убрать — `docker compose run --rm api seed:remove`.
+- Нагрузочное тестирование не проводилось. Узкие места: прогоны модели (лимиты `GRAPH_MAX_CONCURRENT` / `GRAPH_MAX_PER_PROJECT`) и pixel-diff с разбором файлов в одном процессе API. Список замечаний отдается без пагинации.
+- Один экземпляр API: socket.io без Redis, файлы на локальном томе. Прогоны графа и индексация идут через очередь в Postgres и переживают перезапуск. Для второго экземпляра нужны Redis-адаптер socket.io и общее хранилище файлов (S3), см. `docs/ARCHITECTURE.md`.
+- Почты нет (ADR 013). Подтверждения e-mail при регистрации тоже нет, поэтому приглашение в колокольчике видит тот, кто первым зарегистрировал адрес (PM видит имя аккаунта).
+- Prometheus и Grafana нет. Есть `/health` (версия, режим модели, векторный индекс, трейсинг, Sentry), структурные логи, `deploy/alerts.sh` и Sentry при заданном `SENTRY_DSN`.
+- Отдельного staging нет, релиз проверяется на демо-стенде и в CI.
+- Деплой ручной: образы собирает CI, `pull && up` по этому runbook запускает человек.
+- Прод-образ api содержит devDependencies и исходники (одна стадия сборки).
+- Полное восстановление по этой схеме (дамп и файлы на чистой машине) не проводилось.

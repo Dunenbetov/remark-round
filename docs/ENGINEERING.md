@@ -1,53 +1,53 @@
 # Инженерия
 
-Эти правила важнее «слоёв ради слоёв». Не плодить 6-уровневый Clean Architecture.
+Соглашения для тех, кто пишет код в этом репозитории. API разбит на модули Nest по предметным областям, отдельных слоев в духе Clean Architecture нет.
 
 ## Модули Nest (`apps/api`)
 
-`Auth` · `Tenancy` (guard membership) · `Projects` · `Documents` · `Remarks` · `Media` · `Rag` · `Diff` · `Llm` · `Agent` · `Jobs` · `Notifications` · `Mail` · `Observability` · `Gateway`.
+`Auth`, `Tenancy` (guard membership), `Admin`, `Projects`, `Documents`, `Rounds`, `Remarks`, `Imports`, `Media`, `Storage`, `Rag`, `Diff`, `Llm`, `Agent`, `Jobs`, `Notifications`, `Observability`, `Gateway`, `Health`, `Prisma`.
 
-Публичные контроллеры тонкие. Запись Remark/Verdict/Run — `RemarksService` (и узкие сервисы рядом: `ImportService`). `AgentService` оркестрирует граф (старт, resume, cancel) и сам ничего не пишет: контроллер и WS-гейтвей зовут его, он — `RemarksService`.
+Публичные контроллеры тонкие. Remark, Verdict и Run записывает `RemarksService` (и узкие сервисы рядом, например `ImportService`). `AgentService` управляет графом (старт, resume, cancel) и сам ничего не пишет: его вызывают контроллер и WS-гейтвей, он вызывает `RemarksService`.
 
-## Паттерны, которые обязательны
+## Обязательные паттерны
 
-1. **Tenancy в SQL и в схеме.** Каждый `findMany` чанков/remarks: `projectId: ctx.projectId`. Тест: чужой uuid → 0 рядов / 404. Второй эшелон — внешние ключи: `projectId` → `Project` у Remark, AgentRun, DocumentChunk, ImportJob; составной `(roundId, projectId)` → `Round(id, projectId)`, так что замечание не попадёт в раунд чужого проекта даже ручным SQL; ссылки на людей — `ON DELETE SET NULL`; `HumanVerdict.runId` обязателен. Новая тенантная колонка без FK — ошибка ревью.
-2. **Один путь записи.** Graph node: `this.remarks.applyProposal(...)`. MCP tool: тот же метод. Не `prisma.remark.update` в двух местах.
-3. **LLM только в `LlmModule`.** Каждый вызов — span Langfuse (имя ноды, `runId`, `projectId`, model, tokens). Нет `console.log` вместо трейса.
-4. **`cannot_tell` — доменный исход.** Не Exception.
-5. **Идемпотентность HITL.** Уникальность `(runId, idempotencyKey)`.
-6. **Промпт не ACL.** Injection в тексте замечания не должен снять фильтр БД.
-7. **Статус пишется условно.** Каждый переход — `RemarksService.transition(tx, id, fromStatuses, …)`: `updateMany` с условием по прежнему статусу внутри транзакции; `count = 0` → 409 «карточка изменилась». Два одновременных решения дают одну запись, а не произвольного победителя (`remarks.integrity.spec`).
-8. **Долгое — в очередь.** Всё, что дольше HTTP-запроса (прогон графа, индексация), — задача `JobsService`, а не `void promise`: задача переживает рестарт, временная ошибка модели повторяется с паузой, отмена снимает задачу. Обработчик регистрирует модуль-владелец в `onModuleInit`; `wait: true` — только для evals и тестов.
-9. **История — только дописывается.** Каждый переход оставляет `RemarkStatusChange` в той же транзакции (`transition(...)` → `writeHistory`, `createNumbered`, `failRun`, `cancelRun`): кто — имя снимком, в какой роли, каким прогоном, короткая пометка, слова человека, кадр действия. Postgres не даст поправить строку потом (триггер `rr_append_only`, ADR 011), поэтому всё, что ей нужно, известно в момент вставки: кадр пишется раньше строки. Кадры не удаляются — `supersede(...)` помечает заменённые. Прямой `remark.update({ status })` или `remarkScreenshot.delete*` вне этих мест — ошибка ревью.
-10. **Цитата — снимок.** `EvidenceCitation` хранит текст цитаты и подпись документа на момент предложения; `chunkId` — живая ссылка с `ON DELETE SET NULL`. Переиндексация ТЗ не отнимает обоснование у принятых и закрытых замечаний.
+1. Tenancy в SQL и в схеме. Каждый `findMany` по чанкам и замечаниям фильтрует `projectId: ctx.projectId`. Тест: чужой uuid дает 0 строк или 404. Второй уровень проверки держат внешние ключи. `projectId` у Remark, AgentRun, DocumentChunk, ImportJob ссылается на `Project`, составной `(roundId, projectId)` на `Round(id, projectId)`, поэтому замечание не попадет в раунд чужого проекта даже ручным SQL. Ссылки на людей `ON DELETE SET NULL`, `HumanVerdict.runId` обязателен. Новая тенантная колонка без FK не проходит ревью.
+2. Один путь записи. Нода графа пишет через `this.remarks.applyProposal(...)`, MCP-инструмент через REST попадает в те же методы `RemarksService`. Второго места с `prisma.remark.update` быть не должно.
+3. LLM только в `LlmModule`. Каждый вызов пишется в Langfuse как span (имя ноды, `runId`, `projectId`, model, tokens). `console.log` трейс не заменяет.
+4. `cannot_tell` это доменный исход. Исключение для него не бросается.
+5. Идемпотентность HITL: уникальный ключ `(runId, idempotencyKey)`.
+6. Промпт не ACL. Инъекция в тексте замечания не должна снимать фильтр БД.
+7. Статус пишется условно. Каждый переход идет через `RemarksService.transition(tx, id, fromStatuses, …)`: `updateMany` с условием по прежнему статусу внутри транзакции, при `count = 0` ответ 409 "карточка изменилась". Из двух одновременных решений записывается одно (`remarks.integrity.spec`).
+8. Долгая работа идет через очередь. Все, что дольше HTTP-запроса (прогон графа, индексация), оформляется задачей `JobsService`, `void promise` для этого не используется. Задача переживает рестарт API. Временная ошибка модели повторяется с паузой, отмена снимает задачу. Обработчик регистрирует модуль-владелец в `onModuleInit`. `wait: true` только для evals и тестов.
+9. История только дописывается. Каждый переход оставляет `RemarkStatusChange` в той же транзакции (`transition(...)` → `writeHistory`, `createNumbered`, `failRun`, `cancelRun`): кто (имя снимком), в какой роли, каким прогоном, короткая пометка, слова человека, кадр действия. Postgres не даст поправить строку потом (триггер `rr_append_only`, ADR 011), поэтому все данные строки известны в момент вставки, и кадр пишется раньше строки. Кадры не удаляются, `supersede(...)` помечает замененные. Прямой `remark.update({ status })` или `remarkScreenshot.delete*` вне этих мест не проходит ревью.
+10. Цитата хранится снимком. `EvidenceCitation` хранит текст цитаты и подпись документа на момент предложения, `chunkId` это живая ссылка с `ON DELETE SET NULL`. После переиндексации ТЗ у принятых и закрытых замечаний обоснование остается.
 
-## Запрещённые паттерны
+## Запрещенные паттерны
 
 - Generic `ChatService` без `remarkId`
-- `Repository` в MCP, минуя сервис
-- Enum статуса «In Progress / Done / Won't Do» как в Jira
-- Загрузка всех чанков проекта в промпт «на всякий случай»
+- `Repository` в MCP в обход сервиса
+- Enum статуса в духе Jira (`In Progress`, `Done`, `Won't Do`)
+- Загрузка всех чанков проекта в промпт "на всякий случай"
 
 ## Тесты, без которых нельзя мержить
 
-| Тест | Смысл |
+| Тест | Что проверяет |
 |---|---|
-| `tenancy.leakage.spec` | retrieve/tool чужого projectId пустой |
-| `tenancy.sweep.spec` | таблично все проектные маршруты: путь чужого проекта — 404, свой проект + чужой ресурс — 404, чужой ключ кадра — 422; FK не дают записать замечание в раунд чужого проекта мимо сервисов |
-| `verdict.model-cannot-close.spec` | модель не переводит в `closed` |
+| `tenancy.leakage.spec` | retrieve и MCP-инструмент с чужим `projectId` возвращают пустой результат |
+| `tenancy.sweep.spec` | все проектные маршруты по таблице: путь чужого проекта дает 404, свой проект с чужим ресурсом 404, чужой ключ кадра 422. FK не дают записать замечание в раунд чужого проекта в обход сервисов |
+| `verdict.model-cannot-close.spec` | модель не переводит замечание в `closed` |
 | `verdict.idempotent.spec` | двойной approve |
 | `status.illegal-transition.spec` | developer не закрывает |
-| `diff.cannot-compare.spec` | разный размер кадра → cannot_tell |
-| `import.missing-description.spec` | строка → `needs_human_parse` |
-| `mcp.facade.spec` | tool чужого projectId пуст, `projectId` не аргумент, решение только pm, `close` через MCP нет |
-| `guardrail.injection.spec` | «забудь ТЗ» не даёт дефект без цитаты |
-| `evals.spec` | golden офлайн через продуктовые сервисы: leakage пуст, injection → не defect, faithfulness 100 %, ретест не `closed`, обе ветки A/B |
-| `remarks.integrity.spec` | два одновременных решения → один HumanVerdict и 409; цитата переживает reindex |
+| `diff.cannot-compare.spec` | разный размер кадра дает `cannot_tell` |
+| `import.missing-description.spec` | строка без описания получает `needs_human_parse` |
+| `mcp.facade.spec` | инструмент с чужим `projectId` пуст, `projectId` не передается аргументом, решение принимает только pm, `close` через MCP недоступен |
+| `guardrail.injection.spec` | "забудь ТЗ" в тексте замечания не дает дефект без цитаты |
+| `evals.spec` | golden офлайн через продуктовые сервисы: leakage пуст, инъекция не становится defect, faithfulness 100 %, ретест не ставит `closed`, проверены обе ветки A/B |
+| `remarks.integrity.spec` | два одновременных решения дают один HumanVerdict и 409, цитата переживает reindex |
 | `remarks.audience.spec` | заказчик не получает советы, комментарий PM, трейс и черновик до решения PM (REST и WS) |
-| `accounts.spec` · `members.spec` · `admin.spec` | контур доступа ADR 006: режимы регистрации, ссылка один раз, отключение и отзыв сессий; ADR 013: зарегистрированный не участник — приглашение с `inviteeName`, колокольчик (только свои, принять, отклонить, чужое и истёкшее — 404, принятое — 410), ссылка смены пароля только от администратора |
-| `remarks.history.spec` | строка на переход с автором, ролью и прогоном; гонка решений не даёт лишней строки; заказчик — без содержания предложений; `AgentRun` хранит предложение после решения |
-| `jobs.spec` | очередь: 429 модели повторяется без «не получилось», осиротевшая задача исполняется заново, `run.cancel` снимает задачу, зависший прогон с живой задачей не сметается |
+| `accounts.spec`, `members.spec`, `admin.spec` | контур доступа ADR 006: режимы регистрации, ссылка показывается один раз, отключение и отзыв сессий. ADR 013: зарегистрированный пользователь без участия в проекте получает приглашение с `inviteeName`; колокольчик показывает только свои приглашения, их можно принять или отклонить, чужое и истекшее дают 404, принятое 410; ссылку смены пароля выдает только администратор |
+| `remarks.history.spec` | строка на каждый переход с автором, ролью и прогоном; гонка решений не дает лишней строки; заказчик не видит содержания предложений; `AgentRun` хранит предложение после решения |
+| `jobs.spec` | очередь: 429 модели не роняет прогон, задача повторяется; осиротевшая задача исполняется заново; `run.cancel` снимает задачу; уборка зависших прогонов не трогает прогон с живой задачей |
 
 ## Именование
 
-Файлы: kebab-case. Классы: `RemarksService`. Статусы и коды решений — как в `docs/STATUS.md`, латиница в коде, не перевод в БД.
+Файлы в kebab-case, классы вида `RemarksService`. Статусы и коды решений пишутся как в `docs/STATUS.md`, латиницей в коде и в БД. Русские подписи лежат в `apps/web/src/app/core/copy.ts` и, для выгрузки xlsx, в `apps/api/src/remarks/labels.ts`.
